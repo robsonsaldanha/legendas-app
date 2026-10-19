@@ -59,4 +59,5 @@ jobs:
           ALIGN_TEST_TEXT: "The quick brown fox jumps over the lazy dog. Then the dog wakes up and runs after the fox across the green field."
           ALIGN_TEST_AFTER_PAUSE: "Then"
           ALIGN_TEST_LANG: en
-        run: python -m pytest tests/test_align_real.py -v -s
+        run: python -m pytest tests/test_align_real.py -v -s -rs --strict-markers -p no:cacheprovider; if ($LASTEXITCODE -ne 0) { exit 1 }
+        shell: pwsh

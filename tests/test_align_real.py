@@ -46,6 +46,9 @@ def test_real_alignment(tmp_path):
     print(f"pausa detectada antes de {AFTER_PAUSE!r}: {pause:.2f} s")
     for w in words:
         print(f"{w.start:7.2f} {w.end:7.2f}  {w.text}")
+    if os.environ.get("GITHUB_ACTIONS"):
+        resumo = " ".join(f"{w.text}@{w.start:.2f}" for w in words)
+        print(f"::notice title=Alinhamento real::pausa={pause:.2f}s duracao={dur:.2f}s | {resumo}")
     assert pause > 1.2, "o alinhamento deveria enxergar a pausa de 2 s"
 
 
