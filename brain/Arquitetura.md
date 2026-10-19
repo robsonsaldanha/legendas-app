@@ -41,11 +41,30 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 | `pipeline.py` | `run_job()` para a interface; `main()` para a linha de comando |
 | `config.py` | Pastas em `%APPDATA%\Legendas` e `Settings` (modelos, preços, paralelismo) |
 
+## Interface (`app/`)
+
+O programa é um servidor local (só `127.0.0.1`) e a tela abre no navegador padrão. Decisão da usuária: página no navegador em vez de janela PySide6 (ver [[Decisões]]).
+
+| Arquivo | Papel |
+|---|---|
+| `__main__.py` | `python -m app`: sobe o servidor na porta 8765 (ou outra livre), abre o navegador, limpa temporários antigos. Se já estiver aberto, só abre a página. `--dialog` é o modo auxiliar das janelas de arquivo |
+| `server.py` | HTTP + API JSON (biblioteca padrão, sem framework). Token por sessão no cabeçalho `X-Token`, checagem do `Host`, CSP |
+| `worker.py` | Fila: um trabalho por vez numa thread; progresso e registro em memória para a tela |
+| `db.py` | SQLite `legendas.db`: projetos, glossários, perfis próprios, histórico |
+| `dialogs.py` | Janela "Abrir" do Windows (tkinter) num processo separado, para obter o caminho real do arquivo |
+| `static/` | `index.html`, `app.css`, `app.js` — página única, sem dependências externas (funciona offline) |
+
+Telas: Novo trabalho (arquivos, etapas, projeto, perfil, idiomas, pasta de saída, custo estimado) · Trabalhos (fila + histórico) · Trabalho (progresso ao vivo; no fim, revisão com a prévia da legenda "na tela" e os apontamentos do QC) · Projetos (glossário com importar/exportar CSV, instruções do cliente) · Configurações (chave, modelos de alinhamento, perfis, avançado, fechar o programa).
+
+Arquivos arrastados para a página são copiados para `%APPDATA%\Legendas\envios` (o navegador não informa o caminho original); nesse caso a saída vai para `Documentos\Legendas`. Pelo botão "Escolher", o caminho real é usado e a saída fica ao lado do vídeo.
+
 ## Pastas de dados (Windows)
 
 ```
 %APPDATA%\Legendas\
   config.json
+  legendas.db                projetos, glossários, perfis, histórico
+  envios\                    arquivos arrastados para a página
   logs\legendas.log          log técnico geral
   modelos\                   modelos wav2vec2 (baixados no 1º uso)
   trabalhos\<id>\            um por trabalho

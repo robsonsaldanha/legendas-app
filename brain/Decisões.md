@@ -28,5 +28,16 @@
 ## 2026-10-19 — Chave da OpenAI no Gerenciador de Credenciais
 - `keyring` no Windows usa o Credential Manager. Para desenvolvimento, a variável `OPENAI_API_KEY` tem prioridade.
 
+## 2026-10-19 — Interface no navegador (servidor local)
+- Pedido da usuária: "página no navegador". Substitui a PySide6 da especificação.
+- Servidor com a biblioteca padrão do Python (`http.server`), sem FastAPI/Flask: menos dependências para empacotar.
+- Segurança: escuta só em 127.0.0.1; token aleatório por sessão exigido em toda a API (outras páginas abertas no navegador não conseguem chamar); `Host` precisa ser localhost (contra DNS rebinding); CSP só permite scripts do próprio servidor.
+- O navegador não revela caminhos de arquivos, então "Escolher" abre a janela nativa do Windows (tkinter) num subprocesso; arrastar e soltar envia uma cópia.
+- Progresso por consulta periódica (1 s), simples e robusto.
+- Página sem CDN nem fontes externas: Segoe UI do Windows, funciona offline.
+
+## 2026-10-19 — Aviso de tempo estimado agregado
+- Quando mais da metade das legendas tem tempo estimado, o QC não marca cada uma (poluía a revisão); vira um aviso geral no relatório e na tela.
+
 ## Pendente de decisão
 - Empacotamento (Fase 5): PyInstaller onedir × Python embeddable. Testar os dois com torch.

@@ -14,4 +14,4 @@ Aplicativo Windows com instalador para legendagem profissional (PT-BR → espanh
 - [[Especificação]] — documento original de requisitos
 
 ## Estado atual
-**Fase 1 concluída**: Transcrever + Formatar por linha de comando, com retomada, estimativa de custo e relatório de QC. Veja [[Fases]].
+**Fase 1 concluída** (Transcrever + Formatar) e **interface no navegador pronta** (`python -m app`). Próximo: validar com vídeo real dela, depois Fase 2 (Traduzir). Veja [[Fases]].

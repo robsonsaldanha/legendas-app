@@ -1,0 +1,561 @@
+"""Servidor HTTP local (só 127.0.0.1) com a API JSON e os arquivos da página."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import logging
+import mimetypes
+import os
+import re
+import secrets
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import uuid
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
+
+from core import __version__
+from core.align import ALIGN_MODELS
+from core.config import Settings, data_dir, jobs_dir, models_dir
+from core.errors import LegendasError
+from core.glossary import load_glossary, save_glossary
+from core.media import probe
+from core.openai_client import delete_api_key, get_api_key, make_client, set_api_key, with_retry
+from core.plan import MEDIA_EXT, SUBTITLE_EXT, TEXT_EXT
+from core.subtitle import read_srt
+
+from . import dialogs
+from .db import Database
+from .worker import UPLOADS_SUBDIR, Worker
+
+log = logging.getLogger("legendas.server")
+
+STATIC = Path(__file__).resolve().parent / "static"
+
+LANGUAGES = [
+    {"code": "pt-BR", "name": "Português (Brasil)"},
+    {"code": "es-419", "name": "Espanhol (América Latina)"},
+    {"code": "es-ES", "name": "Espanhol (Espanha)"},
+    {"code": "en-US", "name": "Inglês"},
+]
+
+
+class ApiError(Exception):
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.status = status
+
+
+def _file_kind(p: Path) -> str:
+    ext = p.suffix.lower()
+    if ext in MEDIA_EXT:
+        return "media"
+    if ext in SUBTITLE_EXT:
+        return "subtitle"
+    if ext in TEXT_EXT:
+        return "text"
+    return "other"
+
+
+def _align_installed() -> bool:
+    return all(importlib.util.find_spec(m) is not None for m in ("torch", "transformers"))
+
+
+def _model_downloaded(lang: str) -> bool:
+    name = ALIGN_MODELS.get(lang)
+    if not name:
+        return False
+    folder = models_dir() / ("models--" + name.replace("/", "--"))
+    if not folder.exists():
+        return False
+    return any(folder.rglob("*.bin")) or any(folder.rglob("*.safetensors"))
+
+
+def open_path(path: str, select: bool = False) -> None:
+    p = Path(path)
+    if not p.exists():
+        raise ApiError("Arquivo não encontrado. Ele pode ter sido movido ou apagado.", 404)
+    if sys.platform == "win32":
+        if select:
+            subprocess.Popen(["explorer", "/select,", str(p)])
+        else:
+            os.startfile(str(p))  # type: ignore[attr-defined]
+    else:
+        target = p.parent if select else p
+        subprocess.Popen(["xdg-open", str(target)], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+
+
+class App:
+    """Estado compartilhado pelo servidor."""
+
+    def __init__(self, db: Database | None = None, transcriber_factory=None):
+        self.token = secrets.token_urlsafe(24)
+        self.db = db or Database()
+        self.uploads = data_dir() / UPLOADS_SUBDIR
+        self.uploads.mkdir(parents=True, exist_ok=True)
+        self.db.mark_interrupted()
+        self.worker = Worker(self.db, self.uploads, transcriber_factory)
+        self.downloads: dict[str, str] = {}  # idioma -> status do download do modelo
+        self.server: ThreadingHTTPServer | None = None
+
+    # ----------------------------------------------------------- estado
+
+    def state(self) -> dict:
+        try:
+            key = get_api_key()
+            masked = "…" + key[-4:]
+        except LegendasError:
+            masked = ""
+        installed = _align_installed()
+        return {
+            "version": __version__,
+            "api_key": masked,
+            "align": {
+                "installed": installed,
+                "models": {lang: ("baixando" if self.downloads.get(lang) == "baixando"
+                                  else "pronto" if installed and _model_downloaded(lang)
+                                  else self.downloads.get(lang, "ausente"))
+                           for lang in ("pt", "es")},
+            },
+            "settings": Settings.load().__dict__,
+            "profiles": self.db.list_profiles(),
+            "languages": LANGUAGES,
+            "data_dir": str(data_dir()),
+            "phase": {"transcrever": True, "sincronizar": False, "traduzir": False},
+        }
+
+    def test_key(self) -> dict:
+        client = make_client()
+        model = Settings.load().transcribe_model
+        with_retry(lambda: client.models.retrieve(model), attempts=2)
+        return {"ok": True, "message": f"Chave válida, com acesso ao {model}."}
+
+    def download_model(self, lang: str) -> None:
+        if lang not in ALIGN_MODELS:
+            raise ApiError("Idioma sem modelo de alinhamento.")
+        if not _align_installed():
+            raise ApiError("O alinhamento preciso não está instalado nesta versão.")
+        if self.downloads.get(lang) == "baixando":
+            return
+        self.downloads[lang] = "baixando"
+
+        def work():
+            try:
+                from core.align import CTCAligner
+                CTCAligner(lang)
+                self.downloads[lang] = "pronto"
+            except Exception as e:  # noqa: BLE001
+                log.exception("Falha ao baixar modelo %s", lang)
+                self.downloads[lang] = f"erro: {e}"
+
+        threading.Thread(target=work, daemon=True).start()
+
+    # --------------------------------------------------------- arquivos
+
+    def inspect(self, paths: list[str]) -> list[dict]:
+        out = []
+        for raw in paths:
+            p = Path(raw)
+            item = {"path": str(p), "name": p.name, "kind": _file_kind(p),
+                    "exists": p.exists(), "size": p.stat().st_size if p.exists() else 0}
+            if p.exists() and item["kind"] == "media":
+                try:
+                    info = probe(p)
+                    item.update(duration=info["duration"], fps=info["fps"],
+                                has_audio=info["has_audio"])
+                except LegendasError as e:
+                    item["error"] = str(e)
+            if p.exists() and item["kind"] == "subtitle":
+                try:
+                    item["cues"] = len(read_srt(p))
+                except Exception:  # noqa: BLE001
+                    item["error"] = "Não consegui ler esta legenda."
+            out.append(item)
+        return out
+
+    def save_upload(self, name: str, stream, length: int) -> str:
+        safe = re.sub(r'[\\/:*?"<>|]+', "_", Path(name).name).strip() or "arquivo"
+        folder = self.uploads / uuid.uuid4().hex[:12]
+        folder.mkdir(parents=True)
+        dst = folder / safe
+        remaining = length
+        with open(dst, "wb") as f:
+            while remaining > 0:
+                chunk = stream.read(min(1 << 20, remaining))
+                if not chunk:
+                    break
+                f.write(chunk)
+                remaining -= len(chunk)
+        if remaining:
+            shutil.rmtree(folder, ignore_errors=True)
+            raise ApiError("O envio do arquivo foi interrompido.")
+        return str(dst)
+
+    def cleanup_uploads(self, days: int) -> None:
+        limit = time.time() - days * 86400
+        for d in self.uploads.iterdir():
+            if d.is_dir() and d.stat().st_mtime < limit:
+                shutil.rmtree(d, ignore_errors=True)
+
+    # --------------------------------------------------------- resultado
+
+    def job_detail(self, jid: int) -> dict:
+        job = self.db.get_job(jid)
+        if not job:
+            raise ApiError("Trabalho não encontrado.", 404)
+        live = self.worker.live.get(jid)
+        if live:
+            job["live"] = {"message": live.message, "steps": live.steps, "log": live.log}
+        return job
+
+    def job_result(self, jid: int, limit: int = 400) -> dict:
+        job = self.db.get_job(jid)
+        if not job or job["status"] != "pronto":
+            raise ApiError("O resultado ainda não está pronto.", 404)
+        srt = Path(job["outputs"].get("srt", ""))
+        cues = []
+        if srt.exists():
+            for i, c in enumerate(read_srt(srt)[:limit], start=1):
+                cues.append({"n": i, "start": c.start, "end": c.end, "lines": c.lines})
+        issues = []
+        if job.get("core_job_id"):
+            qc = jobs_dir() / job["core_job_id"] / "qc.json"
+            if qc.exists():
+                issues = json.loads(qc.read_text(encoding="utf-8")).get("issues", [])
+        return {"cues": cues, "issues": issues, "srt": str(srt), "exists": srt.exists()}
+
+
+# ====================================================================== HTTP
+
+ROUTES: list[tuple[str, re.Pattern, str]] = []
+
+
+def route(method: str, pattern: str):
+    def deco(fn):
+        ROUTES.append((method, re.compile("^" + pattern + "$"), fn.__name__))
+        return fn
+    return deco
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "Legendas"
+    app: App  # definido em make_server
+
+    def log_message(self, fmt, *args):  # silencioso no console
+        log.debug("%s - %s", self.address_string(), fmt % args)
+
+    # ---------------------------------------------------------- utilidades
+
+    def _send(self, status: int, body: bytes, ctype: str, extra: dict | None = None) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _json(self, data, status: int = 200) -> None:
+        self._send(status, json.dumps(data, ensure_ascii=False).encode("utf-8"),
+                   "application/json; charset=utf-8")
+
+    def _body(self) -> dict:
+        n = int(self.headers.get("Content-Length") or 0)
+        if not n:
+            return {}
+        try:
+            return json.loads(self.rfile.read(n).decode("utf-8"))
+        except ValueError as e:
+            raise ApiError("Requisição inválida.") from e
+
+    def _host_ok(self) -> bool:
+        host = (self.headers.get("Host") or "").split(":")[0].lower()
+        return host in ("127.0.0.1", "localhost")
+
+    # ------------------------------------------------------------ despacho
+
+    def do_GET(self):
+        self._dispatch("GET")
+
+    def do_HEAD(self):
+        self._dispatch("GET")
+
+    def do_POST(self):
+        self._dispatch("POST")
+
+    def do_PUT(self):
+        self._dispatch("PUT")
+
+    def do_DELETE(self):
+        self._dispatch("DELETE")
+
+    def _dispatch(self, method: str) -> None:
+        if not self._host_ok():
+            self._send(403, b"forbidden", "text/plain")
+            return
+        url = urlparse(self.path)
+        path = unquote(url.path)
+        self.query = {k: v[0] for k, v in parse_qs(url.query).items()}
+        try:
+            if path.startswith("/api/"):
+                if not secrets.compare_digest(self.headers.get("X-Token", ""), self.app.token):
+                    raise ApiError("Sessão expirada. Recarregue a página.", 401)
+                for m, rx, name in ROUTES:
+                    match = rx.match(path)
+                    if m == method and match:
+                        result = getattr(self, name)(*match.groups())
+                        if result is not None:
+                            self._json(result)
+                        return
+                raise ApiError("Endereço não encontrado.", 404)
+            if method != "GET":
+                raise ApiError("Método não permitido.", 405)
+            self._static(path)
+        except ApiError as e:
+            self._json({"error": str(e)}, e.status)
+        except LegendasError as e:
+            self._json({"error": str(e)}, 400)
+        except (ValueError, KeyError) as e:
+            self._json({"error": str(e).strip("'\"")}, 400)
+        except Exception as e:  # noqa: BLE001
+            log.exception("Erro em %s %s", method, path)
+            self._json({"error": f"Erro inesperado: {e}"}, 500)
+
+    def _static(self, path: str) -> None:
+        if path == "/ping":
+            self._send(200, b"legendas", "text/plain")
+            return
+        if path in ("/", "/index.html"):
+            html = (STATIC / "index.html").read_text(encoding="utf-8")
+            html = html.replace("{{TOKEN}}", self.app.token).replace("{{VERSION}}", __version__)
+            self._send(200, html.encode("utf-8"), "text/html; charset=utf-8", {
+                "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; "
+                                           "style-src 'self' 'unsafe-inline'; script-src 'self'; "
+                                           "connect-src 'self'; frame-ancestors 'none'"})
+            return
+        rel = path.lstrip("/")
+        target = (STATIC / rel).resolve()
+        if not str(target).startswith(str(STATIC)) or not target.is_file():
+            self._send(404, b"not found", "text/plain")
+            return
+        ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        if ctype.startswith("text/") or ctype in ("application/javascript",):
+            ctype += "; charset=utf-8"
+        self._send(200, target.read_bytes(), ctype)
+
+    # ================================================================ API
+
+    @route("GET", r"/api/state")
+    def api_state(self):
+        return self.app.state()
+
+    @route("POST", r"/api/key")
+    def api_key_set(self):
+        key = (self._body().get("key") or "").strip()
+        if not key.startswith("sk-") or len(key) < 20:
+            raise ApiError("Isso não parece uma chave da OpenAI (ela começa com sk-).")
+        set_api_key(key)
+        try:
+            return self.app.test_key()
+        except LegendasError as e:
+            return {"ok": False, "message": str(e)}
+
+    @route("POST", r"/api/key/test")
+    def api_key_test(self):
+        try:
+            return self.app.test_key()
+        except LegendasError as e:
+            return {"ok": False, "message": str(e)}
+
+    @route("DELETE", r"/api/key")
+    def api_key_delete(self):
+        delete_api_key()
+        return {"ok": True}
+
+    @route("PUT", r"/api/settings")
+    def api_settings(self):
+        data = self._body()
+        s = Settings.load()
+        allowed = {"transcribe_model": str, "transcribe_usd_per_min": float,
+                   "parallel_requests": int, "align": str, "keep_job_days": int}
+        for k, typ in allowed.items():
+            if k in data:
+                setattr(s, k, typ(data[k]))
+        if s.align not in ("auto", "model", "estimate"):
+            raise ApiError("Opção de alinhamento inválida.")
+        s.parallel_requests = max(1, min(8, s.parallel_requests))
+        s.keep_job_days = max(1, min(365, s.keep_job_days))
+        s.save()
+        return s.__dict__
+
+    @route("POST", r"/api/models/(\w+)")
+    def api_model_download(self, lang):
+        self.app.download_model(lang)
+        return {"ok": True}
+
+    # ------------------------------------------------------------ arquivos
+
+    @route("POST", r"/api/dialog")
+    def api_dialog(self):
+        b = self._body()
+        try:
+            paths = dialogs.ask(b.get("kind", "any"), bool(b.get("multiple")), b.get("title", ""),
+                                b.get("initial"))
+        except Exception as e:  # noqa: BLE001
+            log.warning("Janela de arquivos indisponível: %s", e)
+            raise ApiError("Não consegui abrir a janela do Windows. Arraste o arquivo para a "
+                           "página ou cole o caminho.", 501) from e
+        return {"paths": paths}
+
+    @route("POST", r"/api/upload")
+    def api_upload(self):
+        name = self.query.get("name") or "arquivo"
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0:
+            raise ApiError("Arquivo vazio.")
+        return {"path": self.app.save_upload(name, self.rfile, length)}
+
+    @route("POST", r"/api/inspect")
+    def api_inspect(self):
+        return {"files": self.app.inspect(self._body().get("paths", []))}
+
+    @route("POST", r"/api/open")
+    def api_open(self):
+        b = self._body()
+        open_path(b.get("path", ""), bool(b.get("select")))
+        return {"ok": True}
+
+    # ------------------------------------------------------------ projetos
+
+    @route("GET", r"/api/projects")
+    def api_projects(self):
+        return {"projects": self.app.db.list_projects()}
+
+    @route("POST", r"/api/projects")
+    def api_project_create(self):
+        pid = self.app.db.save_project(self._body())
+        return self.app.db.get_project(pid)
+
+    @route("GET", r"/api/projects/(\d+)")
+    def api_project_get(self, pid):
+        p = self.app.db.get_project(int(pid))
+        if not p:
+            raise ApiError("Projeto não encontrado.", 404)
+        return p
+
+    @route("PUT", r"/api/projects/(\d+)")
+    def api_project_update(self, pid):
+        self.app.db.save_project(self._body(), int(pid))
+        return self.app.db.get_project(int(pid))
+
+    @route("DELETE", r"/api/projects/(\d+)")
+    def api_project_delete(self, pid):
+        self.app.db.delete_project(int(pid))
+        return {"ok": True}
+
+    @route("POST", r"/api/glossary/import")
+    def api_glossary_import(self):
+        path = self._body().get("path", "")
+        entries = load_glossary(path)
+        return {"glossary": [e.__dict__ for e in entries]}
+
+    @route("POST", r"/api/glossary/export")
+    def api_glossary_export(self):
+        b = self._body()
+        from core.glossary import Entry
+        folder = Path(b.get("folder") or Path.home())
+        name = re.sub(r'[\\/:*?"<>|]+', "_", b.get("name") or "glossario").strip() or "glossario"
+        dst = folder / f"{name}.csv"
+        save_glossary([Entry(e.get("term", ""), e.get("translation", ""), e.get("note", ""))
+                       for e in b.get("glossary", []) if e.get("term")], dst)
+        return {"path": str(dst)}
+
+    # -------------------------------------------------------------- perfis
+
+    @route("POST", r"/api/profiles")
+    def api_profile_create(self):
+        key = self.app.db.save_profile(None, self._body())
+        return {"key": key, "profiles": self.app.db.list_profiles()}
+
+    @route("PUT", r"/api/profiles/([\w\-]+)")
+    def api_profile_update(self, key):
+        self.app.db.save_profile(key, self._body())
+        return {"key": key, "profiles": self.app.db.list_profiles()}
+
+    @route("DELETE", r"/api/profiles/([\w\-]+)")
+    def api_profile_delete(self, key):
+        self.app.db.delete_profile(key)
+        return {"profiles": self.app.db.list_profiles()}
+
+    # ---------------------------------------------------------- trabalhos
+
+    @route("POST", r"/api/estimate")
+    def api_estimate(self):
+        b = self._body()
+        return self.app.worker.estimate(b.get("params", {}), b.get("inputs", []))
+
+    @route("POST", r"/api/jobs")
+    def api_job_create(self):
+        b = self._body()
+        jid = self.app.worker.submit(b.get("params", {}), b.get("inputs", []))
+        return self.app.job_detail(jid)
+
+    @route("GET", r"/api/jobs")
+    def api_jobs(self):
+        jobs = self.app.db.list_jobs()
+        for j in jobs:
+            live = self.app.worker.live.get(j["id"])
+            if live and j["status"] in ("fila", "rodando"):
+                j["live"] = {"message": live.message, "steps": live.steps}
+        return {"jobs": jobs}
+
+    @route("GET", r"/api/jobs/(\d+)")
+    def api_job(self, jid):
+        return self.app.job_detail(int(jid))
+
+    @route("GET", r"/api/jobs/(\d+)/result")
+    def api_job_result(self, jid):
+        return self.app.job_result(int(jid))
+
+    @route("POST", r"/api/jobs/(\d+)/cancel")
+    def api_job_cancel(self, jid):
+        self.app.worker.cancel(int(jid))
+        return self.app.job_detail(int(jid))
+
+    @route("POST", r"/api/jobs/(\d+)/retry")
+    def api_job_retry(self, jid):
+        self.app.worker.retry(int(jid))
+        return self.app.job_detail(int(jid))
+
+    @route("DELETE", r"/api/jobs/(\d+)")
+    def api_job_delete(self, jid):
+        job = self.app.db.get_job(int(jid))
+        if job and job["status"] in ("fila", "rodando"):
+            raise ApiError("Cancele o trabalho antes de tirá-lo do histórico.")
+        self.app.db.delete_job(int(jid))
+        return {"ok": True}
+
+    @route("POST", r"/api/shutdown")
+    def api_shutdown(self):
+        threading.Thread(target=self.app.server.shutdown, daemon=True).start()
+        return {"ok": True}
+
+
+def make_server(app: App, port: int = 0) -> ThreadingHTTPServer:
+    handler = type("BoundHandler", (Handler,), {"app": app})
+    srv = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    srv.daemon_threads = True
+    app.server = srv
+    return srv
+

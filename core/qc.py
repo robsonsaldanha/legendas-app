@@ -57,6 +57,10 @@ def check_rules(cues: list[Cue], profile: Profile, fps: float | None = None,
                 estimated_timing: list[bool] | None = None) -> list[Issue]:
     issues = validate_structure(cues)
     gap = profile.min_gap(fps)
+    # Se quase tudo foi estimado, um aviso por legenda só polui a revisão:
+    # o aviso geral fica no topo do relatório (ver write_report) e na tela.
+    if estimated_timing and sum(estimated_timing) > 0.5 * max(1, len(cues)):
+        estimated_timing = None
     for i, c in enumerate(cues, start=1):
         lines = [l for l in c.lines if l.strip()]
         if len(lines) > profile.max_lines:
@@ -99,7 +103,7 @@ def check_rules(cues: list[Cue], profile: Profile, fps: float | None = None,
 
 def write_report(issues: list[Issue], cues: list[Cue], profile: Profile,
                  txt_path: str | Path, json_path: str | Path | None = None,
-                 title: str = "") -> None:
+                 title: str = "", note: str = "") -> None:
     errs = sum(1 for x in issues if x.severity == ERRO)
     warns = len(issues) - errs
     flagged = len({x.index for x in issues})
@@ -107,8 +111,10 @@ def write_report(issues: list[Issue], cues: list[Cue], profile: Profile,
         f"RELATÓRIO DE QC — {title}".rstrip(" —"),
         f"Perfil: {profile.name}",
         f"Legendas: {len(cues)} | com apontamentos: {flagged} | erros: {errs} | avisos: {warns}",
-        "",
     ]
+    if note:
+        out.append(f"ATENÇÃO: {note}")
+    out.append("")
     if not issues:
         out.append("Nenhum problema encontrado.")
     for x in issues:

@@ -25,7 +25,7 @@ from .chunking import Chunk, plan_chunks
 from .config import Settings, logs_dir
 from .errors import LegendasError, PipelineError
 from .formatter import format_words
-from .glossary import load_glossary, transcription_keywords
+from .glossary import Entry, load_glossary, transcription_keywords
 from .jobs import Job, job_id_for
 from .media import detect_silences, extract_audio, load_wav, probe
 from .plan import FORMAT, TRANSCRIBE, Inputs, build_plan, parse_steps
@@ -45,6 +45,7 @@ class JobRequest:
     target_lang: str = "es-419"
     profile: Profile | None = None
     glossary: Path | None = None
+    glossary_entries: list[Entry] | None = None  # alternativa ao arquivo (usada pela interface)
     context: str = ""               # instruções/contexto livre do projeto
     out_dir: Path | None = None     # padrão: pasta do vídeo
 
@@ -77,7 +78,9 @@ class Callbacks:
 def _params_for_id(req: JobRequest, profile: Profile, settings: Settings) -> dict:
     return {"steps": sorted(req.steps), "src": req.source_lang, "dst": req.target_lang,
             "profile": profile.to_dict(), "model": settings.transcribe_model,
-            "glossary": str(req.glossary) if req.glossary else "", "ctx": req.context}
+            "glossary": str(req.glossary) if req.glossary else "",
+            "glossary_entries": [[e.term, e.translation] for e in (req.glossary_entries or [])],
+            "ctx": req.context}
 
 
 def _output_base(media: Path, out_dir: Path | None) -> Path:
@@ -137,7 +140,9 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
     log.info("Trabalho %s: %s", job.id, " → ".join(plan.steps))
 
     result = JobResult(job_id=job.id)
-    glossary = load_glossary(req.glossary) if req.glossary else []
+    glossary = list(req.glossary_entries or [])
+    if req.glossary:
+        glossary += load_glossary(req.glossary)
 
     if TRANSCRIBE in plan.steps:
         media = inputs.media
@@ -191,7 +196,11 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         srt = write_srt(fmt.cues, f"{base}.{req.source_lang}.srt")
         issues = check_rules(fmt.cues, profile, info.get("fps"), fmt.estimated_timing)
         qc_txt = Path(f"{base}.{req.source_lang}.qc.txt")
-        write_report(issues, fmt.cues, profile, qc_txt, job.path("qc.json"), title=media.name)
+        n_est = sum(fmt.estimated_timing)
+        note = ("Os tempos de todas as legendas foram estimados (alinhamento preciso indisponível). "
+                "Confira a sincronia." if n_est > 0.5 * max(1, len(fmt.cues)) else "")
+        write_report(issues, fmt.cues, profile, qc_txt, job.path("qc.json"), title=media.name,
+                     note=note)
         job.mark(FORMAT, "ok", legendas=len(fmt.cues), apontamentos=len(issues))
         result.outputs = {"srt": srt, "qc": qc_txt}
         result.issues = len(issues)
@@ -214,10 +223,11 @@ def setup_logging(verbose: bool = False) -> None:
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     fh.setLevel(logging.DEBUG)
     root.addHandler(fh)
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG if verbose else logging.WARNING)
-    ch.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-    root.addHandler(ch)
+    if sys.stderr is not None:  # sem console (pythonw / programa instalado)
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.DEBUG if verbose else logging.WARNING)
+        ch.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+        root.addHandler(ch)
     for noisy in ("httpx", "httpcore", "openai", "urllib3", "filelock"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     root._legendas_ready = True  # type: ignore[attr-defined]
