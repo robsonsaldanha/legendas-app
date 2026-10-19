@@ -1,0 +1,4 @@
+# Núcleo (transcrição, formatação, QC)
+numpy>=1.26
+openai>=1.60
+keyring>=25

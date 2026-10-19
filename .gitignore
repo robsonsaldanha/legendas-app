@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.env
+# arquivos de teste locais
+*.mp4
+*.mkv
+*.wav
+*.srt
+!tests/fixtures/**
+# Obsidian
+brain/.obsidian/workspace*.json

@@ -1,0 +1,62 @@
+name: Testes
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  testes-windows:
+    name: Testes (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instalar ffmpeg
+        run: choco install ffmpeg -y --no-progress
+      - name: Instalar dependências
+        run: pip install -r requirements-dev.txt
+      - name: Rodar testes
+        run: python -m pytest -q
+
+  alinhamento-real:
+    name: Alinhamento real (wav2vec2, Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instalar ffmpeg
+        run: choco install ffmpeg -y --no-progress
+      - name: Instalar dependências (com torch CPU)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-dev.txt -r requirements-align.txt
+      - name: Cache dos modelos de alinhamento
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Roaming\Legendas\modelos
+          key: modelos-wav2vec2-v1
+      - name: Sintetizar fala de teste (voz do Windows)
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $s.Rate = -1
+          $s.SetOutputToWaveFile("$env:RUNNER_TEMP\fala.wav")
+          $ssml = '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">The quick brown fox jumps over the lazy dog. <break time="2s"/> Then the dog wakes up and runs after the fox across the green field.</speak>'
+          $s.SpeakSsml($ssml)
+          $s.Dispose()
+          Get-Item "$env:RUNNER_TEMP\fala.wav" | Select-Object Length
+      - name: Rodar teste de alinhamento
+        env:
+          ALIGN_TEST_WAV: ${{ runner.temp }}\fala.wav
+          ALIGN_TEST_TEXT: "The quick brown fox jumps over the lazy dog. Then the dog wakes up and runs after the fox across the green field."
+          ALIGN_TEST_AFTER_PAUSE: "Then"
+          ALIGN_TEST_LANG: en
+        run: python -m pytest tests/test_align_real.py -v -s
