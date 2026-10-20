@@ -15,6 +15,13 @@
 - [x] Etapas Traduzir/Sincronizar aparecem desativadas até as Fases 2 e 3
 - [ ] Testar no Windows dela (janela "Abrir", abrir SRT no editor, Gerenciador de Credenciais)
 
+## ✅ Editor (layout do Subtitle Edit) + dois perfis do Windows
+- [x] Grade, vídeo com legenda sobreposta e quadro exato, painel de edição, forma de onda com arrastar, Criar/Ajustar, status
+- [x] Desfazer/refazer, rascunho automático, salvar/salvar como com cópia de segurança, QC ao vivo, quebra automática
+- [x] Cópia de pré-visualização para MKV/MXF/HEVC etc.
+- [x] Sessão por perfil do Windows; modelos compartilhados
+- [ ] Testar no Windows: tocar H.264 no Edge/Chrome, F11/F12, janela "Salvar como", dois perfis logados ao mesmo tempo
+
 ## Fase 2 — Traduzir + glossário
 SRT → SRT traduzido (es-419), contexto do vídeo inteiro, JSON por ID com validação, glossário e instruções do cliente; `reflow_cues` já pronto para refazer as linhas.
 

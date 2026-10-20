@@ -59,13 +59,23 @@ def probe(path: str | Path) -> dict:
     info = json.loads(out.decode("utf-8", errors="replace"))
     streams = info.get("streams", [])
     fps = None
+    vcodec = pix_fmt = acodec = None
+    width = height = None
     for s in streams:
         if s.get("codec_type") == "video" and s.get("disposition", {}).get("attached_pic") != 1:
             fps = _parse_rate(s.get("avg_frame_rate")) or _parse_rate(s.get("r_frame_rate"))
+            vcodec, pix_fmt = s.get("codec_name"), s.get("pix_fmt")
+            width, height = s.get("width"), s.get("height")
             break
-    has_audio = any(s.get("codec_type") == "audio" for s in streams)
+    for s in streams:
+        if s.get("codec_type") == "audio":
+            acodec = s.get("codec_name")
+            break
+    has_audio = acodec is not None
     duration = float(info.get("format", {}).get("duration") or 0.0)
-    return {"duration": duration, "fps": fps, "has_audio": has_audio}
+    return {"duration": duration, "fps": fps, "has_audio": has_audio, "vcodec": vcodec,
+            "pix_fmt": pix_fmt, "acodec": acodec, "width": width, "height": height,
+            "format": info.get("format", {}).get("format_name", "")}
 
 
 def _parse_rate(rate: str | None) -> float | None:

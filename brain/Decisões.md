@@ -39,5 +39,14 @@
 ## 2026-10-19 — Aviso de tempo estimado agregado
 - Quando mais da metade das legendas tem tempo estimado, o QC não marca cada uma (poluía a revisão); vira um aviso geral no relatório e na tela.
 
+## 2026-10-19 — Dois perfis do Windows
+- O PC é o mesmo, com perfis diferentes (Róbson e esposa). Dados separados por perfil; modelos compartilhados em ProgramData.
+- Antes, o segundo perfil a abrir o programa poderia cair no servidor do primeiro (mesma porta) e ver os dados dele. Agora: porta por perfil, sessão em arquivo do próprio perfil, cookie + token.
+
+## 2026-10-19 — Editor no layout do Subtitle Edit
+- Pedido explícito: mesmo layout do Subtitle Edit e vídeo rodando junto, no quadro exato.
+- Player HTML5 com `requestVideoFrameCallback`; formatos que o navegador não toca ganham uma cópia de pré-visualização (H.264 720p) que preserva os tempos dos quadros. A legenda continua sincronizada com o original.
+- Forma de onda própria (canvas + picos do servidor) em vez de biblioteca externa: sem dependências, funciona offline.
+
 ## Pendente de decisão
 - Empacotamento (Fase 5): PyInstaller onedir × Python embeddable. Testar os dois com torch.

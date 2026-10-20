@@ -137,12 +137,27 @@ const routes = [
   [/^#\/projetos$/, renderProjects],
   [/^#\/projeto\/(novo|\d+)$/, renderProject],
   [/^#\/configuracoes$/, renderSettings],
+  [/^#\/editor(?:\/(\w+))?$/, renderEditor],
 ];
 
+let lastHash = location.hash;
+function leavingEditorOk() {
+  if (!lastHash.startsWith("#/editor/") || !ED.dirty) return true;
+  return confirm("Há alterações não salvas na legenda. Sair mesmo assim? (Elas continuam guardadas enquanto o programa estiver aberto.)");
+}
+
 async function router() {
+  if (location.hash !== lastHash && !leavingEditorOk()) {
+    history.replaceState(null, "", lastHash);
+    return;
+  }
+  lastHash = location.hash;
   clearTimers();
   main.onclick = null;
+  cancelAnimationFrame(ED.raf);
+  document.querySelectorAll("video").forEach((v) => { v.pause(); v.removeAttribute("src"); v.load(); });
   const hash = location.hash || "#/novo";
+  if (!hash.startsWith("#/editor/")) { document.body.classList.remove("editor-mode"); ED.sid = null; ED.dirty = false; }
   const section = hash.split("/")[1] || "novo";
   const navKey = { trabalho: "trabalhos", projeto: "projetos" }[section] || section;
   document.querySelectorAll("[data-nav]").forEach((a) => {
@@ -610,6 +625,10 @@ async function jobActions(e, job) {
       await api("DELETE", `/api/jobs/${job.id}`); location.hash = "#/trabalhos";
     }
     if (a === "open") await api("POST", "/api/open", { path: b.dataset.path });
+    if (a === "editor") {
+      const r = await api("POST", "/api/editor/open", { job_id: job.id });
+      location.hash = `#/editor/${r.sid}`;
+    }
     if (a === "show") await api("POST", "/api/open", { path: b.dataset.path, select: true });
     if (a === "again") {
       S.draft = freshDraft();
@@ -636,7 +655,8 @@ async function renderResult(job) {
   const srt = res.srt;
   const qc = job.outputs.qc;
   main.innerHTML = jobHead(job, `
-      <button class="btn primary" data-action="open" data-path="${esc(srt)}" ${res.exists ? "" : "disabled"}>Abrir legenda</button>
+      <button class="btn primary" data-action="editor" ${res.exists ? "" : "disabled"}>Abrir no editor</button>
+      <button class="btn" data-action="open" data-path="${esc(srt)}" ${res.exists ? "" : "disabled"}>Abrir em outro programa</button>
       <button class="btn" data-action="show" data-path="${esc(srt)}" ${res.exists ? "" : "disabled"}>Mostrar na pasta</button>`)
     + `
     ${!res.exists ? `<p class="note err" style="margin-bottom:16px">O arquivo da legenda não está mais em ${esc(srt)}.</p>` : ""}

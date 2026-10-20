@@ -33,10 +33,53 @@ def jobs_dir() -> Path:
     return p
 
 
+def _writable(p: Path) -> bool:
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        probe = p / f".teste-{os.getpid()}"
+        probe.write_bytes(b"")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def shared_dir() -> Path | None:
+    """Pasta comum a todos os perfis do Windows (C:\\ProgramData\\Legendas)."""
+    override = os.environ.get("LEGENDAS_SHARED")
+    if override:
+        return Path(override)
+    if sys.platform == "win32" and not os.environ.get("LEGENDAS_HOME"):
+        return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / APP_NAME
+    return None
+
+
 def models_dir() -> Path:
+    """Modelos de alinhamento (≈1,2 GB por idioma) ficam numa pasta comum a todos
+    os perfis do Windows, para não baixar duas vezes. Se não der para escrever
+    lá, cada perfil usa a sua."""
+    shared = shared_dir()
+    if shared is not None and _writable(shared / "modelos"):
+        return shared / "modelos"
     p = data_dir() / "modelos"
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def user_id() -> str:
+    """Identificador estável do perfil do Windows (para não misturar perfis)."""
+    import getpass
+    import hashlib
+    try:
+        name = getpass.getuser()
+    except Exception:  # noqa: BLE001
+        name = "?"
+    return hashlib.sha1(f"{name}|{data_dir()}".encode("utf-8")).hexdigest()[:12]
+
+
+def preferred_port() -> int:
+    """Porta fixa por perfil: dois perfis logados ao mesmo tempo não disputam a mesma."""
+    return 8765 + int(user_id()[:6], 16) % 200
 
 
 def logs_dir() -> Path:

@@ -22,16 +22,24 @@ def server(tmp_path, monkeypatch):
     srv = make_server(app, 0)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    yield app, srv.server_address[1], tmp_path
+    port = srv.server_address[1]
+    COOKIE[port] = f"{app.cookie_name}={app.token}"
+    yield app, port, tmp_path
     srv.shutdown()
     srv.server_close()
 
 
-def call(port, method, path, body=None, token=None, host="127.0.0.1", raw=None, headers=None):
+COOKIE = {}
+
+
+def call(port, method, path, body=None, token=None, host="127.0.0.1", raw=None, headers=None,
+         cookie=True):
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
     h = {"Host": f"{host}:{port}"}
     if token:
         h["X-Token"] = token
+        if cookie and port in COOKIE:
+            h["Cookie"] = COOKIE[port]
     data = None
     if body is not None:
         data = json.dumps(body).encode()
@@ -49,11 +57,39 @@ def call(port, method, path, body=None, token=None, host="127.0.0.1", raw=None, 
         return r.status, payload.decode("utf-8", errors="replace")
 
 
-def test_index_has_token_and_csp(server):
+def test_index_requires_session_cookie(server):
     app, port, _ = server
     status, html = call(port, "GET", "/")
+    assert status == 403 and app.token not in html and "atalho" in html
+    status, html = call(port, "GET", "/", headers={"Cookie": COOKIE[port]})
     assert status == 200
     assert app.token in html and "{{TOKEN}}" not in html
+
+
+def test_open_sets_cookie_only_with_right_key(server):
+    app, port, _ = server
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    conn.request("GET", f"/open?k={app.token}", headers={"Host": f"127.0.0.1:{port}"})
+    r = conn.getresponse(); r.read()
+    assert r.status == 302 and r.getheader("Location") == "/"
+    cookie = r.getheader("Set-Cookie")
+    assert app.token in cookie and "HttpOnly" in cookie and "SameSite=Strict" in cookie
+    st, _ = call(port, "GET", "/open?k=errado")
+    assert st == 403
+
+
+def test_ping_identifies_owner(server):
+    app, port, _ = server
+    assert call(port, "GET", f"/ping?k={app.token}")[1] == "legendas-ok"
+    assert call(port, "GET", "/ping?k=outro")[1] == "legendas"
+
+
+def test_api_needs_cookie_and_header(server):
+    app, port, _ = server
+    st, _ = call(port, "GET", "/api/state", token=app.token, cookie=False)
+    assert st == 401
+    st, _ = call(port, "GET", "/api/state", headers={"Cookie": COOKIE[port]})
+    assert st == 401
     st, js = call(port, "GET", "/app.js")
     assert st == 200 and "router" in js
 
@@ -61,7 +97,7 @@ def test_index_has_token_and_csp(server):
 def test_api_requires_token(server):
     _, port, _ = server
     st, data = call(port, "GET", "/api/state")
-    assert st == 401 and "Recarregue" in data["error"]
+    assert st == 401 and "atalho" in data["error"]
 
 
 def test_foreign_host_is_blocked(server):

@@ -161,8 +161,16 @@ class CTCAligner:
         if progress:
             progress(f"Carregando modelo de alinhamento ({lang})…")
         cache = str(models_dir())
-        self.processor = Wav2Vec2Processor.from_pretrained(name, cache_dir=cache)
-        self.model = Wav2Vec2ForCTC.from_pretrained(name, cache_dir=cache).to(device).eval()
+        try:
+            self.processor = Wav2Vec2Processor.from_pretrained(name, cache_dir=cache)
+            model = Wav2Vec2ForCTC.from_pretrained(name, cache_dir=cache)
+        except (OSError, PermissionError):
+            # pasta compartilhada sem permissão de escrita, ou sem internet:
+            # usa o que já estiver baixado
+            self.processor = Wav2Vec2Processor.from_pretrained(name, cache_dir=cache,
+                                                               local_files_only=True)
+            model = Wav2Vec2ForCTC.from_pretrained(name, cache_dir=cache, local_files_only=True)
+        self.model = model.to(device).eval()
         self.device = device
         vocab = self.processor.tokenizer.get_vocab()
         self.vocab = vocab

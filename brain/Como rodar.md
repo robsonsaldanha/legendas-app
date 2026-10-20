@@ -20,7 +20,9 @@
 ```
 python -m app
 ```
-Ou dois cliques em `Abrir Legendas.bat` (usa o `.venv` se existir). A página abre no navegador; o programa fica rodando em segundo plano até "Fechar o programa" em Configurações. Opções: `--port 8765`, `--no-browser`.
+Ou dois cliques em `Abrir Legendas.bat` (usa o `.venv` se existir). A página abre no navegador; o programa fica rodando em segundo plano até "Fechar o programa" em Configurações. Abrir de novo pelo atalho só reabre a página. Opções: `--port N` (padrão: porta própria do perfil), `--no-browser`.
+
+A página só abre pelo atalho (ele passa a chave da sessão). Digitar o endereço direto mostra "Abra o Legendas pelo atalho".
 
 ## Usar pela linha de comando
 ```
@@ -37,7 +39,8 @@ Interrompeu (Ctrl+C, queda de internet)? Rode o mesmo comando: ele retoma.
 python -m pytest -q
 ```
 - Testes unitários + ponta a ponta com a API simulada e vídeo gerado pelo ffmpeg.
-- `tests/test_app_server.py`: API da interface (token, projetos, perfis, fila, resultado, envio de arquivo).
+- `tests/test_app_server.py`: API da interface (sessão/cookie, projetos, perfis, fila, resultado, envio de arquivo).
+- `tests/test_editor.py`: editor (vídeo com Range, cópia de pré-visualização de MKV, forma de onda, rascunho, salvar com cópia de segurança, QC).
 - `tests/test_align_real.py` usa o modelo de verdade; roda no GitHub Actions (job "Alinhamento real") com fala sintetizada pela voz do Windows.
 
 ## GitHub Actions

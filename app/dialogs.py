@@ -24,7 +24,8 @@ FILETYPES = {
 }
 
 
-def _show(kind: str, multiple: bool, title: str, initial: str | None) -> list[str]:
+def _show(kind: str, multiple: bool, title: str, initial: str | None,
+          filename: str | None = None) -> list[str]:
     import tkinter as tk
     from tkinter import filedialog
 
@@ -33,6 +34,11 @@ def _show(kind: str, multiple: bool, title: str, initial: str | None) -> list[st
     root.attributes("-topmost", True)
     root.update()
     try:
+        if kind == "save_srt":
+            p = filedialog.asksaveasfilename(parent=root, title=title or "Salvar legenda como",
+                                             defaultextension=".srt", initialdir=initial or None,
+                                             initialfile=filename or "", filetypes=FILETYPES["subtitle"])
+            return [p] if p else []
         if kind == "folder":
             p = filedialog.askdirectory(parent=root, title=title or "Escolher pasta",
                                         initialdir=initial or None, mustexist=True)
@@ -63,10 +69,10 @@ def dialog_command() -> list[str]:
 
 
 def ask(kind: str, multiple: bool = False, title: str = "", initial: str | None = None,
-        timeout: float = 600) -> list[str]:
+        filename: str | None = None, timeout: float = 600) -> list[str]:
     """Abre a janela e devolve os caminhos escolhidos ([] se cancelou)."""
-    args = dialog_command() + [json.dumps({"kind": kind, "multiple": multiple,
-                                           "title": title, "initial": initial})]
+    args = dialog_command() + [json.dumps({"kind": kind, "multiple": multiple, "title": title,
+                                           "initial": initial, "filename": filename})]
     flags = 0x08000000 if sys.platform == "win32" else 0
     from core.config import app_root
     proc = subprocess.run(args, capture_output=True, timeout=timeout, creationflags=flags,
@@ -81,7 +87,7 @@ def ask(kind: str, multiple: bool = False, title: str = "", initial: str | None 
 def run_from_args(arg: str) -> None:
     opts = json.loads(arg)
     paths = _show(opts.get("kind", "any"), bool(opts.get("multiple")), opts.get("title", ""),
-                  opts.get("initial"))
+                  opts.get("initial"), opts.get("filename"))
     sys.stdout.write(json.dumps(paths, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 

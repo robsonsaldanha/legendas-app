@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from core import __version__
 from core.align import ALIGN_MODELS
-from core.config import Settings, data_dir, jobs_dir, models_dir
+from core.config import Settings, data_dir, jobs_dir, models_dir, user_id
 from core.errors import LegendasError
 from core.glossary import load_glossary, save_glossary
 from core.media import probe
@@ -97,13 +97,36 @@ class App:
 
     def __init__(self, db: Database | None = None, transcriber_factory=None):
         self.token = secrets.token_urlsafe(24)
+        self.cookie_name = "legendas_" + user_id()
         self.db = db or Database()
         self.uploads = data_dir() / UPLOADS_SUBDIR
         self.uploads.mkdir(parents=True, exist_ok=True)
         self.db.mark_interrupted()
         self.worker = Worker(self.db, self.uploads, transcriber_factory)
+        from .editor import EditorManager
+        self.editor = EditorManager(self.db)
         self.downloads: dict[str, str] = {}  # idioma -> status do download do modelo
         self.server: ThreadingHTTPServer | None = None
+
+    # ---------------------------------------------------------- sessão
+
+    @staticmethod
+    def session_path() -> Path:
+        return data_dir() / "sessao.json"
+
+    def write_session(self, port: int) -> None:
+        """Só o próprio perfil do Windows lê este arquivo (fica no APPDATA dele).
+        É assim que o atalho reabre a página sem expor o token a outros perfis."""
+        self.session_path().write_text(json.dumps({"port": port, "token": self.token,
+                                                   "pid": os.getpid()}), encoding="utf-8")
+
+    def clear_session(self) -> None:
+        try:
+            data = json.loads(self.session_path().read_text(encoding="utf-8"))
+            if data.get("token") == self.token:
+                self.session_path().unlink()
+        except (OSError, ValueError):
+            pass
 
     # ----------------------------------------------------------- estado
 
@@ -283,6 +306,17 @@ class Handler(BaseHTTPRequestHandler):
         host = (self.headers.get("Host") or "").split(":")[0].lower()
         return host in ("127.0.0.1", "localhost")
 
+    def _cookie_ok(self) -> bool:
+        raw = self.headers.get("Cookie") or ""
+        for part in raw.split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == self.app.cookie_name and secrets.compare_digest(value, self.app.token):
+                return True
+        return False
+
+    def _key_ok(self) -> bool:
+        return secrets.compare_digest(self.query.get("k", ""), self.app.token)
+
     # ------------------------------------------------------------ despacho
 
     def do_GET(self):
@@ -309,8 +343,11 @@ class Handler(BaseHTTPRequestHandler):
         self.query = {k: v[0] for k, v in parse_qs(url.query).items()}
         try:
             if path.startswith("/api/"):
-                if not secrets.compare_digest(self.headers.get("X-Token", ""), self.app.token):
-                    raise ApiError("Sessão expirada. Recarregue a página.", 401)
+                # cookie (só o navegador deste perfil tem) + cabeçalho (bloqueia
+                # requisições forjadas por outros sites)
+                if not (self._cookie_ok() and secrets.compare_digest(
+                        self.headers.get("X-Token", ""), self.app.token)):
+                    raise ApiError("Sessão expirada. Feche esta aba e abra o Legendas pelo atalho.", 401)
                 for m, rx, name in ROUTES:
                     match = rx.match(path)
                     if m == method and match:
@@ -321,11 +358,16 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError("Endereço não encontrado.", 404)
             if method != "GET":
                 raise ApiError("Método não permitido.", 405)
+            if path.startswith("/media/"):
+                if not self._cookie_ok():
+                    raise ApiError("Sem permissão.", 403)
+                self._media(path)
+                return
             self._static(path)
         except ApiError as e:
             self._json({"error": str(e)}, e.status)
         except LegendasError as e:
-            self._json({"error": str(e)}, 400)
+            self._json({"error": str(e)}, getattr(e, "status", 400))
         except (ValueError, KeyError) as e:
             self._json({"error": str(e).strip("'\"")}, 400)
         except Exception as e:  # noqa: BLE001
@@ -334,7 +376,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def _static(self, path: str) -> None:
         if path == "/ping":
-            self._send(200, b"legendas", "text/plain")
+            self._send(200, b"legendas-ok" if self._key_ok() else b"legendas", "text/plain")
+            return
+        if path == "/open":
+            if not self._key_ok():
+                self._locked_page()
+                return
+            self.send_response(302)
+            self.send_header("Set-Cookie", f"{self.app.cookie_name}={self.app.token}; Path=/; "
+                                           "HttpOnly; SameSite=Strict")
+            self.send_header("Location", "/")
+            self.send_header("Content-Length", "0")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+        if path in ("/", "/index.html") and not self._cookie_ok():
+            self._locked_page()
             return
         if path in ("/", "/index.html"):
             html = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -353,6 +410,66 @@ class Handler(BaseHTTPRequestHandler):
         if ctype.startswith("text/") or ctype in ("application/javascript",):
             ctype += "; charset=utf-8"
         self._send(200, target.read_bytes(), ctype)
+
+    def _locked_page(self) -> None:
+        html = ("<!doctype html><meta charset='utf-8'><title>Legendas</title>"
+                "<link rel='stylesheet' href='/app.css'><div class='locked'>"
+                "<h1>Abra o Legendas pelo atalho</h1><p class='muted'>Por segurança, esta página "
+                "só abre pelo atalho do programa (cada perfil do Windows tem a sua).</p></div>")
+        self._send(403, html.encode("utf-8"), "text/html; charset=utf-8")
+
+    def _media(self, path: str) -> None:
+        """Vídeo para o player, com suporte a Range (avançar/voltar)."""
+        sid = path.split("/")[2] if len(path.split("/")) > 2 else ""
+        target = self.app.editor.media_file(sid)
+        size = target.stat().st_size
+        ctype = mimetypes.guess_type(target.name)[0] or "video/mp4"
+        if target.suffix.lower() in (".mov", ".m4v"):
+            ctype = "video/mp4"
+        start, end = 0, size - 1
+        rng = self.headers.get("Range")
+        status = 200
+        if rng and rng.startswith("bytes="):
+            a, _, b = rng[6:].split(",")[0].partition("-")
+            try:
+                if a:
+                    start = int(a)
+                    end = int(b) if b else size - 1
+                else:  # sufixo: últimos N bytes
+                    start = max(0, size - int(b))
+            except ValueError:
+                start, end = 0, size - 1
+            end = min(end, size - 1)
+            if start > end:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            status = 206
+        length = end - start + 1
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(length))
+        self.send_header("Cache-Control", "no-store")
+        if status == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.end_headers()
+        if self.command == "HEAD":
+            return
+        try:
+            with open(target, "rb") as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = f.read(min(1 << 18, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+            pass  # o player cancelou a leitura (normal ao pular no vídeo)
 
     # ================================================================ API
 
@@ -411,7 +528,7 @@ class Handler(BaseHTTPRequestHandler):
         b = self._body()
         try:
             paths = dialogs.ask(b.get("kind", "any"), bool(b.get("multiple")), b.get("title", ""),
-                                b.get("initial"))
+                                b.get("initial"), b.get("filename"))
         except Exception as e:  # noqa: BLE001
             log.warning("Janela de arquivos indisponível: %s", e)
             raise ApiError("Não consegui abrir a janela do Windows. Arraste o arquivo para a "
@@ -545,6 +662,47 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError("Cancele o trabalho antes de tirá-lo do histórico.")
         self.app.db.delete_job(int(jid))
         return {"ok": True}
+
+    # -------------------------------------------------------------- editor
+
+    @route("POST", r"/api/editor/open")
+    def api_editor_open(self):
+        b = self._body()
+        return self.app.editor.open(b.get("srt") or None, b.get("video") or None,
+                                    b.get("profile_key") or None, b.get("job_id"))
+
+    @route("GET", r"/api/editor/(\w+)")
+    def api_editor_get(self, sid):
+        return self.app.editor.info(sid, full=self.query.get("full") == "1")
+
+    @route("PUT", r"/api/editor/(\w+)/draft")
+    def api_editor_draft(self, sid):
+        return self.app.editor.set_draft(sid, self._body().get("cues", []))
+
+    @route("PUT", r"/api/editor/(\w+)/profile")
+    def api_editor_profile(self, sid):
+        return self.app.editor.set_profile(sid, self._body().get("key", ""))
+
+    @route("GET", r"/api/editor/(\w+)/peaks")
+    def api_editor_peaks(self, sid):
+        data, rate = self.app.editor.peaks(sid)
+        self._send(200, data, "application/octet-stream", {"X-Peaks-Rate": str(rate)})
+
+    @route("POST", r"/api/editor/(\w+)/save")
+    def api_editor_save(self, sid):
+        b = self._body()
+        return self.app.editor.save(sid, b.get("cues", []), b.get("path") or None)
+
+    @route("POST", r"/api/editor/(\w+)/qc")
+    def api_editor_qc(self, sid):
+        b = self._body()
+        return self.app.editor.qc(sid, b.get("cues", []), b.get("profile_key") or None)
+
+    @route("POST", r"/api/editor/rewrap")
+    def api_editor_rewrap(self):
+        b = self._body()
+        return self.app.editor.rewrap(b.get("text", ""), b.get("profile_key") or None,
+                                      b.get("language") or None)
 
     @route("POST", r"/api/shutdown")
     def api_shutdown(self):

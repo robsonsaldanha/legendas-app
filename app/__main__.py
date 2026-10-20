@@ -2,25 +2,39 @@
 
     python -m app              (desenvolvimento)
     Legendas.exe               (instalado)
+
+Cada perfil do Windows tem o seu servidor, a sua porta e a sua sessão. O atalho
+lê a sessão do próprio perfil (%APPDATA%\\Legendas\\sessao.json); se o programa já
+estiver aberto, só abre a página de novo.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 import urllib.request
 import webbrowser
 
-PREFERRED_PORT = 8765
 
-
-def _already_running(port: int) -> bool:
+def _ping(port: int, token: str = "") -> str:
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/ping", timeout=1.5) as r:
-            return r.read() == b"legendas"
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/ping?k={token}", timeout=1.5) as r:
+            return r.read().decode("ascii", errors="replace")
     except Exception:  # noqa: BLE001
-        return False
+        return ""
+
+
+def _existing_session() -> dict | None:
+    from .server import App
+    try:
+        data = json.loads(App.session_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if _ping(int(data.get("port", 0)), data.get("token", "")) == "legendas-ok":
+        return data
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,17 +45,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     ap = argparse.ArgumentParser(prog="legendas")
-    ap.add_argument("--port", type=int, default=PREFERRED_PORT)
+    ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args(argv)
 
-    url = f"http://127.0.0.1:{args.port}/"
-    if _already_running(args.port):
+    running = _existing_session()
+    if running:
         if not args.no_browser:
-            webbrowser.open(url)
+            webbrowser.open(f"http://127.0.0.1:{running['port']}/open?k={running['token']}")
         return 0
 
-    from core.config import Settings
+    from core.config import Settings, preferred_port
     from core.jobs import cleanup_old_jobs
     from core.pipeline import setup_logging
 
@@ -53,16 +67,22 @@ def main(argv: list[str] | None = None) -> int:
     try:
         cleanup_old_jobs(days)
         app.cleanup_uploads(days)
+        app.editor.cleanup(days)
     except OSError:
         pass
 
+    port = args.port or preferred_port()
     try:
-        srv = make_server(app, args.port)
+        srv = make_server(app, port)
     except OSError:
-        srv = make_server(app, 0)  # porta ocupada por outro programa: usa uma livre
-    url = f"http://127.0.0.1:{srv.server_address[1]}/"
-    logging.getLogger("legendas").info("Legendas aberto em %s", url)
-    print(f"Legendas rodando em {url}  (feche esta janela ou use 'Fechar o programa' na página)")
+        srv = make_server(app, 0)  # porta ocupada (outro programa): usa uma livre
+    port = srv.server_address[1]
+    app.write_session(port)
+    url = f"http://127.0.0.1:{port}/open?k={app.token}"
+    logging.getLogger("legendas").info("Legendas aberto na porta %s", port)
+    if sys.stdout is not None:
+        print(f"Legendas rodando em http://127.0.0.1:{port}/  "
+              "(feche esta janela ou use 'Fechar o programa' na página)")
     if not args.no_browser:
         webbrowser.open(url)
     try:
@@ -70,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        app.clear_session()
         srv.server_close()
     return 0
 

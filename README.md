@@ -2,7 +2,7 @@
 
 Aplicativo Windows de legendagem automática: transcreve, sincroniza e traduz, gerando arquivos `.srt` no padrão Netflix. Tudo roda no PC; só a transcrição e a tradução usam a API da OpenAI.
 
-**Estado:** transcrição + formatação, com interface no navegador.
+**Estado:** transcrição + formatação, interface no navegador e editor no layout do Subtitle Edit (vídeo no quadro exato).
 
 Documentação completa em [`brain/`](brain/00%20-%20Início.md) (abre como vault no Obsidian):
 - [Como rodar](brain/Como%20rodar.md)

@@ -14,4 +14,4 @@ Aplicativo Windows com instalador para legendagem profissional (PT-BR → espanh
 - [[Especificação]] — documento original de requisitos
 
 ## Estado atual
-**Fase 1 concluída** (Transcrever + Formatar) e **interface no navegador pronta** (`python -m app`). Próximo: validar com vídeo real dela, depois Fase 2 (Traduzir). Veja [[Fases]].
+**Fase 1 concluída** (Transcrever + Formatar), **interface no navegador** (`python -m app`) e **editor no layout do Subtitle Edit** com vídeo no quadro exato. Funciona em dois perfis do Windows no mesmo PC. Próximo: validar com vídeo real dela, depois Fase 2 (Traduzir). Veja [[Fases]].
