@@ -18,7 +18,10 @@ trap {
 }
 
 $PyVersion = "3.12.10"
-$FfmpegZip = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-7.1.zip"
+$FfmpegZips = @(
+    "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+    "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+)
 $VcRedist  = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 
 $Root  = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -88,7 +91,10 @@ Get-ChildItem $App -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recu
 # ---------------------------------------------------------------- ffmpeg
 $Stage = "ffmpeg"
 $ffZip = Join-Path $Dl "ffmpeg.zip"
-Get-File $FfmpegZip $ffZip
+foreach ($u in $FfmpegZips) {
+    try { Get-File $u $ffZip; break } catch { Write-Host "Falhou $u : $($_.Exception.Message)"; Remove-Item $ffZip -ErrorAction SilentlyContinue }
+}
+if (-not (Test-Path $ffZip)) { throw "não consegui baixar o ffmpeg" }
 $ffDir = Join-Path $Dl "ffmpeg"
 Remove-Item $ffDir -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive $ffZip -DestinationPath $ffDir -Force

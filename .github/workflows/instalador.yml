@@ -27,7 +27,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build\downloads
-          key: downloads-py3.12.10-ffmpeg7.1-v1
+          key: downloads-py3.12.10-ffmpeg-v2
       - name: Montar programa e gerar instalador
         shell: pwsh
         run: .\packaging\build.ps1
