@@ -1,4 +1,4 @@
-# Monta o programa completo em build\Legendas e gera o instalador.
+﻿# Monta o programa completo em build\Legendas e gera o instalador.
 #
 # Resultado: build\Output\Instalador_Legendas_<versão>.exe
 #
@@ -51,8 +51,8 @@ $pth = Get-ChildItem $Py -Filter "python3*._pth" | Select-Object -First 1
 $zipName = (Get-ChildItem $Py -Filter "python3*.zip" | Select-Object -First 1).Name
 @($zipName, ".", "Lib\site-packages", "..", "import site") | Set-Content -Path $pth.FullName -Encoding ascii
 
-# tkinter (janelas
-$Stage = "tkinter" "Abrir"/"Salvar como") não vem no Python embutido: copia do Python da máquina de montagem
+# tkinter (janelas "Abrir"/"Salvar como") não vem no Python embutido: copia do Python da máquina de montagem
+$Stage = "tkinter"
 $hostPy = (& python -c "import sys; print(sys.base_prefix)").Trim()
 $hostVer = (& python -c "import sys; print('%d.%d' % sys.version_info[:2])").Trim()
 if ($hostVer -ne "3.12") { throw "O Python da montagem precisa ser 3.12 (encontrado $hostVer)" }

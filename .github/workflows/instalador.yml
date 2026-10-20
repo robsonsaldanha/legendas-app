@@ -30,7 +30,7 @@ jobs:
           key: downloads-py3.12.10-ffmpeg7.1-v1
       - name: Montar programa e gerar instalador
         shell: pwsh
-        run: powershell -ExecutionPolicy Bypass -File packaging\build.ps1
+        run: .\packaging\build.ps1
 
       - name: Instalar (silencioso), como faria no PC dela
         shell: pwsh

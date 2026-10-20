@@ -1,4 +1,4 @@
-; Instalador do Legendas (Inno Setup 6).
+﻿; Instalador do Legendas (Inno Setup 6).
 ; Gerado por packaging\build.ps1, que define AppVersion e BuildDir.
 
 #ifndef AppVersion
