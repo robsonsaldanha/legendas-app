@@ -60,8 +60,13 @@ $hostPy = (& python -c "import sys; print(sys.base_prefix)").Trim()
 $hostVer = (& python -c "import sys; print('%d.%d' % sys.version_info[:2])").Trim()
 if ($hostVer -ne "3.12") { throw "O Python da montagem precisa ser 3.12 (encontrado $hostVer)" }
 Copy-Item (Join-Path $hostPy "DLLs\_tkinter.pyd") $Py
-Copy-Item (Join-Path $hostPy "DLLs\tcl86t.dll") $Py
-Copy-Item (Join-Path $hostPy "DLLs\tk86t.dll") $Py
+# DLLs do Tcl/Tk e suas dependências (o que ainda não existe no Python embutido)
+$hostDlls = Get-ChildItem (Join-Path $hostPy "DLLs") -Filter "*.dll"
+foreach ($d in $hostDlls) {
+    if (-not (Test-Path (Join-Path $Py $d.Name))) { Copy-Item $d.FullName $Py; Write-Host "copiado $($d.Name)" }
+}
+$hostVerFull = (& python -c "import sys; print(sys.version.split()[0])").Trim()
+if ($env:GITHUB_ACTIONS) { Write-Host "::notice title=Python da montagem::$hostVerFull; DLLs: $(($hostDlls | ForEach-Object Name) -join ', ')" }
 Copy-Item (Join-Path $hostPy "Lib\tkinter") (Join-Path $Py "tkinter") -Recurse
 Copy-Item (Join-Path $hostPy "tcl") (Join-Path $Py "tcl") -Recurse
 Remove-Item (Join-Path $Py "tkinter\test") -Recurse -Force -ErrorAction SilentlyContinue
