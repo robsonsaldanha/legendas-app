@@ -110,4 +110,9 @@ def rewrap(lines: list[str], max_len: int, max_lines: int, language: str,
     lines = [l for l in lines if l.strip()]
     if is_dialogue(lines):
         return [normalize_dialogue_line(l, dash) for l in lines]
+    # Texto de tela + fala ("TIENDA DE REGALOS" / "-Feliz cumpleaños"): só a fala leva hífen
+    # e cada parte fica na sua linha.
+    if len(lines) >= 2 and any(l.lstrip().startswith(("-", "–", "—")) for l in lines[1:]):
+        return [normalize_dialogue_line(l, dash) if l.lstrip().startswith(("-", "–", "—")) else l.strip()
+                for l in lines]
     return break_lines(" ".join(lines), max_len, max_lines, language)

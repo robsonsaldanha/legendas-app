@@ -418,11 +418,13 @@ function oppositeLang(code) { return code && code.startsWith("es") ? "pt-BR" : "
 /* Perfil acompanha o idioma da legenda final (mantém o infantil, se escolhido). */
 function autoProfile() {
   const d = S.draft;
-  if (!/^netflix-(pt-br|es-419)(-kids)?$/.test(d.profile_key)) return;
+  const m = /^(netflix|encripta)-(pt-br|es-419)(-kids)?$/.exec(d.profile_key);
+  if (!m) return;
   const lang = d.steps.traduzir ? d.target_lang : d.source_lang;
-  const fam = lang.startsWith("pt") ? "netflix-pt-br" : lang === "es-419" ? "netflix-es-419" : null;
-  if (!fam) return;
-  d.profile_key = fam + (d.profile_key.endsWith("-kids") ? "-kids" : "");
+  const code = lang.startsWith("pt") ? "pt-br" : lang === "es-419" ? "es-419" : null;
+  if (!code) return;
+  const key = `${m[1]}-${code}${m[3] || ""}`;
+  if (!S.state?.profiles || S.state.profiles.some((p) => p.key === key)) d.profile_key = key;
 }
 function syncNewForm() {
   const d = S.draft;
@@ -1117,7 +1119,8 @@ async function renderSettings() {
       }
       if (a === "dup-profile" || a === "edit-profile") {
         const p = S.state.profiles.find((x) => x.key === b.dataset.key);
-        profileForm(a === "dup-profile" ? { ...p, key: null, builtin: false, name: p.name + " (cópia)" } : p);
+        S.editingProfile = a === "dup-profile" ? { ...p, key: null, builtin: false, name: p.name + " (cópia)" } : p;
+        profileForm(S.editingProfile);
       }
       if (a === "del-profile") {
         if (!confirm("Apagar este perfil?")) return;
@@ -1126,9 +1129,16 @@ async function renderSettings() {
       }
       if (a === "save-profile") {
         const f = (id) => document.getElementById(id).value;
+        const base = { ...(S.editingProfile || {}) };
+        delete base.key; delete base.builtin;
+        const opt = Number(f("pf-opt")), gapMs = Number(f("pf-gapms"));
         const data = {
+          ...base,
           name: f("pf-name"), language: f("pf-lang"), max_chars_per_line: Number(f("pf-cpl")), max_lines: Number(f("pf-lines")),
-          max_cps: Number(f("pf-cps")), min_duration: Number(f("pf-min")), max_duration: Number(f("pf-max")), min_gap_frames: Number(f("pf-gap")),
+          max_cps: Number(f("pf-cps")), optimal_cps: opt > 0 ? opt : null,
+          min_duration: Number(f("pf-min")), max_duration: Number(f("pf-max")), min_gap_frames: Number(f("pf-gap")),
+          min_gap_ms: gapMs > 0 ? gapMs : null,
+          dialogue_dash: f("pf-dash"), ellipsis: f("pf-ell"), guide: f("pf-guide"),
         };
         const key = b.dataset.key;
         const r = key ? await api("PUT", `/api/profiles/${key}`, data) : await api("POST", "/api/profiles", data);
@@ -1152,6 +1162,7 @@ function drawProfiles(list) {
 }
 
 function profileForm(p) {
+  const sel = (id, label, v, opts) => `<label class="field"><span>${label}</span><select id="${id}">${opts.map(([val, t]) => `<option value="${esc(val)}" ${val === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>`;
   const num = (id, label, v, step = "1", min = "0") => `<label class="field"><span>${label}</span><input type="number" id="${id}" value="${v}" step="${step}" min="${min}"></label>`;
   document.getElementById("profile-form").innerHTML = `
     <div class="stack" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
@@ -1162,10 +1173,16 @@ function profileForm(p) {
         ${num("pf-cpl", "Caracteres por linha", p.max_chars_per_line, "1", "10")}
         ${num("pf-lines", "Linhas", p.max_lines, "1", "1")}
         ${num("pf-cps", "Velocidade máxima (CPS)", p.max_cps, "0.5", "1")}
+        ${num("pf-opt", "CPS ideal (vazio = igual ao máximo)", p.optimal_cps ?? "", "0.5", "0")}
         ${num("pf-gap", "Intervalo entre legendas (quadros)", p.min_gap_frames)}
+        ${num("pf-gapms", "…ou intervalo em milissegundos (tem prioridade)", p.min_gap_ms ?? "", "1", "0")}
         ${num("pf-min", "Duração mínima (s)", Math.round(p.min_duration * 1000) / 1000, "0.001", "0.1")}
-        ${num("pf-max", "Duração máxima (s)", p.max_duration, "0.5", "1")}
+        ${num("pf-max", "Duração máxima (s)", p.max_duration, "0.001", "1")}
+        ${sel("pf-dash", "Diálogo", p.dialogue_dash ?? "- ", [["- ", "Hífen com espaço (- Texto)"], ["-", "Hífen sem espaço (-Texto)"]])}
+        ${sel("pf-ell", "Reticências", p.ellipsis ?? "…", [["…", "Caractere único (…)"], ["...", "Três pontos (...)"]])}
       </div>
+      <label class="field"><span>Manual do cliente (vai junto na tradução, pela API e pelo ChatGPT)</span>
+        <textarea id="pf-guide" rows="8">${esc(p.guide || "")}</textarea></label>
       <div class="row"><button class="btn primary" data-action="save-profile" data-key="${p.key || ""}">Salvar perfil</button>
       <button class="btn" data-action="cancel-profile">Cancelar</button></div>
     </div>`;

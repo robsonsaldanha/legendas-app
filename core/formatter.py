@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from .lang import (is_weak, ends_sentence, ends_clause, visible_len, starts_clause,
                    is_tight_follower)
 from .linebreak import break_lines, rewrap
+from .style import normalize_lines
 from .profiles import Profile
 from .subtitle import Cue, Word
 
@@ -120,8 +121,8 @@ def segment(words: list[Word], profile: Profile, language: str, fps: float | Non
                         max(profile.max_duration, speech))
             count = chars if profile.cps_count_spaces else chars - (j - i - 1)
             cps = count / max(shown, 1e-3)
-            if cps > profile.max_cps:
-                cost += C_CPS * (cps - profile.max_cps)
+            if cps > profile.target_cps:
+                cost += C_CPS * (cps - profile.target_cps)
             if speech > profile.max_duration:
                 cost += C_TOO_LONG * (speech - profile.max_duration)
             if inner_long_pause:
@@ -176,7 +177,7 @@ def assign_times(spans: list[tuple[int, int]], words: list[Word], profile: Profi
         next_start = times[idx + 1][0] if idx + 1 < n else float("inf")
         limit = next_start - gap
         text_len = visible_len(_join(words[spans[idx][0]:spans[idx][1]]))
-        needed = max(profile.min_duration, text_len / profile.max_cps)
+        needed = max(profile.min_duration, text_len / profile.target_cps)
         end = speech_end + profile.linger
         end = max(end, start + needed)
         end = min(end, start + max(profile.max_duration, speech_end - start))
@@ -201,7 +202,8 @@ def format_words(words: list[Word], profile: Profile, language: str | None = Non
     cues, estimated = [], []
     for (i, j), (s, e) in zip(spans, times):
         text = _join(words[i:j])
-        lines = break_lines(text, profile.max_chars_per_line, profile.max_lines, language)
+        lines = normalize_lines(break_lines(text, profile.max_chars_per_line, profile.max_lines,
+                                            language), profile)
         cues.append(Cue(start=round(s, 3), end=round(e, 3), lines=lines))
         estimated.append(not all(w.aligned for w in words[i:j]))
     return FormatResult(cues=cues, estimated_timing=estimated)
@@ -220,6 +222,7 @@ def reflow_cues(cues: list[Cue], profile: Profile, language: str | None = None,
     for idx, c in enumerate(ordered):
         lines = rewrap(c.lines, profile.max_chars_per_line, profile.max_lines, language,
                        profile.dialogue_dash)
+        lines = normalize_lines(lines, profile)
         end = c.end
         if idx + 1 < len(ordered):
             end = min(end, ordered[idx + 1].start - gap)

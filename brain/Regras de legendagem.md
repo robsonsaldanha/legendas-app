@@ -36,3 +36,23 @@ Outras regras do guia de espanhol a considerar nas Fases 2/6: diálogo com hífe
 ## Limitações conhecidas (Fase 1)
 - Sem identificação de falantes: duas pessoas falando em sequência rápida podem cair na mesma legenda sem hífen de diálogo. Avaliar `gpt-4o-transcribe-diarize` ou heurística na Fase 6.
 - Sem detecção de cortes de cena (shot changes).
+
+## Perfis da Encripta (cliente)
+Fonte: *Manual de traducción y subtítulos en español 3.0* da Encripta (PDF enviado pela usuária em 20/10/2026).
+
+| | Encripta |
+|---|---|
+| Caracteres por linha / linhas | 42 / 2 |
+| CPS | máximo 28, ideal 15 (o Formatar mira em 15; o QC só avisa acima de 28) |
+| Duração | 1,001 s a 6,999 s |
+| Intervalo mínimo | 84 ms (não em quadros) |
+| Quadros por segundo padrão | 23,976 |
+| Diálogo | hífen **sem** espaço: `-Texto`, só quando os dois personagens estão na tela; texto de tela + fala: só a fala leva hífen |
+| Reticências | três pontos `...` (o Subtitle Edit trata `…` como símbolo a corrigir) |
+| Nome do arquivo | `Nome_da_Obra_sub_spa.srt` / `Nome_da_Obra_sub_pt.srt` |
+
+- `encripta-es-419` — **Encripta — Español (neutro)**: fiel ao manual. O manual inteiro (interjeições, reticências, localização, canções, números, itálico, `{\an8}`...) vai resumido em `profile.guide` e entra no pedido de tradução (API e ChatGPT) como "MANUAL DO CLIENTE".
+- `encripta-pt-br` — **Encripta — Português (Brasil)**: mesmos critérios técnicos; regras de estilo adaptadas do manual em espanhol (a Encripta não mandou manual em português — confirmar com ela).
+- QC de estilo (`core/style.py`, só perfis com `style_checks`): interjeição proibida, pontuação dupla, `…` em vez de `...`, hífen com espaço, palavra repetida, pergunta/exclamação sem `¿`/`¡` (espanhol), texto de tela em maiúsculas com ponto final, maiúscula depois de dois-pontos, número de 0 a 10 em algarismo. São **avisos**: a revisão decide.
+- Normalização automática ao formatar/traduzir: reticências e hífen de diálogo no formato do perfil.
+- Fora do alcance da máquina (fica no manual para o modelo e na revisão): itálico por contexto, legendas de localização, nacionalização de títulos, assinatura "Traducción: Nombre" depois da última cena.

@@ -33,6 +33,12 @@
 - [x] Novo trabalho e editor deixam escolher "pelo meu ChatGPT" ou "pela API" (lembra a última escolha)
 - [x] Prévia sobre o vídeo aplica <i>, <b>, <u>, <font color> e {\an8}; grade, texto e original mostram as tags
 
+## ✅ Perfis de cliente — Encripta
+- [x] Encripta — Español (neutro) e Encripta — Português (Brasil): 42/2, CPS 28 (ideal 15), 1,001–6,999 s, 84 ms, `-Texto`, `...`, `_sub_spa`/`_sub_pt`
+- [x] Manual do cliente enviado na tradução; QC com as regras de estilo do manual
+- [x] Tela de perfis: CPS ideal, intervalo em ms, hífen, reticências, manual do cliente
+- [ ] Confirmar com a Encripta as regras do perfil em português
+
 ## Fase 3 — Sincronizar
 (a) texto sem tempo → alinhamento; (b) SRT desalinhado → ffsubsync; (c) texto em outro idioma → transcrever, alinhar e casar frases via LLM.
 

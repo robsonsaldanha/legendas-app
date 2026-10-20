@@ -58,8 +58,9 @@ function checkCue(i) {
   if (next) {
     const gap = next.start - c.end;
     if (gap < -0.0005) out.push(["e", "sobrepõe a próxima"]);
-    else if (gap < p.min_gap_frames / edFps() - 0.001) out.push(["w", "intervalo curto"]);
+    else if (gap < minGap() - 0.001) out.push(["w", "intervalo curto"]);
   }
+  if (p.style_checks) styleChecks(c.text || "", out);
   return out;
 }
 function recheckAll() {
@@ -525,7 +526,21 @@ function setCue(i, patch, opts = {}) {
   drawWave(); tick();
 }
 
-function minGap() { return ED.profile.min_gap_frames / edFps(); }
+function minGap() {
+  const p = ED.profile;
+  return p.min_gap_ms ? p.min_gap_ms / 1000 : p.min_gap_frames / edFps();
+}
+/* Avisos de estilo do manual do cliente (mesmas regras de core/style.py, versão rápida). */
+const INTERJ = /(^|[^\p{L}])(woo hoo|ah|ay|ey|oye|eh|ih|oh|ei|ui|uau|psiu|oba|eba|epa|opa|ufa|hey)(?![\p{L}])/iu;
+function styleChecks(text, out) {
+  const p = ED.profile, plain = text.replace(/<[^>]+>|\{\\[^}]*\}/g, "");
+  const lines = plain.split("\n").filter((l) => l.trim());
+  if (INTERJ.test(plain)) out.push(["w", "interjeição"]);
+  if (/\?\?|!!|\?!|!\?|¿¡|¡¿/.test(plain)) out.push(["w", "pontuação dupla"]);
+  if (p.ellipsis === "..." && plain.includes("…")) out.push(["w", "use ... (três pontos)"]);
+  if (p.dialogue_dash === "-" && lines.some((l) => /^\s*[-–—]\s+\S/.test(l))) out.push(["w", "hífen sem espaço"]);
+  if (/(^|[^\p{L}])(\p{L}{2,})[,.!?]*\s+\2(?![\p{L}])/iu.test(plain)) out.push(["w", "palavra repetida"]);
+}
 
 function act(name) {
   const v = vid(), c = ED.cues[ED.sel], t = curTime(), i = ED.sel;
@@ -674,7 +689,14 @@ async function openTranslate(opts = {}) {
   const src = opts.source || ED.detected || ED.language || "pt-BR";
   const dst = opts.target || ED.suggested || (src.startsWith("es") ? "pt-BR" : "es-419");
   const method = opts.method || getPref("legendas.metodo", S.state?.settings?.translate_method || "chat");
-  const profFor = (lang) => (lang.startsWith("pt") ? "netflix-pt-br" : "netflix-es-419");
+  /* perfil do idioma de destino, da mesma família do perfil aberto (Netflix, Encripta…) */
+  const profFor = (lang) => {
+    const m = /^(netflix|encripta)-(pt-br|es-419)(-kids)?$/.exec(ED.profile.key || "");
+    const fam = m ? m[1] : "netflix", kids = m && m[3] ? m[3] : "";
+    const code = lang.startsWith("pt") ? "pt-br" : "es-419";
+    const k = `${fam}-${code}${kids}`;
+    return S.state.profiles.some((p) => p.key === k) ? k : `${fam}-${code}`;
+  };
   const ov = document.createElement("div");
   ov.className = "modal-bg";
   ov.innerHTML = `

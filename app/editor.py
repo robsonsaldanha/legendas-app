@@ -28,7 +28,7 @@ from core.config import data_dir
 from core.errors import LegendasError
 from core.linebreak import rewrap
 from core.media import SAMPLE_RATE, extract_audio, ffmpeg, load_wav, probe
-from core.profiles import Profile, default_profile_for
+from core.profiles import Profile, default_profile_for, same_family
 from core.formatter import reflow_cues
 from core.qc import AVISO, Issue, check_rules, write_report
 from core.subtitle import Cue, read_srt, write_srt
@@ -71,6 +71,11 @@ def editor_dir() -> Path:
     p = data_dir() / "editor"
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def _auto_key(language: str, current: str | None = None) -> str:
+    """Perfil automático do idioma, da mesma família do atual (Netflix, Encripta…)."""
+    return same_family(current, language) or same_family("netflix-pt-br", language)
 
 
 @dataclass
@@ -361,7 +366,7 @@ class EditorManager:
                   "project_id": opts.get("project_id") or None,
                   "out_dir": str(base.parent), "output_stem": stem, "name": base.stem}
         if not params["profile_key"]:
-            params["profile_key"] = "netflix-pt-br" if params["target_lang"].startswith("pt") else "netflix-es-419"
+            params["profile_key"] = _auto_key(params["target_lang"], s.profile_key)
         return inputs, params
 
     # --------------------------------------------- tradução pelo ChatGPT
@@ -379,7 +384,7 @@ class EditorManager:
         target = opts.get("target_lang") or opposite_language(source)
         if source == target:
             raise EditorError("O idioma de origem e o de destino são iguais.")
-        key = opts.get("profile_key") or ("netflix-pt-br" if target.startswith("pt") else "netflix-es-419")
+        key = opts.get("profile_key") or _auto_key(target, s.profile_key)
         profile = self._profile(key, target)
         base = s.srt or s.video
         folder = editor_dir() / "traducoes" / s.sid
@@ -438,7 +443,7 @@ class EditorManager:
         cues = reflow_cues(out, c.profile, c.target, s.info.get("fps"))
         base = s.srt or s.video
         if c.out_path is None:
-            target = base.parent / output_name(base, c.target)
+            target = base.parent / output_name(base, c.target, c.profile)
             if s.srt is not None and target.resolve() == s.srt.resolve():
                 target = target.with_name(target.name[:-4] + " (tradução).srt")
             n = 2
@@ -448,7 +453,7 @@ class EditorManager:
                 n += 1
             c.out_path = cand
         write_srt(cues, c.out_path)
-        issues = check_rules(cues, c.profile, s.info.get("fps"))
+        issues = check_rules(cues, c.profile, s.info.get("fps"), language=c.target)
         for i in missing:
             issues.append(Issue(i, cues[i - 1].start, AVISO, "sem_traducao",
                                 "Ficou no idioma original (não veio na resposta do ChatGPT)."))

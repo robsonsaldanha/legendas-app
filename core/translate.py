@@ -27,6 +27,7 @@ from .errors import ApiError
 from .glossary import Entry
 from .lang import base_language, visible_len
 from .openai_client import make_client, with_retry
+from .style import output_name as style_output_name
 from .profiles import Profile
 from .subtitle import Cue
 
@@ -48,18 +49,15 @@ LANG_RULES = {
         "Espanhol neutro latino-americano: evite regionalismos de um só país; use 'ustedes' (nunca 'vosotros').",
         "Use os sinais de abertura ¿ e ¡. Não combine ?! nem coloque ponto depois de ? ou !.",
         "Números de um a dez por extenso; a partir de 11 em algarismos (exceto 'cien' e 'mil').",
-        "Reticências com o caractere único '…'.",
     ],
     "es-ES": [
         "Espanhol da Espanha: 'vosotros' é permitido; vocabulário peninsular.",
         "Use os sinais de abertura ¿ e ¡. Não combine ?! nem coloque ponto depois de ? ou !.",
         "Números de um a dez por extenso.",
-        "Reticências com o caractere único '…'.",
     ],
     "pt-BR": [
         "Português do Brasil natural, como se fala: 'você', 'a gente' quando couber; nada de português de Portugal.",
         "Números de um a dez por extenso; a partir de 11 em algarismos.",
-        "Reticências com o caractere único '…'.",
     ],
     "en-US": [
         "Natural American English.",
@@ -254,7 +252,16 @@ def build_system_prompt(source: str, target: str, profile: Profile, glossary: li
         extra += f"\n\nINSTRUÇÕES DO CLIENTE (têm prioridade sobre o resto):\n{instructions.strip()}"
     if context.strip():
         extra += f"\n\nSOBRE O MATERIAL:\n{context.strip()}"
-    return f"""Você é um tradutor-legendador profissional. Traduza legendas de {lang_name(source)} para {lang_name(target)}, no padrão de qualidade da Netflix.
+    manual = ""
+    if profile.guide.strip():
+        manual = (f"\n\nMANUAL DO CLIENTE ({profile.name}) — siga à risca; em caso de conflito com as "
+                  f"regras acima, vale o manual:\n{profile.guide.strip()}")
+    dash = profile.dialogue_dash
+    dash_txt = f'"{dash}" (hífen sem espaço, ex.: "{dash}Texto")' if dash == "-" else f'"{dash}"'
+    ell = ('três pontos "..." (nunca o caractere "…")' if profile.ellipsis == "..."
+           else 'o caractere único "…"')
+    standard = "do manual do cliente" if profile.guide.strip() else "da Netflix"
+    return f"""Você é um tradutor-legendador profissional. Traduza legendas de {lang_name(source)} para {lang_name(target)}, no padrão de qualidade {standard}.
 
 COMO TRADUZIR
 - Traduza o sentido, não palavra por palavra. O resultado deve soar como alguém falando naturalmente em {lang_name(target)}.
@@ -262,7 +269,7 @@ COMO TRADUZIR
 - Uma frase pode continuar de uma legenda para a seguinte: mantenha essa divisão, traduzindo cada parte no seu id, com a ordem das palavras que faça a divisão funcionar.
 - Respeite "max_caracteres" de cada legenda (limite de velocidade de leitura). Se a tradução natural passar disso, condense como um legendador: corte repetições, hesitações e palavras dispensáveis, sem perder informação importante.
 - Mantenha tags de formatação como <i>…</i> no lugar correspondente.
-- Diálogo de duas pessoas na mesma legenda: mantenha uma fala por linha, cada uma começando com "- ".
+- Diálogo de duas pessoas na mesma legenda: mantenha uma fala por linha, cada uma começando com {dash_txt}.
 - Não traduza nomes de pessoas, lugares e marcas, a não ser que o glossário diga outra coisa.
 - Indicações entre colchetes ou parênteses (sons, música) e ♪ seguem as mesmas regras de tradução.
 - Palavrões e gírias: mantenha o mesmo nível de intensidade e registro do original.
@@ -270,7 +277,8 @@ COMO TRADUZIR
 
 REGRAS DO IDIOMA DE DESTINO
 {rules}
-- Máximo de {profile.max_chars_per_line} caracteres por linha, {profile.max_lines} linhas, {profile.max_cps:g} caracteres por segundo.{gl}{extra}
+- Reticências: {ell}.
+- Máximo de {profile.max_chars_per_line} caracteres por linha, {profile.max_lines} linhas, {profile.max_cps:g} caracteres por segundo.{gl}{extra}{manual}
 
 FORMATO
 Você recebe JSON com "anteriores" (já traduzidas, só para manter a consistência), "traduzir" (o que deve ser traduzido) e "seguintes" (só contexto). Responda {{"itens": [{{"id": ..., "texto": ...}}]}} com todos os ids de "traduzir"."""
@@ -303,7 +311,6 @@ class TranslateResult:
 
 def _clean(text: str) -> str:
     text = text.replace("\r", "").strip()
-    text = text.replace("...", "…")
     return "\n".join(l.strip() for l in text.split("\n") if l.strip())
 
 
@@ -404,11 +411,12 @@ def estimate_tokens(cues: list[Cue], batch_size: int = 80) -> tuple[int, int]:
     return int(inp), int(out)
 
 
-def output_name(source_srt: Path, target: str) -> str:
-    """'Ep 01.pt-BR.srt' → 'Ep 01.es-419.srt'; 'Ep 01.srt' → 'Ep 01.es-419.srt'."""
-    stem = source_srt.stem
-    stem = re.sub(r"\.(pt|es|en)([-_][A-Za-z0-9]{2,3})?$", "", stem, flags=re.IGNORECASE)
-    return f"{stem}.{target}.srt"
+def output_name(source_srt: Path, target: str, profile: Profile | None = None) -> str:
+    """'Ep 01.pt-BR.srt' → 'Ep 01.es-419.srt'; 'Ep 01.srt' → 'Ep 01.es-419.srt'.
+
+    Perfis Encripta: 'Resgate_no_Oeste_sub_pt.srt' → 'Resgate_no_Oeste_sub_spa.srt'.
+    """
+    return style_output_name(Path(source_srt).stem, target, profile.naming if profile else "")
 
 
 # ================================================== modo ChatGPT (copiar e colar)

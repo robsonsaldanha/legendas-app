@@ -254,13 +254,15 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         fmt = format_words(words, source_profile, src_lang, fps)
         estimated = fmt.estimated_timing
         base = _output_base(media, req.out_dir)
-        src_srt = write_srt(fmt.cues, _unique(Path(f"{base}.{src_lang}.srt"), job, "srt_origem"))
+        src_srt = write_srt(fmt.cues, _unique(base.parent / output_name(Path(f"{base}.srt"), src_lang,
+                                                                       source_profile),
+                                              job, "srt_origem"))
         _remember_output(job, "srt_origem", src_srt)
         source_cues = fmt.cues
         result.outputs["srt"] = src_srt
         result.estimated_timing = any(estimated)
         if not translating:
-            issues = check_rules(fmt.cues, source_profile, fps, estimated)
+            issues = check_rules(fmt.cues, source_profile, fps, estimated, src_lang)
             qc_txt = src_srt.with_name(src_srt.name[:-4] + ".qc.txt")
             write_report(issues, fmt.cues, source_profile, qc_txt, job.path("qc.json"),
                          title=media.name, note=_estimated_note(estimated))
@@ -305,17 +307,19 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         cb.status("Formatando a tradução…")
         cues = reflow_cues(tr.cues, final_profile, req.target_lang, fps)
         if TRANSCRIBE in plan.steps:
-            target = Path(f"{_output_base(inputs.media, req.out_dir)}.{req.target_lang}.srt")
+            mb = _output_base(inputs.media, req.out_dir)
+            target = mb.parent / output_name(Path(f"{mb}.srt"), req.target_lang, final_profile)
         else:
             folder = req.out_dir or inputs.subtitle.parent
             stem = req.output_stem
-            name = f"{stem}.{req.target_lang}.srt" if stem else output_name(inputs.subtitle, req.target_lang)
+            name = output_name(Path(f"{stem}.srt") if stem else inputs.subtitle, req.target_lang,
+                               final_profile)
             target = folder / name
         if target.resolve() == Path(result.outputs["original"]).resolve():
             target = target.with_name(target.name[:-4] + " (tradução).srt")
         out = write_srt(cues, _unique(target, job, "srt"))
         _remember_output(job, "srt", out)
-        issues = check_rules(cues, final_profile, fps, estimated or None)
+        issues = check_rules(cues, final_profile, fps, estimated or None, req.target_lang)
         for i in tr.missing:
             issues.append(Issue(i, cues[i - 1].start, AVISO, "sem_traducao",
                                 "Ficou no idioma original (a tradução não voltou). Traduzir à mão."))

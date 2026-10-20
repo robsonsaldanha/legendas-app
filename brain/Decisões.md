@@ -72,3 +72,11 @@
 - ffmpeg: build "essentials" do gyan.dev (alternativa: BtbN).
 - Tamanho: instalador ≈ 180 MB; instalado ≈ 820 MB; + ≈ 1,2 GB por idioma de alinhamento, baixados no primeiro uso.
 - O GitHub Actions monta, instala em silêncio, roda `packaging/smoke_test.py` com o Python instalado (sem o Python nem o ffmpeg da máquina no PATH, alinhamento real incluído), e desinstala. Tag `v*` publica em Releases (a cota de artefatos do GitHub é pequena).
+
+## 2026-10-20 — Perfis de cliente (Encripta) com manual próprio
+- Pedido: perfis para a Encripta a partir do manual 3.0 (PDF).
+- O `Profile` ganhou campos opcionais que os perfis antigos não usam (continuam iguais): `optimal_cps`, `min_gap_ms`, `ellipsis`, `guide`, `naming`, `style_checks`. Perfis salvos antes carregam com os valores padrão.
+- O manual vai como texto no pedido de tradução (seção "MANUAL DO CLIENTE", com prioridade sobre as regras gerais). Assim o mesmo mecanismo serve para qualquer cliente: basta duplicar um perfil e colar o manual no campo "Manual do cliente".
+- Reticências deixaram de ser convertidas na tradução: cada perfil decide (Netflix `…`, Encripta `...`) no Formatar.
+- Perfil em português da Encripta é uma adaptação nossa; confirmar com a Encripta.
+- Ao trocar o idioma, o perfil automático fica na mesma família (Encripta ES ↔ Encripta PT).

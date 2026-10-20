@@ -91,7 +91,7 @@ def test_translate_keeps_times_and_count(tmp_path):
     cs = cues()
     tr = translate_cues(cs, "pt-BR", "es-419", NETFLIX_ES_419, FakeTranslator(), tmp_path)
     assert [c.text for c in tr.cues][0] == "Hola, ¿cómo estás?"
-    assert tr.cues[3].lines == ["<i>Había una vez una granja…</i>"]  # ... vira …
+    assert tr.cues[3].lines == ["<i>Había una vez una granja...</i>"]  # reticências ficam para o perfil (reflow)
     assert [(c.start, c.end) for c in tr.cues] == [(c.start, c.end) for c in cs]
     assert tr.missing == [] and tr.usage.input_tokens == 1000
 
@@ -290,7 +290,7 @@ def test_parse_chat_answer_variants():
     ids = [1, 2, 3]
     fenced = 'Aqui está:\n```json\n{"itens":[{"id":1,"texto":"Hola"},{"id":2,"texto":"Línea 1\\nLínea 2"},]}\n```\nListo.'
     assert parse_chat_answer(fenced, ids) == {1: "Hola", 2: "Línea 1\nLínea 2"}
-    assert parse_chat_answer('{"itens": [{"id": 3, "texto": "Chau..."}]}', ids) == {3: "Chau…"}
+    assert parse_chat_answer('{"itens": [{"id": 3, "texto": "Chau..."}]}', ids) == {3: "Chau..."}
     assert parse_chat_answer('[{"id": 1, "text": "Hi"}]', ids) == {1: "Hi"}
     assert parse_chat_answer("1 | Hola\n2 | Uno / dos\n7 | fuera", ids) == {1: "Hola", 2: "Uno\ndos"}
     assert parse_chat_answer("não entendi", ids) == {}

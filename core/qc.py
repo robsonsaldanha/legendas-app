@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .lang import visible_len
 from .profiles import Profile
+from .style import style_issues
 from .subtitle import Cue, format_timecode
 
 # Gravidade: "erro" quebra o arquivo/regra dura; "aviso" merece revisão.
@@ -54,7 +55,8 @@ def validate_structure(cues: list[Cue]) -> list[Issue]:
 
 
 def check_rules(cues: list[Cue], profile: Profile, fps: float | None = None,
-                estimated_timing: list[bool] | None = None) -> list[Issue]:
+                estimated_timing: list[bool] | None = None,
+                language: str | None = None) -> list[Issue]:
     issues = validate_structure(cues)
     gap = profile.min_gap(fps)
     # Se quase tudo foi estimado, um aviso por legenda só polui a revisão:
@@ -92,7 +94,9 @@ def check_rules(cues: list[Cue], profile: Profile, fps: float | None = None,
             if 0 <= between < gap - 1e-3:
                 issues.append(Issue(i, c.start, AVISO, "intervalo",
                                     f"Intervalo de {between * 1000:.0f} ms para a anterior "
-                                    f"(mínimo {profile.min_gap_frames} quadros)."))
+                                    f"(mínimo {profile.gap_label()})."))
+        for code, msg in style_issues(c.text, profile, language or profile.language):
+            issues.append(Issue(i, c.start, AVISO, code, msg))
         if estimated_timing and i - 1 < len(estimated_timing) and estimated_timing[i - 1]:
             issues.append(Issue(i, c.start, AVISO, "tempo_estimado",
                                 "Tempos estimados (alinhamento indisponível neste trecho). "
