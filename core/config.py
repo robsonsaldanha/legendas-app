@@ -101,8 +101,14 @@ class Settings:
     # substitui gpt-4o-transcribe; aceita "keywords" e "languages".
     # Ver developers.openai.com/api/docs/guides/speech-to-text
     transcribe_model: str = "gpt-transcribe"
-    # Modelo de tradução: definido e conferido na Fase 2.
-    translate_model: str = ""
+    # Tradução (Chat Completions + JSON estruturado). gpt-5.5: US$ 5 / 30 por milhão de
+    # tokens de entrada/saída (conferido em out/2026). Se a chave não tiver acesso, o
+    # programa tenta gpt-5 e gpt-4.1.
+    translate_model: str = "gpt-5.5"
+    translate_reasoning: str = "low"
+    translate_usd_per_mtok_in: float = 5.0
+    translate_usd_per_mtok_out: float = 30.0
+    translate_batch: int = 80
     # Preço por minuto de áudio (USD), usado só para estimar custo.
     transcribe_usd_per_min: float = 0.0045
     # Quantos blocos de áudio transcrever em paralelo.
@@ -126,7 +132,10 @@ class Settings:
         if p.exists():
             try:
                 d = json.loads(p.read_text(encoding="utf-8"))
-                return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+                s = cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+                if not s.translate_model:
+                    s.translate_model = cls.translate_model
+                return s
             except (ValueError, TypeError):
                 pass
         return cls()

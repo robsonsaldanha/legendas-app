@@ -2,7 +2,7 @@
 
 Aplicativo Windows de legendagem automática: transcreve, sincroniza e traduz, gerando arquivos `.srt` no padrão Netflix. Tudo roda no PC; só a transcrição e a tradução usam a API da OpenAI.
 
-**Estado:** transcrição + formatação, interface no navegador e editor no layout do Subtitle Edit (vídeo no quadro exato).
+**Estado:** tradução de legendas (PT ↔ ES e outros), transcrição, editor no layout do Subtitle Edit (vídeo no quadro exato) e instalador completo.
 
 **Para instalar:** baixe o `Instalador_Legendas_<versão>.exe` em [Releases](../../releases) e dê dois cliques. Ele traz tudo (Python, bibliotecas, ffmpeg); não precisa instalar mais nada.
 

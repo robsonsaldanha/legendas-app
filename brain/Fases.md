@@ -22,8 +22,13 @@
 - [x] Sessão por perfil do Windows; modelos compartilhados
 - [ ] Testar no Windows: tocar H.264 no Edge/Chrome, F11/F12, janela "Salvar como", dois perfis logados ao mesmo tempo
 
-## Fase 2 — Traduzir + glossário
-SRT → SRT traduzido (es-419), contexto do vídeo inteiro, JSON por ID com validação, glossário e instruções do cliente; `reflow_cues` já pronto para refazer as linhas.
+## ✅ Fase 2 — Traduzir (prioridade da usuária: o trabalho principal dela é traduzir legendas)
+- [x] `core/translate.py`: lotes de 80 com contexto (anteriores já traduzidas + seguintes), JSON estruturado por id, validação e nova tentativa dos que faltarem, limite de caracteres por legenda (duração × CPS), regras do idioma (es-419, es-ES, pt-BR), glossário e instruções do cliente, retomada por lote
+- [x] Detecção do idioma da legenda; padrão PT ↔ ES (inverte com um clique)
+- [x] Novo trabalho: escolher a legenda já marca Traduzir e o sentido; botão "Traduzir para …"
+- [x] Editor: botão **Traduzir…** (janela com idiomas, projeto, perfil, custo e progresso); a tradução abre no editor com a coluna **Original**
+- [x] Saída ao lado da original (`Nome.es-419.srt`), nunca sobrescreve arquivo que o programa não gerou
+- [ ] Validar a qualidade com legendas reais dela e ajustar o texto das instruções
 
 ## Fase 3 — Sincronizar
 (a) texto sem tempo → alinhamento; (b) SRT desalinhado → ffsubsync; (c) texto em outro idioma → transcrever, alinhar e casar frases via LLM.

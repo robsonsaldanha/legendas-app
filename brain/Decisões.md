@@ -48,6 +48,13 @@
 - Player HTML5 com `requestVideoFrameCallback`; formatos que o navegador não toca ganham uma cópia de pré-visualização (H.264 720p) que preserva os tempos dos quadros. A legenda continua sincronizada com o original.
 - Forma de onda própria (canvas + picos do servidor) em vez de biblioteca externa: sem dependências, funciona offline.
 
+## 2026-10-20 — Tradução
+- Pedido: o trabalho principal dela é legendar traduzindo (recebe SRT em PT e entrega em ES, ou o contrário). Precisa de um botão que traduza tudo.
+- Modelo padrão `gpt-5.5` (US$ 5 / 30 por milhão de tokens), raciocínio "low", Chat Completions com JSON Schema estrito. Se a chave não tiver acesso, tenta `gpt-5` e `gpt-4.1` (configurável em Configurações → Avançado). Custo típico: centavos por episódio.
+- 1:1 por legenda (nunca junta/divide): os tempos são preservados e o original pode ficar ao lado, na coluna "Original" do editor. Condensar para caber no CPS é tarefa do modelo; quebrar linhas é do Formatar.
+- Contexto por lote: 15 anteriores já traduzidas (consistência de nomes e tratamento) + 6 seguintes (frases que continuam). Lotes em sequência, não em paralelo, por causa dessa consistência.
+- Pelo editor, o que é traduzido é o que está na tela (inclusive alterações não salvas); a legenda dela não é alterada.
+
 ## 2026-10-20 — Instalador: Python embutido (não PyInstaller)
 - Pedido: o instalador traz tudo; a usuária não instala Python nem nada.
 - Escolha: Python 3.12 embeddable oficial + bibliotecas instaladas em `python\Lib\site-packages`. Com torch é mais previsível que PyInstaller (sem "hooks", sem detecção de importações), e o código continua igual ao de desenvolvimento.

@@ -49,12 +49,14 @@ def default_out_dir(media: Path, uploads_dir: Path) -> Path | None:
 
 
 class Worker:
-    def __init__(self, db: Database, uploads_dir: Path, transcriber_factory=None):
+    def __init__(self, db: Database, uploads_dir: Path, transcriber_factory=None,
+                 translator_factory=None):
         self.db = db
         self.uploads_dir = uploads_dir
         self.live: dict[int, Live] = {}
         self._q: queue.Queue[int] = queue.Queue()
         self._transcriber_factory = transcriber_factory  # testes injetam uma API falsa
+        self._translator_factory = translator_factory
         self._thread = threading.Thread(target=self._loop, name="fila", daemon=True)
         self._thread.start()
 
@@ -67,9 +69,11 @@ class Worker:
         pid = params.get("project_id")
         project = self.db.get_project(int(pid)) if pid else None
         context_parts = []
+        instructions = ""
         entries = None
         if project:
-            context_parts = [project.get("context", ""), project.get("instructions", "")]
+            context_parts = [project.get("context", "")]
+            instructions = project.get("instructions", "")
             entries = self.db.glossary_entries(project["id"])
         if params.get("context"):
             context_parts.append(params["context"])
@@ -78,13 +82,19 @@ class Worker:
         media = Inputs.from_paths(paths).media
         if not out_dir and media is not None:
             out_dir = default_out_dir(media, self.uploads_dir)
+        if not out_dir and media is None:
+            sub = Inputs.from_paths(paths).subtitle
+            if sub is not None:
+                out_dir = default_out_dir(sub, self.uploads_dir)
         req = JobRequest(
             inputs=paths, steps=steps,
-            source_lang=params.get("source_lang") or "pt-BR",
+            source_lang=params.get("source_lang") or "auto",
             target_lang=params.get("target_lang") or "es-419",
             profile=profile, glossary_entries=entries,
             context=" ".join(p for p in context_parts if p and p.strip()),
+            instructions=instructions,
             out_dir=Path(out_dir) if out_dir else None,
+            output_stem=params.get("output_stem") or None,
         )
         return req, plan.steps
 
@@ -92,7 +102,9 @@ class Worker:
 
     def submit(self, params: dict, inputs: list[str]) -> int:
         req, plan_steps = self.build_request(params, inputs)  # valida antes de enfileirar
-        name = (Inputs.from_paths(req.inputs).media or req.inputs[0]).stem
+        ins = Inputs.from_paths(req.inputs)
+        name = params.get("name") or (ins.subtitle if "traduzir" in plan_steps and ins.subtitle
+                                      else ins.media or req.inputs[0]).stem
         jid = self.db.add_job(name, inputs, plan_steps, params, params.get("project_id"))
         self.live[jid] = Live()
         self.live[jid].add("Na fila.")
@@ -120,7 +132,9 @@ class Worker:
     def estimate(self, params: dict, inputs: list[str]) -> dict:
         req, plan_steps = self.build_request(params, inputs)
         res = run_job(req, Settings.load(), estimate_only=True)
-        return {"minutes": res.audio_minutes, "usd": res.estimated_usd, "steps": plan_steps}
+        return {"minutes": res.audio_minutes, "usd": res.estimated_usd, "steps": plan_steps,
+                "cues": res.cues, "translate_usd": res.translate_usd,
+                "source_lang": res.source_lang, "target_lang": res.target_lang}
 
     # ------------------------------------------------------------- loop
 
@@ -151,6 +165,8 @@ class Worker:
             kwargs = {}
             if self._transcriber_factory:
                 kwargs["transcriber"] = self._transcriber_factory()
+            if self._translator_factory:
+                kwargs["translator"] = self._translator_factory()
             res = run_job(req, Settings.load(), cb, **kwargs)
         except LegendasError as e:
             cancelled = live.cancel.is_set()
@@ -169,6 +185,7 @@ class Worker:
         self.db.update_job(
             jid, status="pronto", core_job_id=res.job_id,
             outputs={k: str(v) for k, v in res.outputs.items()}, issues=res.issues,
+            params={**job["params"], "source_lang_detected": res.source_lang},
             minutes=round(res.audio_minutes, 2), usd=round(res.estimated_usd, 4),
             estimated_timing=int(res.estimated_timing),
             finished_at=time.strftime("%Y-%m-%d %H:%M:%S"))

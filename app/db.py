@@ -196,7 +196,7 @@ class Database:
     def update_job(self, jid: int, **fields) -> None:
         if not fields:
             return
-        for k in ("outputs",):
+        for k in ("outputs", "params"):
             if k in fields and not isinstance(fields[k], str):
                 fields[k] = json.dumps(fields[k], ensure_ascii=False)
         sets = ", ".join(f"{k} = ?" for k in fields)

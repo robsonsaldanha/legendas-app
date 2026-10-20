@@ -140,7 +140,9 @@ async function renderEditor(sid) {
     language: data.language, profile: data.profile, cues: data.cues.slice().sort((a, b) => a.start - b.start),
     sel: 0, dirty: false, undo: [], redo: [], peaks: null, savedAt: "", playUntil: null,
     hasVideo: data.has_video, hasAudio: data.has_audio,
+    detected: data.detected, suggested: data.suggested_target,
   });
+  ED.hasOrig = ED.cues.some((c) => c.orig != null);
   ED.wave.start = 0;
   if (!ED.duration && ED.cues.length) ED.duration = ED.cues[ED.cues.length - 1].end + 5;
   recheckAll();
@@ -156,6 +158,8 @@ async function renderEditor(sid) {
       <button class="btn ghost" data-ed="save" title="Ctrl+S">Salvar</button>
       <button class="btn ghost" data-ed="saveas">Salvar como</button>
       <span class="sep"></span>
+      <button class="btn primary" data-ed="translate" title="Traduzir a legenda inteira">Traduzir…</button>
+      <span class="sep"></span>
       <button class="btn ghost" data-ed="undo" title="Ctrl+Z">Desfazer</button>
       <button class="btn ghost" data-ed="redo" title="Ctrl+Y">Refazer</button>
       <span class="sep"></span>
@@ -168,7 +172,7 @@ async function renderEditor(sid) {
     </header>
 
     <section class="ed-list" id="ed-list" tabindex="0" aria-label="Legendas">
-      <table class="grid"><thead><tr><th class="c-n">#</th><th class="c-t">Início</th><th class="c-t">Fim</th><th class="c-d">Duração</th><th class="c-c">CPS</th><th>Texto</th></tr></thead><tbody id="ed-rows"></tbody></table>
+      <table class="grid"><thead><tr><th class="c-n">#</th><th class="c-t">Início</th><th class="c-t">Fim</th><th class="c-d">Duração</th><th class="c-c">CPS</th><th>Texto</th>${ED.hasOrig ? "<th>Original</th>" : ""}</tr></thead><tbody id="ed-rows"></tbody></table>
     </section>
 
     <section class="ed-video">
@@ -191,7 +195,8 @@ async function renderEditor(sid) {
         </div>
       </div>
       <div class="ed-text">
-        <div class="ed-text-head"><span>Texto</span><span id="ed-cps" class="tnum"></span></div>
+        <div class="ed-orig" id="ed-orig" ${ED.hasOrig ? "" : "hidden"}><span class="muted small">Original</span><div id="ed-origtxt"></div></div>
+        <div class="ed-text-head"><span>${ED.hasOrig ? "Tradução" : "Texto"}</span><span id="ed-cps" class="tnum"></span></div>
         <textarea id="ed-txt" spellcheck="true" lang="${esc(ED.language)}"></textarea>
         <div class="ed-text-foot"><span id="ed-linelen" class="tnum"></span><span id="ed-total" class="tnum"></span></div>
       </div>
@@ -283,7 +288,7 @@ async function renderEditorOpen() {
       <label class="field"><span>Vídeo ou áudio</span>
         <div class="row" style="flex-wrap:nowrap"><input type="text" id="o-video" placeholder="C:\\Videos\\Episódio 01.mp4"><button class="btn" data-o="video">Escolher</button></div></label>
       <label class="field"><span>Perfil de regras</span>
-        <select id="o-profile">${S.state.profiles.map((p) => `<option value="${esc(p.key)}">${esc(p.name)}</option>`).join("")}</select></label>
+        <select id="o-profile"><option value="">Automático (pelo idioma da legenda)</option>${S.state.profiles.map((p) => `<option value="${esc(p.key)}">${esc(p.name)}</option>`).join("")}</select></label>
       <div><button class="btn primary" data-o="go">Abrir no editor</button></div>
     </section>`;
   main.onclick = async (e) => {
@@ -453,13 +458,14 @@ function rowHtml(c, i) {
     <td class="c-d tnum ${durBad ? "bad" : ""}">${fmtSec(st.dur)}</td>
     <td class="c-c tnum ${cpsBad ? "bad" : ""}">${st.cps.toFixed(1).replace(".", ",")}</td>
     <td class="c-x ${txtBad ? "bad" : ""}">${st.lines.map(esc).join('<i class="br"> | </i>') || '<i class="muted">vazia</i>'}</td>
+    ${ED.hasOrig ? `<td class="c-o">${c.orig != null ? c.orig.split("\n").map(esc).join('<i class="br"> | </i>') : ""}</td>` : ""}
   </tr>`;
 }
 function drawRows() {
   const tb = document.getElementById("ed-rows");
   if (!tb) return;
   tb.innerHTML = ED.cues.length ? ED.cues.map(rowHtml).join("")
-    : `<tr><td colspan="6" class="muted" style="padding:16px">Nenhuma legenda. Toque o vídeo e use “Inserir legenda na posição do vídeo” (tecla Insert).</td></tr>`;
+    : `<tr><td colspan="${ED.hasOrig ? 7 : 6}" class="muted" style="padding:16px">Nenhuma legenda. Toque o vídeo e use “Inserir legenda na posição do vídeo” (tecla Insert).</td></tr>`;
 }
 function updateRow(i) {
   const tr = document.querySelector(`#ed-rows tr[data-i="${i}"]`);
@@ -481,6 +487,8 @@ function drawEdit() {
   if (document.activeElement !== s) s.value = fmtTC(c.start);
   if (document.activeElement !== d) d.value = fmtSec(c.end - c.start);
   if (document.activeElement !== t) t.value = c.text;
+  const o = document.getElementById("ed-origtxt");
+  if (o) o.innerHTML = c.orig != null ? c.orig.split("\n").map((l) => `<div>${esc(l)}</div>`).join("") : '<i class="muted small">sem original para esta legenda</i>';
   drawTextStats();
 }
 function drawTextStats() {
@@ -624,7 +632,110 @@ function act(name) {
     case "zin": setZoom(Math.min(400, zoomPct() * 1.5)); break;
     case "zout": setZoom(Math.max(25, zoomPct() / 1.5)); break;
     case "help": showHelp(); break;
+    case "translate": openTranslate(); break;
   }
+}
+
+/* ============================================================ tradução */
+
+async function openTranslate() {
+  if (!ED.cues.length) { toast("Não há legendas para traduzir.", true); return; }
+  if (!S.projects?.length) { try { await loadProjects(); } catch {} }
+  const src = ED.detected || ED.language || "pt-BR";
+  const dst = ED.suggested || (src.startsWith("es") ? "pt-BR" : "es-419");
+  const profFor = (lang) => (lang.startsWith("pt") ? "netflix-pt-br" : "netflix-es-419");
+  const ov = document.createElement("div");
+  ov.className = "modal-bg";
+  ov.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="tr-title">
+      <h2 id="tr-title">Traduzir esta legenda</h2>
+      <p class="muted small">${ED.cues.length} legendas. Os tempos ficam iguais; o texto é traduzido e ajustado às regras do perfil. A legenda original não é alterada: a tradução vira um arquivo novo, ao lado dela.</p>
+      <div class="langs">
+        <label class="field"><span>De</span><select id="tr-src">${langOptions(src)}</select></label>
+        <button class="btn icon swap" data-tr="swap" title="Inverter idiomas" aria-label="Inverter idiomas">⇄</button>
+        <label class="field"><span>Para</span><select id="tr-dst">${langOptions(dst)}</select></label>
+      </div>
+      <p class="muted small" id="tr-detected">${ED.detected ? `Idioma detectado na legenda: ${esc(shortLang(ED.detected))}.` : ""}</p>
+      <div class="grid-2">
+        <label class="field"><span>Projeto (glossário e instruções)</span>
+          <select id="tr-project"><option value="">Sem projeto</option>${(S.projects || []).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select></label>
+        <label class="field"><span>Perfil de regras</span>
+          <select id="tr-profile">${S.state.profiles.map((p) => `<option value="${esc(p.key)}" ${p.key === profFor(dst) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
+      </div>
+      <div id="tr-body"><p class="muted small" id="tr-cost">Calculando o custo…</p></div>
+      <div class="row modal-actions">
+        <button class="btn" data-tr="close">Cancelar</button>
+        <button class="btn primary" data-tr="go">Traduzir agora</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const $ = (id) => ov.querySelector(id);
+  const opts = () => ({ source_lang: $("#tr-src").value, target_lang: $("#tr-dst").value,
+    profile_key: $("#tr-profile").value, project_id: $("#tr-project").value ? Number($("#tr-project").value) : null, cues: ED.cues });
+  let jobId = null, timer = null;
+  const close = () => { clearInterval(timer); ov.remove(); document.removeEventListener("keydown", esc_); };
+  const esc_ = (e) => { if (e.key === "Escape" && !jobId) close(); };
+  document.addEventListener("keydown", esc_);
+  const estimate = async () => {
+    const c = $("#tr-cost"); if (!c) return;
+    if ($("#tr-src").value === $("#tr-dst").value) { c.textContent = "Escolha idiomas diferentes."; $('[data-tr="go"]').disabled = true; return; }
+    $('[data-tr="go"]').disabled = false;
+    try {
+      const r = await api("POST", `/api/editor/${ED.sid}/translate`, { ...opts(), estimate: true });
+      c.innerHTML = `Custo estimado na OpenAI: <b>${fmtUSD(r.usd)}</b>`;
+    } catch (e) { c.textContent = e.message; }
+  };
+  const syncProfile = () => { const p = profFor($("#tr-dst").value); if ([...$("#tr-profile").options].some((o) => o.value === p)) $("#tr-profile").value = p; };
+  $("#tr-src").addEventListener("change", estimate);
+  $("#tr-dst").addEventListener("change", () => { syncProfile(); estimate(); });
+  estimate();
+  $("#tr-dst").focus();
+
+  ov.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-tr]");
+    if (e.target === ov && !jobId) return close();
+    if (!b) return;
+    if (b.dataset.tr === "close") {
+      if (jobId) { await api("POST", `/api/jobs/${jobId}/cancel`).catch(() => {}); }
+      return close();
+    }
+    if (b.dataset.tr === "swap") {
+      const a = $("#tr-src").value; $("#tr-src").value = $("#tr-dst").value; $("#tr-dst").value = a;
+      syncProfile(); estimate(); return;
+    }
+    if (b.dataset.tr === "go") {
+      b.disabled = true;
+      ov.querySelectorAll("select, [data-tr=swap]").forEach((x) => (x.disabled = true));
+      try {
+        const job = await api("POST", `/api/editor/${ED.sid}/translate`, opts());
+        jobId = job.id;
+        $('[data-tr="close"]').textContent = "Cancelar tradução";
+        $("#tr-body").innerHTML = `<p id="tr-msg">Na fila…</p><div class="bar" style="margin-top:8px"><i id="tr-bar" style="width:0%"></i></div><p class="muted small" id="tr-count" style="margin-top:6px"></p>`;
+        timer = setInterval(async () => {
+          let j; try { j = await api("GET", `/api/jobs/${jobId}`); } catch { return; }
+          const v = j.live?.steps?.traduzir;
+          if (j.live?.message) $("#tr-msg").textContent = j.live.message;
+          if (v && v[1]) { $("#tr-bar").style.width = `${Math.round((v[0] / v[1]) * 100)}%`; $("#tr-count").textContent = `${v[0]} de ${v[1]} legendas`; }
+          if (j.status === "pronto") {
+            clearInterval(timer);
+            $("#tr-bar").style.width = "100%";
+            $("#tr-msg").textContent = `Tradução pronta: ${j.outputs.srt.split(/[\\/]/).pop()}`;
+            $("#tr-count").textContent = `${j.issues || 0} ${j.issues === 1 ? "legenda precisa" : "legendas precisam"} de revisão · custo ${fmtUSD(j.usd)}`;
+            const r = await api("POST", "/api/editor/open", { srt: j.outputs.srt, video: ED.video, original: j.outputs.original, profile_key: j.params.profile_key });
+            ED.dirty = false;
+            close();
+            toast("Tradução aberta no editor. A coluna Original mostra o texto de partida.");
+            location.hash = `#/editor/${r.sid}`;
+          } else if (["erro", "cancelado", "interrompido"].includes(j.status)) {
+            clearInterval(timer);
+            $("#tr-msg").innerHTML = `<span class="note err" style="display:block">${esc(j.error || "A tradução foi interrompida.")}</span>`;
+            $('[data-tr="close"]').textContent = "Fechar";
+            jobId = null;
+          }
+        }, 1000);
+      } catch (err) { toast(err.message, true); b.disabled = false; ov.querySelectorAll("select, [data-tr=swap]").forEach((x) => (x.disabled = false)); }
+    }
+  });
 }
 
 function showHelp() {

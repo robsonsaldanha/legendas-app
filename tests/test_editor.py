@@ -163,3 +163,73 @@ def test_session_file_and_ports(tmp_path, monkeypatch):
     assert App.session_path().exists()
     app.clear_session()
     assert not App.session_path().exists()
+
+
+# ------------------------------------------------------------------ tradução pelo editor
+
+@pytest.fixture
+def tserver(tmp_path, monkeypatch):
+    monkeypatch.setenv("LEGENDAS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-0000000000000000abcd")
+    import threading
+    from app.server import App, make_server
+    from tests.test_translate import FakeTranslator
+    app = App(translator_factory=FakeTranslator)
+    srv = make_server(app, 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    COOKIE[port] = f"{app.cookie_name}={app.token}"
+    yield app, port, tmp_path
+    srv.shutdown()
+
+
+def _wait(app, port, jid):
+    for _ in range(100):
+        st, job = call(port, "GET", f"/api/jobs/{jid}", token=app.token)
+        if job["status"] not in ("fila", "rodando"):
+            return job
+        time.sleep(0.1)
+    raise AssertionError("trabalho não terminou")
+
+
+def test_editor_translate_flow(tserver):
+    app, port, tmp = tserver
+    srt = tmp / "Capítulo 4.pt-BR.srt"
+    srt.write_text("1\n00:00:01,000 --> 00:00:03,000\nOlá, tudo bem?\n\n2\n00:00:04,000 --> 00:00:06,000\n"
+                   "Eu não sei o que fazer\ncom você.\n", encoding="utf-8")
+    d = open_editor(app, port, srt=str(srt))
+    assert d["detected"] == "pt-BR" and d["suggested_target"] == "es-419"
+    cues = d["cues"]
+    cues[0]["text"] = "Olá, tudo bem?"  # rascunho (não salvo) é o que vai para a tradução
+    st, est = call(port, "POST", f"/api/editor/{d['sid']}/translate",
+                   {"cues": cues, "target_lang": "es-419", "estimate": True}, token=app.token)
+    assert st == 200 and est["usd"] > 0 and est["cues"] == 2
+    st, job = call(port, "POST", f"/api/editor/{d['sid']}/translate",
+                   {"cues": cues, "target_lang": "es-419"}, token=app.token)
+    assert st == 200, job
+    job = _wait(app, port, job["id"])
+    assert job["status"] == "pronto", job
+    out = Path(job["outputs"]["srt"])
+    assert out.name == "Capítulo 4.es-419.srt" and out.parent == srt.parent
+    # abrir a tradução com o original ao lado
+    r = open_editor(app, port, srt=str(out), original=job["outputs"]["original"])
+    assert r["cues"][0]["text"] == "Hola, ¿cómo estás?" and r["cues"][0]["orig"] == "Olá, tudo bem?"
+    assert r["language"] == "es-419" or r["detected"] == "es-419"
+    # pelo trabalho também
+    r2 = open_editor(app, port, job_id=job["id"])
+    assert r2["cues"][1]["orig"].startswith("Eu não sei")
+
+
+def test_new_job_translate_from_srt(tserver):
+    app, port, tmp = tserver
+    srt = tmp / "cap.srt"
+    srt.write_text("1\n00:00:01,000 --> 00:00:03,000\n¿Qué pasa? No sé, pero está bien.\n", encoding="utf-8")
+    st, info = call(port, "POST", "/api/inspect", {"paths": [str(srt)]}, token=app.token)
+    assert info["files"][0]["language"] == "es-419"
+    st, job = call(port, "POST", "/api/jobs", {"inputs": [str(srt)], "params": {
+        "steps": ["traduzir"], "source_lang": "es-419", "target_lang": "pt-BR",
+        "profile_key": "netflix-pt-br"}}, token=app.token)
+    assert st == 200, job
+    job = _wait(app, port, job["id"])
+    assert job["status"] == "pronto" and job["outputs"]["srt"].endswith("cap.pt-BR.srt")
+    assert job["params"]["source_lang_detected"] == "es-419"

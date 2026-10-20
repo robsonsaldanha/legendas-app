@@ -30,6 +30,7 @@ from core.media import SAMPLE_RATE, extract_audio, ffmpeg, load_wav, probe
 from core.profiles import Profile, default_profile_for
 from core.qc import check_rules
 from core.subtitle import Cue, read_srt, write_srt
+from core.translate import detect_language, opposite_language
 
 log = logging.getLogger("legendas.editor")
 
@@ -84,6 +85,7 @@ class Session:
     media_path: Path | None = None
     backed_up: bool = False
     draft: list | None = None           # cópia de trabalho (sobrevive a recarregar a página)
+    detected: str | None = None         # idioma detectado na legenda
     profile: dict = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -112,17 +114,20 @@ class EditorManager:
     # ------------------------------------------------------------- abrir
 
     def open(self, srt: str | None, video: str | None, profile_key: str | None = None,
-             job_id: int | None = None) -> dict:
+             job_id: int | None = None, original: str | None = None) -> dict:
         language = None
         if job_id is not None and self.db is not None:
             job = self.db.get_job(int(job_id))
             if not job:
                 raise EditorError("Trabalho não encontrado.", 404)
             srt = srt or job["outputs"].get("srt")
+            original = original or job["outputs"].get("original")
             media = [p for p in job["inputs"] if Path(p).suffix.lower() not in (".srt", ".txt", ".docx")]
             video = video or (media[0] if media else None)
             profile_key = profile_key or job["params"].get("profile_key")
-            language = job["params"].get("source_lang")
+            translated = "traduzir" in job.get("steps", [])
+            language = (job["params"].get("target_lang") if translated
+                        else job["params"].get("source_lang_detected") or job["params"].get("source_lang"))
         srt_path = Path(srt) if srt else None
         video_path = Path(video) if video else None
         if srt_path is not None and srt_path.suffix.lower() != ".srt":
@@ -135,7 +140,16 @@ class EditorManager:
             raise EditorError("Escolha a legenda, o vídeo ou os dois.")
 
         cues = read_srt(srt_path) if srt_path else []
+        detected = detect_language([c.text for c in cues]) if cues else None
+        language = language if language and language != "auto" else detected
+        if not profile_key:  # automático: perfil Netflix do idioma da legenda
+            profile_key = "netflix-pt-br" if (language or "").startswith("pt") else "netflix-es-419"
         profile = self._profile(profile_key, language)
+        orig_texts: list[str] | None = None
+        if original and Path(original).exists() and Path(original) != srt_path:
+            oc = read_srt(original)
+            if len(oc) == len(cues):  # tradução é 1:1 com o original
+                orig_texts = ["\n".join(c.lines) for c in oc]
         sid = uuid.uuid4().hex[:12]
         s = Session(sid=sid, srt=srt_path, video=video_path,
                     profile_key=profile_key or "", language=language or profile.language)
@@ -144,7 +158,9 @@ class EditorManager:
             s.cache = editor_dir() / _cache_key(video_path)
             s.cache.mkdir(parents=True, exist_ok=True)
             self._prepare_media(s)
-        s.draft = [{"start": c.start, "end": c.end, "text": "\n".join(c.lines)} for c in cues]
+        s.draft = [{"start": c.start, "end": c.end, "text": "\n".join(c.lines),
+                    **({"orig": orig_texts[i]} if orig_texts else {})} for i, c in enumerate(cues)]
+        s.detected = detected
         s.profile = {"key": profile_key or "", **profile.to_dict()}
         self.sessions[sid] = s
         return self.info(sid, full=True)
@@ -158,7 +174,8 @@ class EditorManager:
             "srt": str(s.srt) if s.srt else "", "video": str(s.video) if s.video else "",
             "fps": s.info.get("fps"), "duration": s.info.get("duration"),
             "has_video": bool(s.info.get("vcodec")), "has_audio": bool(s.info.get("acodec")),
-            "language": s.language,
+            "language": s.language, "detected": s.detected,
+            "suggested_target": opposite_language(s.detected or s.language),
             "media": {"status": s.media_status, "progress": round(s.media_progress, 3),
                       "error": s.media_error, "url": f"/media/{s.sid}/{int(time.time())}"
                       if s.media_status == "pronto" else ""},
@@ -289,6 +306,31 @@ class EditorManager:
         out = rewrap(lines, profile.max_chars_per_line, profile.max_lines,
                      language or profile.language, profile.dialogue_dash)
         return {"text": "\n".join(out)}
+
+    def translation_job(self, sid: str, raw: list[dict], opts: dict) -> tuple[list[str], dict]:
+        """Grava a legenda aberta (como está na tela) e monta o pedido de tradução."""
+        s = self._get(sid)
+        cues = sorted(self._cues(raw), key=lambda c: c.start)
+        empty = [i for i, c in enumerate(cues, start=1) if not c.lines]
+        if not cues:
+            raise EditorError("Não há legendas para traduzir.")
+        if empty:
+            raise EditorError(f"A legenda {empty[0]} está sem texto. Escreva algo ou apague-a antes de traduzir.")
+        base = s.srt or s.video
+        folder = editor_dir() / "traducoes" / s.sid
+        folder.mkdir(parents=True, exist_ok=True)
+        src = folder / (base.stem + ".srt")
+        write_srt(cues, src)
+        stem = re.sub(r"\.(pt|es|en)([-_][A-Za-z0-9]{2,3})?$", "", base.stem, flags=re.IGNORECASE)
+        inputs = [str(src)] + ([str(s.video)] if s.video else [])
+        params = {"steps": ["traduzir"], "source_lang": opts.get("source_lang") or s.detected or "auto",
+                  "target_lang": opts.get("target_lang") or opposite_language(s.detected),
+                  "profile_key": opts.get("profile_key") or "",
+                  "project_id": opts.get("project_id") or None,
+                  "out_dir": str(base.parent), "output_stem": stem, "name": base.stem}
+        if not params["profile_key"]:
+            params["profile_key"] = "netflix-pt-br" if params["target_lang"].startswith("pt") else "netflix-es-419"
+        return inputs, params
 
     def set_draft(self, sid: str, raw: list[dict]) -> dict:
         s = self._get(sid)

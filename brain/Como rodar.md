@@ -39,6 +39,8 @@ A página só abre pelo atalho (ele passa a chave da sessão). Digitar o endere�
 python -m core.pipeline -i "C:\Videos\Episódio 01.mp4" --steps transcrever --estimate
 python -m core.pipeline -i "C:\Videos\Episódio 01.mp4" --steps transcrever
 python -m core.pipeline -i video.mp4 -s transcrever -g glossario.csv --context "Série sobre um sítio no interior"
+python -m core.pipeline -i "Episódio 01.srt" -s traduzir --dst-lang es-419      # idioma de origem detectado
+python -m core.pipeline -i video.mp4 -s transcrever,traduzir --src-lang pt-BR --dst-lang es-419
 ```
 Opções: `--src-lang pt-BR` (padrão), `--profile netflix-pt-br`, `--out pasta`, `--align auto|model|estimate`, `-v`.
 

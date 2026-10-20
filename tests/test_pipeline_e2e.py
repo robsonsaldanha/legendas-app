@@ -146,7 +146,7 @@ def test_cli_estimate(env, capsys):
     video, _, _ = env
     code = main(["--input", str(video), "--steps", "transcrever", "--estimate"])
     assert code == 0
-    assert "custo estimado" in capsys.readouterr().out
+    assert "custo estimado" in capsys.readouterr().out.lower()
 
 
 def test_cli_reports_friendly_errors(env, capsys):

@@ -75,6 +75,22 @@ def main(wav: str, text: str) -> None:
     srt = res.outputs["srt"].read_text(encoding="utf-8-sig")
     check("pipeline", "quick brown fox" in srt and not res.estimated_timing, res.outputs["srt"].name)
 
+    # tradução (modelo simulado): legenda pt → es, ao lado da original
+    from core.plan import TRANSLATE
+    from core.translate import Usage
+
+    class FakeTr:
+        model = "fake"
+
+        def translate_batch(self, system, user):
+            d = json.loads(user)
+            return {"itens": [{"id": i["id"], "texto": "Hola " + i["texto"]} for i in d["traduzir"]]}, Usage(10, 5)
+
+    res2 = run_job(JobRequest(inputs=[res.outputs["srt"]], steps={TRANSLATE}, source_lang="pt-BR",
+                              target_lang="es-419"), Settings(), translator=FakeTr())
+    check("tradução", res2.outputs["srt"].exists() and "Hola" in res2.outputs["srt"].read_text(encoding="utf-8-sig"),
+          res2.outputs["srt"].name)
+
     # servidor + sessão
     from app.server import App, make_server
     app = App()

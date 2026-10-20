@@ -14,11 +14,12 @@ const S = {
 function freshDraft() {
   return {
     files: [],              // {path, name, kind, duration, size, uploading, progress, error}
-    steps: { transcrever: true, sincronizar: false, traduzir: false },
+    steps: { transcrever: false, sincronizar: false, traduzir: true },
     project_id: "",
     source_lang: "pt-BR",
     target_lang: "es-419",
-    profile_key: "netflix-pt-br",
+    detected: null,          // idioma detectado na legenda escolhida
+    profile_key: "netflix-es-419",
     out_dir: "",
     context: "",
     estimate: null,          // {minutes, usd} | "loading" | null
@@ -202,7 +203,7 @@ async function renderNew() {
     <div class="page-head">
       <div>
         <h1>Novo trabalho</h1>
-        <p class="muted">Escolha o vídeo e o que fazer com ele. O arquivo .srt sai ao lado do vídeo.</p>
+        <p class="muted">Traduza uma legenda ou transcreva um vídeo. O arquivo .srt sai ao lado do original.</p>
       </div>
     </div>
     ${noKey ? `<p class="note warn" style="margin-bottom:16px">Falta a chave da OpenAI. <a href="#/configuracoes">Configure aqui</a> antes de começar.</p>` : ""}
@@ -211,11 +212,11 @@ async function renderNew() {
         <section class="panel">
           <h2>Arquivos</h2>
           <div class="drop" id="drop">
-            <p><strong>Arraste o vídeo para cá</strong></p>
-            <p class="muted small">ou escolha no computador. Para sincronizar ou traduzir, adicione também a legenda ou o texto.</p>
+            <p><strong>Arraste a legenda ou o vídeo para cá</strong></p>
+            <p class="muted small">Para traduzir, basta a legenda (.srt). Junte o vídeo se quiser revisar com a imagem depois.</p>
             <div class="row">
-              <button class="btn primary" data-action="pick-media">Escolher vídeo ou áudio</button>
-              <button class="btn" data-action="pick-other">Adicionar legenda ou texto</button>
+              <button class="btn primary" data-action="pick-sub">Escolher legenda (.srt)</button>
+              <button class="btn" data-action="pick-media">Escolher vídeo ou áudio</button>
             </div>
           </div>
           <ul class="files" id="files"></ul>
@@ -231,9 +232,9 @@ async function renderNew() {
         <section class="panel">
           <h2>O que fazer</h2>
           <div class="steps">
-            ${stepTile("transcrever", "Transcrever", "Gera a legenda no idioma do áudio.")}
+            ${stepTile("traduzir", "Traduzir", "Traduz a legenda inteira mantendo os tempos, no padrão Netflix.")}
+            ${stepTile("transcrever", "Transcrever", "Gera a legenda a partir do áudio do vídeo.")}
             ${stepTile("sincronizar", "Sincronizar", "Ajusta os tempos de uma legenda ou texto ao áudio.")}
-            ${stepTile("traduzir", "Traduzir", "Traduz a legenda mantendo os tempos.")}
           </div>
           <p class="muted small" style="margin-top:10px">A formatação (linhas, velocidade de leitura e duração) é feita sempre, no final.</p>
         </section>
@@ -251,20 +252,23 @@ async function renderNew() {
             <label class="field"><span>Perfil de regras</span>
               <select id="f-profile">${st.profiles.map((p) => `<option value="${esc(p.key)}" ${p.key === d.profile_key ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
             </label>
-            <label class="field"><span>Idioma do áudio</span>
-              <select id="f-src">${langOptions(d.source_lang)}</select>
-            </label>
-            <label class="field"><span>Idioma da tradução</span>
-              <select id="f-dst" ${d.steps.traduzir ? "" : "disabled"}>${langOptions(d.target_lang)}</select>
-            </label>
+            <div class="langs" style="grid-column:1/-1">
+              <label class="field"><span>Idioma de origem <em class="muted small" id="f-detected">${d.detected ? "· detectado na legenda" : ""}</em></span>
+                <select id="f-src">${langOptions(d.source_lang)}</select>
+              </label>
+              <button class="btn icon swap" data-action="swap" title="Inverter idiomas" aria-label="Inverter idiomas" ${d.steps.traduzir ? "" : "disabled"}>⇄</button>
+              <label class="field"><span>Traduzir para</span>
+                <select id="f-dst" ${d.steps.traduzir ? "" : "disabled"}>${langOptions(d.target_lang)}</select>
+              </label>
+            </div>
             <label class="field" style="grid-column:1/-1"><span>Pasta de saída</span>
               <div class="row" style="flex-wrap:nowrap">
-                <input type="text" id="f-out" value="${esc(d.out_dir)}" placeholder="Mesma pasta do vídeo">
+                <input type="text" id="f-out" value="${esc(d.out_dir)}" placeholder="Mesma pasta do arquivo original">
                 <button class="btn" data-action="pick-out">Escolher</button>
               </div>
             </label>
-            <label class="field" style="grid-column:1/-1"><span>Contexto deste vídeo (opcional)</span>
-              <textarea id="f-ctx" placeholder="Nomes de pessoas e lugares, assunto do episódio… Ajuda a acertar a grafia.">${esc(d.context)}</textarea>
+            <label class="field" style="grid-column:1/-1"><span>Contexto deste episódio (opcional)</span>
+              <textarea id="f-ctx" placeholder="Assunto do episódio, quem fala com quem, nomes de pessoas e lugares… Ajuda a tradução e a transcrição.">${esc(d.context)}</textarea>
             </label>
           </div>
         </section>
@@ -276,6 +280,7 @@ async function renderNew() {
     </div>`;
 
   renderFiles();
+  syncNewForm();
   renderSummary();
   bindNew();
 }
@@ -322,8 +327,13 @@ function validateDraft() {
   const has = (k) => ready.some((f) => f.kind === k);
   const steps = currentSteps();
   if (d.files.some((f) => f.uploading)) return "Aguarde o envio do arquivo terminar.";
-  if (!ready.length) return "Escolha o vídeo ou o áudio.";
+  if (!ready.length) return steps.includes("traduzir") && !steps.includes("transcrever")
+    ? "Escolha a legenda (.srt) que vai ser traduzida." : "Escolha o vídeo ou a legenda.";
   if (!steps.length) return "Marque pelo menos uma etapa.";
+  if (steps.includes("traduzir") && !steps.includes("transcrever") && !has("subtitle"))
+    return "Para traduzir, escolha a legenda (.srt). Ou marque Transcrever para começar pelo vídeo.";
+  if (steps.includes("traduzir") && d.source_lang === d.target_lang) return "O idioma de origem e o de destino são iguais.";
+  if (ready.filter((f) => f.kind === "subtitle").length > 1) return "Uma legenda por trabalho. Remova as outras.";
   if ((steps.includes("transcrever") || steps.includes("sincronizar")) && !has("media")) return "Para transcrever é preciso o vídeo ou o áudio.";
   if (ready.some((f) => f.kind === "media" && f.has_audio === false)) return "O vídeo escolhido não tem áudio.";
   if (steps.includes("transcrever") && !steps.includes("sincronizar") && (has("subtitle") || has("text")))
@@ -340,26 +350,59 @@ function renderSummary() {
   const steps = currentSteps();
   const problem = validateDraft();
   const media = d.files.find((f) => f.kind === "media");
+  const sub = d.files.find((f) => f.kind === "subtitle");
   const est = d.estimate;
   box.innerHTML = `
     <h2>Resumo</h2>
     <div class="stack">
       <div class="flow">${[...steps.map((s) => STEP_NAMES[s]), "Formatar"].map(esc).join(" <i>›</i> ")}</div>
       <dl>
-        <dt>Vídeo</dt><dd class="tnum">${media ? fmtDur(media.duration) || "—" : "—"}</dd>
-        <dt>Idioma</dt><dd>${esc(langName(d.source_lang))}</dd>
+        ${sub ? `<dt>Legenda</dt><dd class="tnum">${sub.cues ?? "—"} legendas</dd>` : ""}
+        ${media ? `<dt>Vídeo</dt><dd class="tnum">${fmtDur(media.duration) || "—"}</dd>` : ""}
+        <dt>Idioma</dt><dd>${steps.includes("traduzir") ? `${esc(shortLang(d.source_lang))} › ${esc(shortLang(d.target_lang))}` : esc(langName(d.source_lang))}</dd>
         <dt>Perfil</dt><dd>${esc(profileName(d.profile_key))}</dd>
-        <dt>Saída</dt><dd>${d.out_dir ? "Pasta escolhida" : "Junto do vídeo"}</dd>
+        <dt>Saída</dt><dd>${d.out_dir ? "Pasta escolhida" : "Junto do original"}</dd>
       </dl>
       <div>
         <p class="muted small">Custo estimado na OpenAI</p>
-        ${est === "loading" ? `<div class="bar indet" style="margin:10px 0"><i></i></div><p class="muted small">Lendo o áudio para medir a fala…</p>`
-          : est ? `<p class="cost">${fmtUSD(est.usd)}</p><p class="muted small">${fmtMin(est.minutes)} de fala</p>`
+        ${est === "loading" ? `<div class="bar indet" style="margin:10px 0"><i></i></div><p class="muted small">Calculando…</p>`
+          : est ? `<p class="cost">${fmtUSD(est.usd)}</p><p class="muted small">${[est.minutes ? `${fmtMin(est.minutes)} de fala` : "", est.cues && steps.includes("traduzir") ? `${est.cues} legendas para traduzir` : ""].filter(Boolean).join(" · ")}</p>`
           : `<button class="btn" data-action="estimate" ${problem ? "disabled" : ""}>Calcular custo</button>`}
       </div>
       ${problem ? `<p class="note warn small">${esc(problem)}</p>` : ""}
-      <button class="btn primary big" data-action="start" ${problem ? "disabled" : ""}>Começar</button>
+      <button class="btn primary big" data-action="start" ${problem ? "disabled" : ""}>${esc(startLabel(steps))}</button>
     </div>`;
+}
+
+function shortLang(code) {
+  return { "pt-BR": "Português", "es-419": "Espanhol (LatAm)", "es-ES": "Espanhol (Espanha)", "en-US": "Inglês" }[code] || code;
+}
+function startLabel(steps) {
+  const t = steps.includes("transcrever"), tr = steps.includes("traduzir");
+  if (t && tr) return "Transcrever e traduzir";
+  if (tr) return `Traduzir para ${shortLang(S.draft.target_lang)}`;
+  if (t) return "Transcrever";
+  return "Começar";
+}
+function oppositeLang(code) { return code && code.startsWith("es") ? "pt-BR" : "es-419"; }
+/* Perfil acompanha o idioma da legenda final (mantém o infantil, se escolhido). */
+function autoProfile() {
+  const d = S.draft;
+  if (!/^netflix-(pt-br|es-419)(-kids)?$/.test(d.profile_key)) return;
+  const lang = d.steps.traduzir ? d.target_lang : d.source_lang;
+  const fam = lang.startsWith("pt") ? "netflix-pt-br" : lang === "es-419" ? "netflix-es-419" : null;
+  if (!fam) return;
+  d.profile_key = fam + (d.profile_key.endsWith("-kids") ? "-kids" : "");
+}
+function syncNewForm() {
+  const d = S.draft;
+  autoProfile();
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set("f-src", d.source_lang); set("f-dst", d.target_lang); set("f-profile", d.profile_key);
+  document.querySelectorAll("[data-step]").forEach((cb) => { cb.checked = !!d.steps[cb.dataset.step] && !cb.disabled; });
+  const dst = document.getElementById("f-dst"); if (dst) dst.disabled = !d.steps.traduzir;
+  const sw = document.querySelector('[data-action="swap"]'); if (sw) sw.disabled = !d.steps.traduzir;
+  const det = document.getElementById("f-detected"); if (det) det.textContent = d.detected ? "· detectado na legenda" : "";
 }
 
 function draftPayload() {
@@ -385,8 +428,21 @@ async function addPaths(paths) {
     if (!f.exists) { toast(`Arquivo não encontrado: ${f.path}`, true); continue; }
     if (f.kind === "other") { toast(`Tipo de arquivo não suportado: ${f.name}`, true); continue; }
     if (f.kind === "media") S.draft.files = S.draft.files.filter((x) => x.kind !== "media");
+    if (f.kind === "subtitle") S.draft.files = S.draft.files.filter((x) => x.kind !== "subtitle");
     S.draft.files.push(f);
+    const d = S.draft;
+    if (f.kind === "subtitle") {
+      // recebeu uma legenda: o trabalho é traduzir
+      d.steps.traduzir = true; d.steps.transcrever = false;
+      if (f.language) {
+        d.detected = f.language; d.source_lang = f.language; d.target_lang = oppositeLang(f.language);
+        toast(`Legenda em ${shortLang(f.language)}: vai ser traduzida para ${shortLang(d.target_lang)}. Dá para trocar em Detalhes.`);
+      }
+    } else if (f.kind === "media" && !d.files.some((x) => x.kind === "subtitle")) {
+      d.steps.transcrever = true;
+    }
   }
+  syncNewForm();
   invalidateEstimate();
   renderFiles();
   renderSummary();
@@ -443,13 +499,22 @@ function bindNew() {
     if (!b) return;
     const a = b.dataset.action;
     if (a === "pick-media") await addPaths(await pickFiles("media", false));
+    if (a === "pick-sub") await addPaths(await pickFiles("subtitle", false));
+    if (a === "swap") {
+      [d.source_lang, d.target_lang] = [d.target_lang, d.source_lang];
+      d.detected = null; syncNewForm(); invalidateEstimate(); renderSummary();
+    }
     if (a === "pick-other") await addPaths(await pickFiles("any", true));
     if (a === "add-path") {
       const inp = document.getElementById("path-in");
       const v = inp.value.trim().replace(/^"|"$/g, "");
       if (v) { try { await addPaths([v]); inp.value = ""; } catch (err) { toast(err.message, true); } }
     }
-    if (a === "remove-file") { d.files.splice(Number(b.dataset.i), 1); invalidateEstimate(); renderFiles(); renderSummary(); }
+    if (a === "remove-file") {
+      const [gone] = d.files.splice(Number(b.dataset.i), 1);
+      if (gone?.kind === "subtitle") d.detected = null;
+      syncNewForm(); invalidateEstimate(); renderFiles(); renderSummary();
+    }
     if (a === "pick-out") {
       const [p] = await pickFiles("folder", false);
       if (p) { d.out_dir = p; document.getElementById("f-out").value = p; renderSummary(); }
@@ -464,7 +529,7 @@ function bindNew() {
       b.disabled = true;
       try {
         const job = await api("POST", "/api/jobs", draftPayload());
-        S.draft = { ...freshDraft(), project_id: d.project_id, profile_key: d.profile_key, source_lang: d.source_lang, target_lang: d.target_lang, steps: d.steps, out_dir: d.out_dir };
+        S.draft = { ...freshDraft(), project_id: d.project_id, profile_key: d.profile_key, source_lang: d.source_lang, target_lang: d.target_lang, steps: { ...d.steps }, out_dir: d.out_dir };
         location.hash = `#/trabalho/${job.id}`;
       } catch (err) { toast(err.message, true); b.disabled = false; }
     }
@@ -472,24 +537,25 @@ function bindNew() {
 
   main.querySelectorAll("[data-step]").forEach((cb) => cb.addEventListener("change", () => {
     d.steps[cb.dataset.step] = cb.checked;
-    document.getElementById("f-dst").disabled = !d.steps.traduzir;
-    invalidateEstimate(); renderSummary();
+    syncNewForm(); invalidateEstimate(); renderSummary();
   }));
   document.getElementById("f-project").addEventListener("change", (e) => {
     d.project_id = e.target.value;
     const p = S.projects.find((x) => String(x.id) === d.project_id);
     if (p) {
-      d.source_lang = p.source_lang; d.target_lang = p.target_lang; d.profile_key = p.profile_key;
-      document.getElementById("f-src").value = p.source_lang;
-      document.getElementById("f-dst").value = p.target_lang;
-      document.getElementById("f-profile").value = p.profile_key;
+      if (!d.detected) { d.source_lang = p.source_lang; d.target_lang = p.target_lang; }
+      d.profile_key = p.profile_key;
+      syncNewForm();
     }
     invalidateEstimate(); renderSummary();
   });
   const bindVal = (id, key) => document.getElementById(id).addEventListener("change", (e) => { d[key] = e.target.value; invalidateEstimate(); renderSummary(); });
   bindVal("f-profile", "profile_key");
-  bindVal("f-src", "source_lang");
-  bindVal("f-dst", "target_lang");
+  ["f-src", "f-dst"].forEach((id) => document.getElementById(id).addEventListener("change", (e) => {
+    d[id === "f-src" ? "source_lang" : "target_lang"] = e.target.value;
+    if (id === "f-src") d.detected = null;
+    syncNewForm(); invalidateEstimate(); renderSummary();
+  }));
   bindVal("f-out", "out_dir");
   document.getElementById("f-ctx").addEventListener("input", (e) => { d.context = e.target.value; });
   document.getElementById("path-in").addEventListener("keydown", (e) => { if (e.key === "Enter") main.querySelector('[data-action="add-path"]').click(); });
@@ -539,7 +605,8 @@ async function renderJobs() {
 }
 
 function progressOf(steps) {
-  const t = steps?.transcrever, a = steps?.alinhar;
+  const t = steps?.transcrever, a = steps?.alinhar, tr = steps?.traduzir;
+  if (tr && tr[1]) return Math.round((tr[0] / tr[1]) * 100);
   if (a && a[1]) return 60 + Math.round((a[0] / a[1]) * 38);
   if (t && t[1]) return Math.round((t[0] / t[1]) * 60);
   return null;
@@ -566,13 +633,19 @@ async function renderJob(id) {
   }
 }
 
+function jobLangs(job) {
+  const src = job.params.source_lang_detected || (job.params.source_lang === "auto" ? "" : job.params.source_lang);
+  if (job.steps.includes("traduzir")) return `${src ? shortLang(src) : "Detectar idioma"} › ${shortLang(job.params.target_lang)}`;
+  return langName(src || "pt-BR");
+}
+
 function jobHead(job, actions = "") {
   return `<div class="page-head">
       <div>
         <p class="muted small"><a href="#/trabalhos">Trabalhos</a> / ${esc(job.project_name || "Sem projeto")}</p>
         <h1 style="margin-top:6px">${esc(job.name)}</h1>
         <p class="muted"><span class="pill ${job.status}">${STATUS[job.status]}</span>
-          &nbsp;${job.steps.map((s) => STEP_NAMES[s]).join(" › ")} · ${esc(langName(job.params.source_lang))} · ${esc(profileName(job.params.profile_key))}</p>
+          &nbsp;${job.steps.map((s) => STEP_NAMES[s]).join(" › ")} · ${esc(jobLangs(job))} · ${esc(profileName(job.params.profile_key))}</p>
       </div>
       <div class="row">${actions}</div>
     </div>`;
@@ -590,9 +663,10 @@ function drawProgress(job) {
   if (job.status === "rodando" || job.status === "fila") {
     body = `<section class="panel stack">
         <p><strong>${esc(live.message || "Preparando…")}</strong></p>
-        ${job.status === "rodando" && !live.steps.transcrever ? `<div class="bar indet"><i></i></div>` : ""}
-        ${step("transcrever", "Transcrição na OpenAI", "trechos")}
-        ${step("alinhar", "Tempo de cada palavra", "trechos")}
+        ${job.status === "rodando" && !live.steps.transcrever && !live.steps.traduzir ? `<div class="bar indet"><i></i></div>` : ""}
+        ${job.steps.includes("transcrever") ? step("transcrever", "Transcrição na OpenAI", "trechos") : ""}
+        ${job.steps.includes("transcrever") ? step("alinhar", "Tempo de cada palavra", "trechos") : ""}
+        ${job.steps.includes("traduzir") ? step("traduzir", "Tradução na OpenAI", "legendas") : ""}
         <p class="muted small">Pode fechar esta página: o trabalho continua enquanto o programa estiver aberto.</p>
       </section>`;
   } else {
@@ -665,7 +739,7 @@ async function renderResult(job) {
       <div class="stats">
         <div><strong>${res.cues.length}</strong><span>legendas</span></div>
         <div><strong>${flagged}</strong><span>para revisar${errCount ? ` (${errCount} erros)` : ""}</span></div>
-        <div><strong>${fmtMin(job.minutes)}</strong><span>de fala</span></div>
+        ${job.minutes ? `<div><strong>${fmtMin(job.minutes)}</strong><span>de fala</span></div>` : ""}
         <div><strong>${fmtUSD(job.usd)}</strong><span>na OpenAI</span></div>
       </div>
       <p class="muted small" style="margin-top:12px">Salvo em <span class="tnum">${esc(srt)}</span>${qc ? ` · <button class="btn link small" data-action="open" data-path="${esc(qc)}">relatório de QC</button>` : ""} · <button class="btn link small" data-action="again">novo trabalho com as mesmas opções</button></p>
@@ -783,7 +857,7 @@ async function renderProject(id) {
       <div class="grid-2">
         <label class="field"><span>Nome</span><input type="text" id="p-name" value="${esc(p.name)}" placeholder="Ex.: Série O Sítio — 2ª temporada"></label>
         <label class="field"><span>Cliente</span><input type="text" id="p-client" value="${esc(p.client)}"></label>
-        <label class="field"><span>Idioma do áudio</span><select id="p-src">${langOptions(p.source_lang)}</select></label>
+        <label class="field"><span>Idioma de origem</span><select id="p-src">${langOptions(p.source_lang)}</select></label>
         <label class="field"><span>Idioma da tradução</span><select id="p-dst">${langOptions(p.target_lang)}</select></label>
         <label class="field"><span>Perfil de regras</span><select id="p-profile">${S.state.profiles.map((x) => `<option value="${esc(x.key)}" ${x.key === p.profile_key ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>
         <span></span>
@@ -912,7 +986,10 @@ async function renderSettings() {
       <h2>Avançado</h2>
       <div class="grid-2">
         <label class="field"><span>Modelo de transcrição</span><input type="text" id="s-model" value="${esc(s.transcribe_model)}"></label>
-        <label class="field"><span>Preço por minuto (US$)</span><input type="number" step="0.0001" min="0" id="s-price" value="${s.transcribe_usd_per_min}"></label>
+        <label class="field"><span>Preço por minuto de áudio (US$)</span><input type="number" step="0.0001" min="0" id="s-price" value="${s.transcribe_usd_per_min}"></label>
+        <label class="field"><span>Modelo de tradução</span><input type="text" id="s-tmodel" value="${esc(s.translate_model)}"></label>
+        <label class="field"><span>Preço da tradução (US$ por milhão de tokens: entrada / saída)</span>
+          <div class="row" style="flex-wrap:nowrap"><input type="number" step="0.01" min="0" id="s-tin" value="${s.translate_usd_per_mtok_in}" aria-label="Entrada"><input type="number" step="0.01" min="0" id="s-tout" value="${s.translate_usd_per_mtok_out}" aria-label="Saída"></div></label>
         <label class="field"><span>Trechos enviados ao mesmo tempo</span><input type="number" min="1" max="8" id="s-par" value="${s.parallel_requests}"></label>
         <label class="field"><span>Tempo das palavras</span>
           <select id="s-align">
@@ -968,6 +1045,9 @@ async function renderSettings() {
         await api("PUT", "/api/settings", {
           transcribe_model: document.getElementById("s-model").value.trim(),
           transcribe_usd_per_min: Number(document.getElementById("s-price").value),
+          translate_model: document.getElementById("s-tmodel").value.trim() || "gpt-5.5",
+          translate_usd_per_mtok_in: Number(document.getElementById("s-tin").value),
+          translate_usd_per_mtok_out: Number(document.getElementById("s-tout").value),
           parallel_requests: Number(document.getElementById("s-par").value),
           align: document.getElementById("s-align").value,
           keep_job_days: Number(document.getElementById("s-days").value),

@@ -19,7 +19,7 @@ TEXT_EXT = {".txt", ".docx"}
 TRANSCRIBE, SYNC, TRANSLATE, FORMAT = "transcrever", "sincronizar", "traduzir", "formatar"
 
 # Disponível em cada fase de desenvolvimento.
-IMPLEMENTED = {TRANSCRIBE, FORMAT}
+IMPLEMENTED = {TRANSCRIBE, TRANSLATE, FORMAT}
 
 STEP_ALIASES = {
     "transcribe": TRANSCRIBE, "transcrever": TRANSCRIBE, "t": TRANSCRIBE,
@@ -87,6 +87,9 @@ def build_plan(selected: set[str], inputs: Inputs) -> Plan:
         raise PipelineError("Para transcrever ou sincronizar é preciso enviar o vídeo ou o áudio.")
     if s and not t and not (has_sub or has_text):
         raise PipelineError("Para sincronizar envie também a legenda (.srt) ou o texto (.txt/.docx).")
+    if tr and not t and not s and not has_sub:
+        raise PipelineError("Para traduzir envie a legenda (.srt), ou marque também Transcrever "
+                            "para transcrever o vídeo e depois traduzir.")
     if tr and not t and not (has_sub or has_text):
         raise PipelineError("Para traduzir envie a legenda (.srt), ou marque também Transcrever.")
     if t and (has_sub or has_text) and not s:

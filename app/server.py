@@ -29,6 +29,7 @@ from core.media import probe
 from core.openai_client import delete_api_key, get_api_key, make_client, set_api_key, with_retry
 from core.plan import MEDIA_EXT, SUBTITLE_EXT, TEXT_EXT
 from core.subtitle import read_srt
+from core.translate import detect_language, opposite_language
 
 from . import dialogs
 from .db import Database
@@ -95,14 +96,15 @@ def open_path(path: str, select: bool = False) -> None:
 class App:
     """Estado compartilhado pelo servidor."""
 
-    def __init__(self, db: Database | None = None, transcriber_factory=None):
+    def __init__(self, db: Database | None = None, transcriber_factory=None,
+                 translator_factory=None):
         self.token = secrets.token_urlsafe(24)
         self.cookie_name = "legendas_" + user_id()
         self.db = db or Database()
         self.uploads = data_dir() / UPLOADS_SUBDIR
         self.uploads.mkdir(parents=True, exist_ok=True)
         self.db.mark_interrupted()
-        self.worker = Worker(self.db, self.uploads, transcriber_factory)
+        self.worker = Worker(self.db, self.uploads, transcriber_factory, translator_factory)
         from .editor import EditorManager
         self.editor = EditorManager(self.db)
         self.downloads: dict[str, str] = {}  # idioma -> status do download do modelo
@@ -151,7 +153,7 @@ class App:
             "profiles": self.db.list_profiles(),
             "languages": LANGUAGES,
             "data_dir": str(data_dir()),
-            "phase": {"transcrever": True, "sincronizar": False, "traduzir": False},
+            "phase": {"transcrever": True, "sincronizar": False, "traduzir": True},
         }
 
     def test_key(self) -> dict:
@@ -197,7 +199,9 @@ class App:
                     item["error"] = str(e)
             if p.exists() and item["kind"] == "subtitle":
                 try:
-                    item["cues"] = len(read_srt(p))
+                    cues = read_srt(p)
+                    item["cues"] = len(cues)
+                    item["language"] = detect_language([c.text for c in cues])
                 except Exception:  # noqa: BLE001
                     item["error"] = "Não consegui ler esta legenda."
             out.append(item)
@@ -505,6 +509,8 @@ class Handler(BaseHTTPRequestHandler):
         data = self._body()
         s = Settings.load()
         allowed = {"transcribe_model": str, "transcribe_usd_per_min": float,
+                   "translate_model": str, "translate_usd_per_mtok_in": float,
+                   "translate_usd_per_mtok_out": float,
                    "parallel_requests": int, "align": str, "keep_job_days": int}
         for k, typ in allowed.items():
             if k in data:
@@ -669,7 +675,8 @@ class Handler(BaseHTTPRequestHandler):
     def api_editor_open(self):
         b = self._body()
         return self.app.editor.open(b.get("srt") or None, b.get("video") or None,
-                                    b.get("profile_key") or None, b.get("job_id"))
+                                    b.get("profile_key") or None, b.get("job_id"),
+                                    b.get("original") or None)
 
     @route("GET", r"/api/editor/(\w+)")
     def api_editor_get(self, sid):
@@ -697,6 +704,15 @@ class Handler(BaseHTTPRequestHandler):
     def api_editor_qc(self, sid):
         b = self._body()
         return self.app.editor.qc(sid, b.get("cues", []), b.get("profile_key") or None)
+
+    @route("POST", r"/api/editor/(\w+)/translate")
+    def api_editor_translate(self, sid):
+        b = self._body()
+        inputs, params = self.app.editor.translation_job(sid, b.get("cues", []), b)
+        if b.get("estimate"):
+            return self.app.worker.estimate(params, inputs)
+        jid = self.app.worker.submit(params, inputs)
+        return self.app.job_detail(jid)
 
     @route("POST", r"/api/editor/rewrap")
     def api_editor_rewrap(self):
