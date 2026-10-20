@@ -98,5 +98,14 @@ def main(wav: str, text: str) -> None:
 
 if __name__ == "__main__":
     t0 = time.time()
-    main(sys.argv[1], sys.argv[2])
+    try:
+        main(sys.argv[1], sys.argv[2])
+    except SystemExit:
+        raise
+    except BaseException as e:  # noqa: BLE001
+        import traceback
+        tb = traceback.format_exc().strip().splitlines()
+        msg = " | ".join(tb[-6:]).replace("%", "%25")
+        print(f"::error title=Smoke (depois de {ok[-1] if ok else 'início'})::{type(e).__name__}: {msg}")
+        raise
     print(f"{time.time() - t0:.0f}s")
