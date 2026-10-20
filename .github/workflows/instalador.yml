@@ -1,7 +1,8 @@
 name: Instalador
 
-# Em todo push na main: monta, instala, testa e desinstala (sem guardar o arquivo).
-# Numa tag v*: faz o mesmo e publica o instalador na página de versões (Releases).
+# Em todo push na main: monta, instala, testa e desinstala.
+# Se tudo passar, publica o instalador na página de versões (Releases) como
+# v<versão do core/__init__.py>; a mesma versão é atualizada até o número mudar.
 on:
   push:
     branches: [main]
@@ -77,12 +78,22 @@ jobs:
           if (Test-Path "$env:PUBLIC\Desktop\Legendas.lnk") { throw "desinstalação deixou o atalho" }
           "::notice title=Desinstalação::programa e atalhos removidos"
 
+      - name: Versão
+        id: versao
+        shell: pwsh
+        run: |
+          $v = (python -c "import core; print(core.__version__)").Trim()
+          "v=$v" >> $env:GITHUB_OUTPUT
+
       - name: Publicar versão (página de downloads)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: build/Output/*.exe
-          name: Legendas ${{ github.ref_name }}
+          tag_name: v${{ steps.versao.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          name: Legendas ${{ steps.versao.outputs.v }}
+          make_latest: true
           body: |
             Baixe o **Instalador_Legendas** abaixo e dê dois cliques. Ele instala tudo
             (não precisa de Python nem de mais nada) para todos os perfis do Windows.
