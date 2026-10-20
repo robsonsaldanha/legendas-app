@@ -9,6 +9,13 @@
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+$Stage = "início"
+trap {
+    $msg = "$($_.Exception.Message) [etapa: $Stage, linha $($_.InvocationInfo.ScriptLineNumber)]"
+    if ($env:GITHUB_ACTIONS) { Write-Host "::error title=Montagem do instalador::$msg" }
+    Write-Error $msg
+    exit 1
+}
 
 $PyVersion = "3.12.10"
 $FfmpegZip = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-7.1.zip"
@@ -34,6 +41,7 @@ function Get-File($url, $dest) {
 }
 
 # ---------------------------------------------------------------- Python embutido
+$Stage = "python embutido"
 $embedZip = Join-Path $Dl "python-$PyVersion-embed-amd64.zip"
 Get-File "https://www.python.org/ftp/python/$PyVersion/python-$PyVersion-embed-amd64.zip" $embedZip
 Expand-Archive $embedZip -DestinationPath $Py -Force
@@ -43,7 +51,8 @@ $pth = Get-ChildItem $Py -Filter "python3*._pth" | Select-Object -First 1
 $zipName = (Get-ChildItem $Py -Filter "python3*.zip" | Select-Object -First 1).Name
 @($zipName, ".", "Lib\site-packages", "..", "import site") | Set-Content -Path $pth.FullName -Encoding ascii
 
-# tkinter (janelas "Abrir"/"Salvar como") não vem no Python embutido: copia do Python da máquina de montagem
+# tkinter (janelas
+$Stage = "tkinter" "Abrir"/"Salvar como") não vem no Python embutido: copia do Python da máquina de montagem
 $hostPy = (& python -c "import sys; print(sys.base_prefix)").Trim()
 $hostVer = (& python -c "import sys; print('%d.%d' % sys.version_info[:2])").Trim()
 if ($hostVer -ne "3.12") { throw "O Python da montagem precisa ser 3.12 (encontrado $hostVer)" }
@@ -55,6 +64,7 @@ Copy-Item (Join-Path $hostPy "tcl") (Join-Path $Py "tcl") -Recurse
 Remove-Item (Join-Path $Py "tkinter\test") -Recurse -Force -ErrorAction SilentlyContinue
 
 # ---------------------------------------------------------------- bibliotecas
+$Stage = "bibliotecas"
 $site = Join-Path $Py "Lib\site-packages"
 & python -m pip install --disable-pip-version-check --no-warn-script-location --target $site `
     torch --index-url https://download.pytorch.org/whl/cpu
@@ -69,12 +79,14 @@ Remove-Item (Join-Path $site "torch\include") -Recurse -Force -ErrorAction Silen
 Remove-Item (Join-Path $site "torch\test") -Recurse -Force -ErrorAction SilentlyContinue
 
 # ---------------------------------------------------------------- código do programa
+$Stage = "código"
 Copy-Item (Join-Path $Root "core") (Join-Path $App "core") -Recurse
 Copy-Item (Join-Path $Root "app") (Join-Path $App "app") -Recurse
 Get-ChildItem $App -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
 & python -m compileall -q -f (Join-Path $App "core") (Join-Path $App "app") | Out-Null
 
 # ---------------------------------------------------------------- ffmpeg
+$Stage = "ffmpeg"
 $ffZip = Join-Path $Dl "ffmpeg.zip"
 Get-File $FfmpegZip $ffZip
 $ffDir = Join-Path $Dl "ffmpeg"
@@ -84,11 +96,13 @@ Get-ChildItem $ffDir -Recurse -Include "ffmpeg.exe", "ffprobe.exe" | Copy-Item -
 if (-not (Test-Path (Join-Path $App "bin\ffprobe.exe"))) { throw "ffmpeg não encontrado no pacote" }
 
 # ---------------------------------------------------------------- VC++ e ícone
+$Stage = "vc++ e ícone"
 Get-File $VcRedist (Join-Path $Build "redist\vc_redist.x64.exe")
 & python -m pip install --disable-pip-version-check -q pillow
 & python (Join-Path $PSScriptRoot "make_icon.py") (Join-Path $App "legendas.ico")
 
 # ---------------------------------------------------------------- instalador
+$Stage = "inno setup"
 $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") |
     Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { throw "Inno Setup 6 não encontrado (choco install innosetup)" }
