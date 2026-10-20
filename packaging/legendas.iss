@@ -62,6 +62,8 @@ Filename: "{app}\python\pythonw.exe"; Parameters: "-m app"; WorkingDir: "{app}";
 ; arquivos .pyc gerados em uso; os dados de cada perfil (%APPDATA%\Legendas) são mantidos
 Type: filesandordirs; Name: "{app}\core"
 Type: filesandordirs; Name: "{app}\app"
+Type: filesandordirs; Name: "{app}\python"
+Type: dirifempty; Name: "{app}"
 
 [Code]
 function VCRedistNeeded: Boolean;

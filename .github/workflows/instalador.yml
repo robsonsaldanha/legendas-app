@@ -66,9 +66,12 @@ jobs:
         shell: pwsh
         run: |
           $u = "$env:ProgramFiles\Legendas\unins000.exe"
-          $p = Start-Process $u -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          Start-Sleep -Seconds 3
+          Start-Process $u -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
+          # o desinstalador se copia para a pasta temporária e continua em segundo plano
+          for ($i = 0; $i -lt 90 -and (Test-Path "$env:ProgramFiles\Legendas\python"); $i++) { Start-Sleep -Seconds 2 }
           if (Test-Path "$env:ProgramFiles\Legendas\python") { throw "desinstalação deixou arquivos" }
+          if (Test-Path "$env:PUBLIC\Desktop\Legendas.lnk") { throw "desinstalação deixou o atalho" }
+          "::notice title=Desinstalação::programa e atalhos removidos"
 
       - name: Guardar instalador
         uses: actions/upload-artifact@v4
