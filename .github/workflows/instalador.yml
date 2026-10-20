@@ -1,0 +1,88 @@
+name: Instalador
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  instalador:
+    name: Gerar e testar o instalador (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Cache de downloads
+        uses: actions/cache@v4
+        with:
+          path: build\downloads
+          key: downloads-py3.12.10-ffmpeg7.1-v1
+      - name: Montar programa e gerar instalador
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File packaging\build.ps1
+
+      - name: Instalar (silencioso), como faria no PC dela
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build\Output\Instalador_Legendas_*.exe | Select-Object -First 1
+          "Tamanho do instalador: {0:N0} MB" -f ($exe.Length / 1MB)
+          $p = Start-Process $exe.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-","/TASKS=desktopicon","/LOG=$env:RUNNER_TEMP\setup.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\setup.log" -Tail 40; throw "instalação falhou ($($p.ExitCode))" }
+          if (-not (Test-Path "$env:ProgramFiles\Legendas\python\pythonw.exe")) { throw "programa não instalado" }
+          if (-not (Test-Path "$env:PUBLIC\Desktop\Legendas.lnk")) { throw "atalho da área de trabalho ausente" }
+          if (-not (Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Legendas.lnk")) { throw "atalho do menu Iniciar ausente" }
+          $mb = [math]::Round(((Get-ChildItem "$env:ProgramFiles\Legendas" -Recurse | Measure-Object Length -Sum).Sum / 1MB))
+          "::notice title=Instalador::$($exe.Name) — {0:N0} MB; instalado ocupa $mb MB" -f ($exe.Length / 1MB)
+
+      - name: Sintetizar fala de teste
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $s.SetOutputToWaveFile("$env:RUNNER_TEMP\fala.wav")
+          $s.Speak("The quick brown fox jumps over the lazy dog.")
+          $s.Dispose()
+
+      - name: Testar o programa instalado (Python embutido, sem o Python da máquina)
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ";" | Where-Object { $_ -notmatch "Python|hostedtoolcache|ffmpeg" }) -join ";"
+          $py = "$env:ProgramFiles\Legendas\python\python.exe"
+          & $py packaging\smoke_test.py "$env:RUNNER_TEMP\fala.wav" "The quick brown fox jumps over the lazy dog."
+          if ($LASTEXITCODE) { throw "teste do programa instalado falhou" }
+
+      - name: Desinstalar
+        shell: pwsh
+        run: |
+          $u = "$env:ProgramFiles\Legendas\unins000.exe"
+          $p = Start-Process $u -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          Start-Sleep -Seconds 3
+          if (Test-Path "$env:ProgramFiles\Legendas\python") { throw "desinstalação deixou arquivos" }
+
+      - name: Guardar instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: Instalador_Legendas
+          path: build\Output\*.exe
+          retention-days: 30
+
+      - name: Publicar versão (página de downloads)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Output/*.exe
+          name: Legendas ${{ github.ref_name }}
+          body: |
+            Baixe o **Instalador_Legendas** abaixo e dê dois cliques. Ele instala tudo
+            (não precisa de Python nem de mais nada) para todos os perfis do Windows.
