@@ -510,7 +510,7 @@ class Handler(BaseHTTPRequestHandler):
         s = Settings.load()
         allowed = {"transcribe_model": str, "transcribe_usd_per_min": float,
                    "translate_model": str, "translate_usd_per_mtok_in": float,
-                   "translate_usd_per_mtok_out": float,
+                   "translate_usd_per_mtok_out": float, "translate_method": str,
                    "parallel_requests": int, "align": str, "keep_job_days": int}
         for k, typ in allowed.items():
             if k in data:
@@ -713,6 +713,26 @@ class Handler(BaseHTTPRequestHandler):
             return self.app.worker.estimate(params, inputs)
         jid = self.app.worker.submit(params, inputs)
         return self.app.job_detail(jid)
+
+    @route("POST", r"/api/editor/(\w+)/chat/start")
+    def api_chat_start(self, sid):
+        b = self._body()
+        pid = b.get("project_id")
+        project = self.app.db.get_project(int(pid)) if pid else None
+        glossary = self.app.db.glossary_entries(int(pid)) if pid else []
+        return self.app.editor.chat_start(sid, b.get("cues", []), b, project, glossary)
+
+    @route("GET", r"/api/editor/(\w+)/chat/(\d+)")
+    def api_chat_prompt(self, sid, n):
+        return self.app.editor.chat_prompt(sid, int(n), self.query.get("faltam") == "1")
+
+    @route("POST", r"/api/editor/(\w+)/chat/(\d+)")
+    def api_chat_answer(self, sid, n):
+        return self.app.editor.chat_answer(sid, int(n), self._body().get("text", ""))
+
+    @route("POST", r"/api/editor/(\w+)/chat/finish")
+    def api_chat_finish(self, sid):
+        return self.app.editor.chat_finish(sid)
 
     @route("POST", r"/api/editor/rewrap")
     def api_editor_rewrap(self):

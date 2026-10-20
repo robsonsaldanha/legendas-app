@@ -233,3 +233,59 @@ def test_new_job_translate_from_srt(tserver):
     job = _wait(app, port, job["id"])
     assert job["status"] == "pronto" and job["outputs"]["srt"].endswith("cap.pt-BR.srt")
     assert job["params"]["source_lang_detected"] == "es-419"
+
+
+def test_editor_chat_translation_flow(tserver):
+    app, port, tmp = tserver
+    srt = tmp / "Ep 7.pt-BR.srt"
+    body = "".join(f"{i}\n00:00:{i:02d},000 --> 00:00:{i:02d},900\nFrase número {i}.\n\n" for i in range(1, 6))
+    srt.write_text(body, encoding="utf-8")
+    d = open_editor(app, port, srt=str(srt))
+    st, chat = call(port, "POST", f"/api/editor/{d['sid']}/chat/start",
+                    {"cues": d["cues"], "target_lang": "es-419", "batch_size": 3}, token=app.token)
+    assert st == 200, chat
+    assert [(l["first"], l["last"]) for l in chat["lots"]] == [(1, 3), (4, 5)]
+    st, p1 = call(port, "GET", f"/api/editor/{d['sid']}/chat/1", token=app.token)
+    assert "LOTE 1 de 2" in p1["text"] and p1["ids"] == [1, 2, 3]
+    # resposta do ChatGPT com um item faltando
+    ans = '```json\n{"itens":[{"id":1,"texto":"Frase número 1 ES."},{"id":2,"texto":"Frase número 2 ES."}]}\n```'
+    st, r = call(port, "POST", f"/api/editor/{d['sid']}/chat/1", {"text": ans}, token=app.token)
+    assert r["received"] == 2 and r["missing"] == [3]
+    st, pm = call(port, "GET", f"/api/editor/{d['sid']}/chat/1?faltam=1", token=app.token)
+    assert pm["ids"] == [3]
+    st, r = call(port, "POST", f"/api/editor/{d['sid']}/chat/1",
+                 {"text": '{"itens":[{"id":3,"texto":"Frase 3 ES."}]}'}, token=app.token)
+    assert r["missing"] == []
+    st, r = call(port, "POST", f"/api/editor/{d['sid']}/chat/2", {"text": "não sei"}, token=app.token)
+    assert r["parsed"] == 0
+    st, r = call(port, "POST", f"/api/editor/{d['sid']}/chat/2",
+                 {"text": '```json\n{"itens":[{"id":4,"texto":"Cuatro."}]}\n```'}, token=app.token)
+    assert r["missing"] == [5]
+    st, fin = call(port, "POST", f"/api/editor/{d['sid']}/chat/finish", token=app.token)
+    assert st == 200 and fin["missing"] == [5]
+    out = Path(fin["srt"])
+    assert out.name == "Ep 7.es-419.srt" and out.parent == srt.parent
+    from core.subtitle import read_srt as rs
+    got = rs(out)
+    assert [c.text for c in got] == ["Frase número 1 ES.", "Frase número 2 ES.", "Frase 3 ES.", "Cuatro.", "Frase número 5."]
+    assert got[0].start == 1.0 and got[4].end == 5.9
+    assert "sem_traducao" not in out.read_text(encoding="utf-8-sig")
+    assert "Ficou no idioma original" in out.with_name("Ep 7.es-419.qc.txt").read_text(encoding="utf-8-sig")
+    # abre com o original ao lado
+    r = open_editor(app, port, srt=fin["srt"], original=fin["original"])
+    assert r["cues"][3]["orig"] == "Frase número 4."
+    # concluir de novo regrava o mesmo arquivo (não cria "(2)")
+    st, fin2 = call(port, "POST", f"/api/editor/{d['sid']}/chat/finish", token=app.token)
+    assert fin2["srt"] == fin["srt"]
+
+
+def test_editor_chat_requires_start(tserver):
+    app, port, tmp = tserver
+    srt = tmp / "x.srt"
+    srt.write_text("1\n00:00:01,000 --> 00:00:02,000\nOi\n", encoding="utf-8")
+    d = open_editor(app, port, srt=str(srt))
+    st, err = call(port, "GET", f"/api/editor/{d['sid']}/chat/1", token=app.token)
+    assert st == 409 and "não foi iniciada" in err["error"]
+    st, err = call(port, "POST", f"/api/editor/{d['sid']}/chat/start",
+                   {"cues": d["cues"], "source_lang": "pt-BR", "target_lang": "pt-BR"}, token=app.token)
+    assert st == 400 and "iguais" in err["error"]

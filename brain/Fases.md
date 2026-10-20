@@ -28,7 +28,10 @@
 - [x] Novo trabalho: escolher a legenda já marca Traduzir e o sentido; botão "Traduzir para …"
 - [x] Editor: botão **Traduzir…** (janela com idiomas, projeto, perfil, custo e progresso); a tradução abre no editor com a coluna **Original**
 - [x] Saída ao lado da original (`Nome.es-419.srt`), nunca sobrescreve arquivo que o programa não gerou
-- [ ] Validar a qualidade com legendas reais dela e ajustar o texto das instruções
+- [x] Validada com legenda real dela (400 legendas, PT → ES): ficou boa
+- [x] **Tradução pelo ChatGPT dela, sem API e sem custo** (copiar e colar): o programa divide em partes de 100, copia cada parte já com as instruções, abre o ChatGPT; ela cola, envia e cola a resposta de volta; o programa confere, pede só o que faltou e monta o .srt
+- [x] Novo trabalho e editor deixam escolher "pelo meu ChatGPT" ou "pela API" (lembra a última escolha)
+- [x] Prévia sobre o vídeo aplica <i>, <b>, <u>, <font color> e {\an8}; grade, texto e original mostram as tags
 
 ## Fase 3 — Sincronizar
 (a) texto sem tempo → alinhamento; (b) SRT desalinhado → ffsubsync; (c) texto em outro idioma → transcrever, alinhar e casar frases via LLM.

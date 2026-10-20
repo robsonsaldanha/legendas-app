@@ -19,6 +19,7 @@ function freshDraft() {
     source_lang: "pt-BR",
     target_lang: "es-419",
     detected: null,          // idioma detectado na legenda escolhida
+    method: null,            // "chat" (ChatGPT, sem custo) | "api"
     profile_key: "netflix-es-419",
     out_dir: "",
     context: "",
@@ -47,6 +48,22 @@ async function api(method, path, body) {
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* Legenda como o espectador vê: aplica <i>, <b>, <u> e <font color>, remove outras
+   marcações; {\an8} (e outras posições do alto) sobe a legenda. O texto é escapado
+   antes, então só as tags conhecidas viram HTML. */
+function renderSubHtml(text) {
+  let s = esc(String(text).replace(/\r/g, ""));
+  const top = /\{\\an[789]\}/.test(text);
+  s = s.replace(/\{\\[^}]*\}/g, "");
+  s = s.replace(/&lt;(\/?)(i|b|u)&gt;/gi, (m, slash, tag) => `<${slash}${tag.toLowerCase()}>`);
+  s = s.replace(/&lt;font\s+color=(?:&quot;|&#39;)?(#[0-9a-f]{3,8}|[a-z]+)(?:&quot;|&#39;)?\s*&gt;/gi, (m, c) => `<span style="color:${c}">`);
+  s = s.replace(/&lt;\/font&gt;/gi, "</span>");
+  s = s.replace(/&lt;\/?[a-z][^&]*?&gt;/gi, "");
+  const tmp = document.createElement("div");
+  tmp.innerHTML = s;  // o navegador fecha tags que ficaram abertas
+  return { html: tmp.innerHTML, top };
 }
 
 let toastTimer;
@@ -237,6 +254,12 @@ async function renderNew() {
             ${stepTile("sincronizar", "Sincronizar", "Ajusta os tempos de uma legenda ou texto ao áudio.")}
           </div>
           <p class="muted small" style="margin-top:10px">A formatação (linhas, velocidade de leitura e duração) é feita sempre, no final.</p>
+          <div class="methods" id="f-method" style="margin-top:14px" ${d.steps.traduzir ? "" : "hidden"} role="radiogroup" aria-label="Como traduzir">
+            <label class="method"><input type="radio" name="f-m" value="chat" ${curMethod() === "chat" ? "checked" : ""}>
+              <strong>Traduzir pelo meu ChatGPT</strong><span class="muted small">Sem custo. Você cola as partes no ChatGPT e a resposta aqui.</span></label>
+            <label class="method"><input type="radio" name="f-m" value="api" ${curMethod() === "api" ? "checked" : ""}>
+              <strong>Traduzir pela API</strong><span class="muted small">Automática, com custo na OpenAI.</span></label>
+          </div>
         </section>
 
         <section class="panel">
@@ -366,7 +389,8 @@ function renderSummary() {
       <div>
         <p class="muted small">Custo estimado na OpenAI</p>
         ${est === "loading" ? `<div class="bar indet" style="margin:10px 0"><i></i></div><p class="muted small">Calculando…</p>`
-          : est ? `<p class="cost">${fmtUSD(est.usd)}</p><p class="muted small">${[est.minutes ? `${fmtMin(est.minutes)} de fala` : "", est.cues && steps.includes("traduzir") ? `${est.cues} legendas para traduzir` : ""].filter(Boolean).join(" · ")}</p>`
+          : steps.includes("traduzir") && curMethod() === "chat" && !steps.includes("transcrever") ? `<p class="cost">US$ 0,00</p><p class="muted small">Tradução pelo seu ChatGPT</p>`
+          : est ? `<p class="cost">${fmtUSD(curMethod() === "chat" && steps.includes("traduzir") ? Math.max(0, est.usd - (est.translate_usd || 0)) : est.usd)}</p><p class="muted small">${[est.minutes ? `${fmtMin(est.minutes)} de fala` : "", est.cues && steps.includes("traduzir") ? `${est.cues} legendas para traduzir` : ""].filter(Boolean).join(" · ")}</p>`
           : `<button class="btn" data-action="estimate" ${problem ? "disabled" : ""}>Calcular custo</button>`}
       </div>
       ${problem ? `<p class="note warn small">${esc(problem)}</p>` : ""}
@@ -374,12 +398,18 @@ function renderSummary() {
     </div>`;
 }
 
+function curMethod() {
+  return S.draft.method || getPref("legendas.metodo", S.state?.settings?.translate_method || "chat");
+}
+let PENDING_TRANSLATE = null;  // o editor abre a janela de tradução assim que carregar
+
 function shortLang(code) {
   return { "pt-BR": "Português", "es-419": "Espanhol (LatAm)", "es-ES": "Espanhol (Espanha)", "en-US": "Inglês" }[code] || code;
 }
 function startLabel(steps) {
   const t = steps.includes("transcrever"), tr = steps.includes("traduzir");
   if (t && tr) return "Transcrever e traduzir";
+  if (tr && curMethod() === "chat") return t ? "Transcrever (depois traduzir pelo ChatGPT)" : `Traduzir para ${shortLang(S.draft.target_lang)} pelo ChatGPT`;
   if (tr) return `Traduzir para ${shortLang(S.draft.target_lang)}`;
   if (t) return "Transcrever";
   return "Começar";
@@ -402,6 +432,7 @@ function syncNewForm() {
   document.querySelectorAll("[data-step]").forEach((cb) => { cb.checked = !!d.steps[cb.dataset.step] && !cb.disabled; });
   const dst = document.getElementById("f-dst"); if (dst) dst.disabled = !d.steps.traduzir;
   const sw = document.querySelector('[data-action="swap"]'); if (sw) sw.disabled = !d.steps.traduzir;
+  const fm = document.getElementById("f-method"); if (fm) fm.hidden = !d.steps.traduzir;
   const det = document.getElementById("f-detected"); if (det) det.textContent = d.detected ? "· detectado na legenda" : "";
 }
 
@@ -527,14 +558,32 @@ function bindNew() {
     }
     if (a === "start") {
       b.disabled = true;
+      const steps = currentSteps();
+      const viaChat = steps.includes("traduzir") && curMethod() === "chat";
       try {
-        const job = await api("POST", "/api/jobs", draftPayload());
+        if (viaChat && !steps.includes("transcrever")) {
+          // tradução pelo ChatGPT: abre a legenda no editor com a janela de tradução
+          const sub = d.files.find((f) => f.kind === "subtitle"), media = d.files.find((f) => f.kind === "media");
+          const r = await api("POST", "/api/editor/open", { srt: sub.path, video: media?.path || "", profile_key: "" });
+          PENDING_TRANSLATE = { method: "chat", source: d.source_lang, target: d.target_lang, project_id: d.project_id };
+          location.hash = `#/editor/${r.sid}`;
+          return;
+        }
+        const payload = draftPayload();
+        if (viaChat) {  // transcreve pela API; a tradução vem depois, pelo ChatGPT, no editor
+          payload.params.steps = steps.filter((x) => x !== "traduzir");
+          payload.params.chat_target = d.target_lang;
+        }
+        const job = await api("POST", "/api/jobs", payload);
         S.draft = { ...freshDraft(), project_id: d.project_id, profile_key: d.profile_key, source_lang: d.source_lang, target_lang: d.target_lang, steps: { ...d.steps }, out_dir: d.out_dir };
         location.hash = `#/trabalho/${job.id}`;
       } catch (err) { toast(err.message, true); b.disabled = false; }
     }
   };
 
+  main.querySelectorAll('input[name="f-m"]').forEach((r) => r.addEventListener("change", () => {
+    d.method = r.value; setPref("legendas.metodo", r.value); renderSummary();
+  }));
   main.querySelectorAll("[data-step]").forEach((cb) => cb.addEventListener("change", () => {
     d.steps[cb.dataset.step] = cb.checked;
     syncNewForm(); invalidateEstimate(); renderSummary();
@@ -699,6 +748,11 @@ async function jobActions(e, job) {
       await api("DELETE", `/api/jobs/${job.id}`); location.hash = "#/trabalhos";
     }
     if (a === "open") await api("POST", "/api/open", { path: b.dataset.path });
+    if (a === "editor-chat") {
+      const r = await api("POST", "/api/editor/open", { job_id: job.id });
+      PENDING_TRANSLATE = { method: "chat", target: job.params.chat_target, project_id: job.project_id || "" };
+      location.hash = `#/editor/${r.sid}`;
+    }
     if (a === "editor") {
       const r = await api("POST", "/api/editor/open", { job_id: job.id });
       location.hash = `#/editor/${r.sid}`;
@@ -729,7 +783,8 @@ async function renderResult(job) {
   const srt = res.srt;
   const qc = job.outputs.qc;
   main.innerHTML = jobHead(job, `
-      <button class="btn primary" data-action="editor" ${res.exists ? "" : "disabled"}>Abrir no editor</button>
+      ${job.params.chat_target ? `<button class="btn primary" data-action="editor-chat" ${res.exists ? "" : "disabled"}>Traduzir pelo ChatGPT</button>` : ""}
+      <button class="btn ${job.params.chat_target ? "" : "primary"}" data-action="editor" ${res.exists ? "" : "disabled"}>Abrir no editor</button>
       <button class="btn" data-action="open" data-path="${esc(srt)}" ${res.exists ? "" : "disabled"}>Abrir em outro programa</button>
       <button class="btn" data-action="show" data-path="${esc(srt)}" ${res.exists ? "" : "disabled"}>Mostrar na pasta</button>`)
     + `
@@ -785,7 +840,7 @@ async function renderResult(job) {
     const chars = c.lines.join(" ").length;
     scr.innerHTML = `<div class="safe"></div><span class="tc">${fmtTC(c.start)}</span>
       <div class="flags">${iss.map((i) => `<span class="${i.severity === "erro" ? "e" : ""}">${esc(ISSUE_SHORT[i.code] || i.code)}</span>`).join("")}</div>
-      <div class="sub">${c.lines.map((l) => `<div>${esc(l)}</div>`).join("")}</div>`;
+      ${(() => { const r = renderSubHtml(c.lines.join("\n")); return `<div class="sub${r.top ? " top" : ""}"><div class="cue">${r.html}</div></div>`; })()}`;
     meta.innerHTML = `<span>Legenda ${c.n} de ${res.cues.length}</span><span class="tnum">${nf1.format(dur)} s · ${chars} caracteres · ${nf1.format(dur > 0 ? chars / dur : 0)} CPS</span>`;
   };
   const select = (n, scroll = true) => {

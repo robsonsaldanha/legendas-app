@@ -272,6 +272,10 @@ async function renderEditor(sid) {
   loadPeaks();
   drawAll();
   selectCue(0, { seek: false });
+  if (typeof PENDING_TRANSLATE !== "undefined" && PENDING_TRANSLATE) {
+    const o = PENDING_TRANSLATE; PENDING_TRANSLATE = null;
+    setTimeout(() => openTranslate(o), 50);
+  }
 }
 
 /* ---------------------------------------------------- abrir arquivos */
@@ -324,7 +328,7 @@ function curTime() { return ED.vt ?? vid()?.currentTime ?? 0; }
 function setupVideo(media) {
   const v = vid(), msg = document.getElementById("ed-vmsg");
   const show = (html) => { msg.hidden = false; msg.innerHTML = html; };
-  if (!ED.video) { show("Sem vídeo. Abra o vídeo junto com a legenda para ver a imagem e a forma de onda."); return; }
+  if (!ED.video) { show("Sem vídeo. Abra o vídeo junto com a legenda para ver a imagem e a forma de onda."); msg.classList.add("novideo"); return; }
   const apply = (m) => {
     if (m.status === "pronto") {
       msg.hidden = true;
@@ -409,8 +413,10 @@ function tick(fromVideo = false) {
   // legenda sobre o vídeo
   const active = ED.cues.filter((c) => c.start <= t + 1e-4 && t < c.end);
   const sub = document.getElementById("ed-sub");
-  const html = active.map((c) => c.text.split("\n").map((l) => `<div>${esc(l)}</div>`).join("")).join("");
+  const rendered = active.map((c) => renderSubHtml(c.text));
+  const html = rendered.map((r) => `<div class="cue">${r.html}</div>`).join("");
   if (sub.innerHTML !== html) sub.innerHTML = html;
+  sub.classList.toggle("top", rendered.some((r) => r.top));
   // seguir a reprodução
   const v = vid();
   if (fromVideo && v && !v.paused) {
@@ -638,102 +644,221 @@ function act(name) {
 
 /* ============================================================ tradução */
 
-async function openTranslate() {
+/* Abre (ou só traz para frente) a aba do ChatGPT, sem recarregar a conversa aberta. */
+function openChatGPT() {
+  let w = null;
+  try { w = window.open("", "legendas-chatgpt"); } catch {}
+  let blank = true;
+  try { blank = !w || w.location.href === "about:blank"; } catch { blank = false; }  // outra origem: já está aberta
+  if (blank) w = window.open("https://chatgpt.com/", "legendas-chatgpt");
+  try { w && w.focus(); } catch {}
+}
+
+function getPref(k, d) { try { return localStorage.getItem(k) || d; } catch { return d; } }
+function setPref(k, v) { try { localStorage.setItem(k, v); } catch {} }
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch {}
+  ta.remove();
+  return ok;
+}
+
+/* opts.method: "chat" | "api"; opts.target, opts.project_id: valores iniciais */
+async function openTranslate(opts = {}) {
   if (!ED.cues.length) { toast("Não há legendas para traduzir.", true); return; }
   if (!S.projects?.length) { try { await loadProjects(); } catch {} }
-  const src = ED.detected || ED.language || "pt-BR";
-  const dst = ED.suggested || (src.startsWith("es") ? "pt-BR" : "es-419");
+  const src = opts.source || ED.detected || ED.language || "pt-BR";
+  const dst = opts.target || ED.suggested || (src.startsWith("es") ? "pt-BR" : "es-419");
+  const method = opts.method || getPref("legendas.metodo", S.state?.settings?.translate_method || "chat");
   const profFor = (lang) => (lang.startsWith("pt") ? "netflix-pt-br" : "netflix-es-419");
   const ov = document.createElement("div");
   ov.className = "modal-bg";
   ov.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="tr-title">
+    <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="tr-title">
       <h2 id="tr-title">Traduzir esta legenda</h2>
-      <p class="muted small">${ED.cues.length} legendas. Os tempos ficam iguais; o texto é traduzido e ajustado às regras do perfil. A legenda original não é alterada: a tradução vira um arquivo novo, ao lado dela.</p>
-      <div class="langs">
-        <label class="field"><span>De</span><select id="tr-src">${langOptions(src)}</select></label>
-        <button class="btn icon swap" data-tr="swap" title="Inverter idiomas" aria-label="Inverter idiomas">⇄</button>
-        <label class="field"><span>Para</span><select id="tr-dst">${langOptions(dst)}</select></label>
+      <div id="tr-setup" class="stack">
+        <p class="muted small">${ED.cues.length} legendas. Os tempos ficam iguais e a legenda original não é alterada: a tradução vira um arquivo novo, ao lado dela.</p>
+        <div class="methods" role="radiogroup" aria-label="Como traduzir">
+          <label class="method"><input type="radio" name="tr-m" value="chat" ${method === "chat" ? "checked" : ""}>
+            <strong>Pelo meu ChatGPT</strong><span class="muted small">Sem custo. Você cola cada parte no ChatGPT e cola a resposta aqui.</span></label>
+          <label class="method"><input type="radio" name="tr-m" value="api" ${method === "api" ? "checked" : ""}>
+            <strong>Automática (API)</strong><span class="muted small" id="tr-cost">Sem trabalho manual. Custo na OpenAI.</span></label>
+        </div>
+        <div class="langs">
+          <label class="field"><span>De</span><select id="tr-src">${langOptions(src)}</select></label>
+          <button class="btn icon swap" data-tr="swap" title="Inverter idiomas" aria-label="Inverter idiomas">⇄</button>
+          <label class="field"><span>Para</span><select id="tr-dst">${langOptions(dst)}</select></label>
+        </div>
+        <p class="muted small">${ED.detected ? `Idioma detectado na legenda: ${esc(shortLang(ED.detected))}.` : ""}</p>
+        <div class="grid-2">
+          <label class="field"><span>Projeto (glossário e instruções)</span>
+            <select id="tr-project"><option value="">Sem projeto</option>${(S.projects || []).map((p) => `<option value="${p.id}" ${String(p.id) === String(opts.project_id || "") ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
+          <label class="field"><span>Perfil de regras</span>
+            <select id="tr-profile">${S.state.profiles.map((p) => `<option value="${esc(p.key)}" ${p.key === profFor(dst) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
+        </div>
       </div>
-      <p class="muted small" id="tr-detected">${ED.detected ? `Idioma detectado na legenda: ${esc(shortLang(ED.detected))}.` : ""}</p>
-      <div class="grid-2">
-        <label class="field"><span>Projeto (glossário e instruções)</span>
-          <select id="tr-project"><option value="">Sem projeto</option>${(S.projects || []).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select></label>
-        <label class="field"><span>Perfil de regras</span>
-          <select id="tr-profile">${S.state.profiles.map((p) => `<option value="${esc(p.key)}" ${p.key === profFor(dst) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
-      </div>
-      <div id="tr-body"><p class="muted small" id="tr-cost">Calculando o custo…</p></div>
-      <div class="row modal-actions">
+      <div id="tr-body"></div>
+      <div class="row modal-actions" id="tr-actions">
         <button class="btn" data-tr="close">Cancelar</button>
-        <button class="btn primary" data-tr="go">Traduzir agora</button>
+        <button class="btn primary" data-tr="go">Começar</button>
       </div>
     </div>`;
   document.body.appendChild(ov);
   const $ = (id) => ov.querySelector(id);
-  const opts = () => ({ source_lang: $("#tr-src").value, target_lang: $("#tr-dst").value,
+  const chosen = () => ov.querySelector('input[name="tr-m"]:checked').value;
+  const opt = () => ({ source_lang: $("#tr-src").value, target_lang: $("#tr-dst").value,
     profile_key: $("#tr-profile").value, project_id: $("#tr-project").value ? Number($("#tr-project").value) : null, cues: ED.cues });
-  let jobId = null, timer = null;
-  const close = () => { clearInterval(timer); ov.remove(); document.removeEventListener("keydown", esc_); };
-  const esc_ = (e) => { if (e.key === "Escape" && !jobId) close(); };
-  document.addEventListener("keydown", esc_);
+  let busy = false, timer = null, jobId = null;
+  const close = () => { clearInterval(timer); ov.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape" && !busy) close(); };
+  document.addEventListener("keydown", onKey);
+
   const estimate = async () => {
     const c = $("#tr-cost"); if (!c) return;
-    if ($("#tr-src").value === $("#tr-dst").value) { c.textContent = "Escolha idiomas diferentes."; $('[data-tr="go"]').disabled = true; return; }
+    if ($("#tr-src").value === $("#tr-dst").value) { $('[data-tr="go"]').disabled = true; return; }
     $('[data-tr="go"]').disabled = false;
     try {
-      const r = await api("POST", `/api/editor/${ED.sid}/translate`, { ...opts(), estimate: true });
-      c.innerHTML = `Custo estimado na OpenAI: <b>${fmtUSD(r.usd)}</b>`;
-    } catch (e) { c.textContent = e.message; }
+      const r = await api("POST", `/api/editor/${ED.sid}/translate`, { ...opt(), estimate: true });
+      c.innerHTML = `Sem trabalho manual. Custo estimado: <b>${fmtUSD(r.usd)}</b>.`;
+    } catch { /* sem chave, por exemplo: o texto padrão fica */ }
   };
   const syncProfile = () => { const p = profFor($("#tr-dst").value); if ([...$("#tr-profile").options].some((o) => o.value === p)) $("#tr-profile").value = p; };
   $("#tr-src").addEventListener("change", estimate);
   $("#tr-dst").addEventListener("change", () => { syncProfile(); estimate(); });
   estimate();
-  $("#tr-dst").focus();
+
+  const openResult = async (r) => {
+    const o = await api("POST", "/api/editor/open", { srt: r.srt, video: ED.video, original: r.original, profile_key: r.profile_key });
+    ED.dirty = false;
+    close();
+    toast(r.missing?.length ? `Tradução aberta. ${r.missing.length} legenda(s) ficaram no original: revise as marcadas.` : "Tradução aberta no editor. A coluna Original mostra o texto de partida.");
+    location.hash = `#/editor/${o.sid}`;
+  };
+
+  /* ---------------------------------------------------------- pela API */
+  const runApi = async () => {
+    const job = await api("POST", `/api/editor/${ED.sid}/translate`, opt());
+    jobId = job.id;
+    $('[data-tr="close"]').textContent = "Cancelar tradução";
+    $('[data-tr="go"]').hidden = true;
+    $("#tr-body").innerHTML = `<p id="tr-msg">Na fila…</p><div class="bar" style="margin-top:8px"><i id="tr-bar" style="width:0%"></i></div><p class="muted small" id="tr-count" style="margin-top:6px"></p>`;
+    timer = setInterval(async () => {
+      let j; try { j = await api("GET", `/api/jobs/${jobId}`); } catch { return; }
+      const v = j.live?.steps?.traduzir;
+      if (j.live?.message) $("#tr-msg").textContent = j.live.message;
+      if (v && v[1]) { $("#tr-bar").style.width = `${Math.round((v[0] / v[1]) * 100)}%`; $("#tr-count").textContent = `${v[0]} de ${v[1]} legendas`; }
+      if (j.status === "pronto") {
+        clearInterval(timer);
+        await openResult({ srt: j.outputs.srt, original: j.outputs.original, profile_key: j.params.profile_key });
+      } else if (["erro", "cancelado", "interrompido"].includes(j.status)) {
+        clearInterval(timer); busy = false;
+        $("#tr-msg").innerHTML = `<span class="note err" style="display:block">${esc(j.error || "A tradução foi interrompida.")}</span>`;
+        $('[data-tr="close"]').textContent = "Fechar";
+        jobId = null;
+      }
+    }, 1000);
+  };
+
+  /* ------------------------------------------------- pelo ChatGPT */
+  let chat = null, cur = 1, chatOpened = false;
+  const drawChat = (note = "") => {
+    const lot = chat.lots[cur - 1];
+    const doneLots = chat.lots.filter((l) => l.missing.length === 0).length;
+    const pct = Math.round((chat.done / chat.total) * 100);
+    $("#tr-body").innerHTML = `
+      <div class="chatflow">
+        <div class="row" style="justify-content:space-between">
+          <strong>Parte ${cur} de ${chat.lots.length} <span class="muted small">· legendas ${lot.first} a ${lot.last}</span></strong>
+          <span class="muted small tnum">${chat.done} de ${chat.total} traduzidas</span>
+        </div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <ol class="chatsteps">
+          <li><button class="btn primary" data-tr="copy">${cur === 1 && !chatOpened ? "Copiar parte 1 e abrir o ChatGPT" : `Copiar parte ${cur}`}</button>
+            <span class="muted small">${cur === 1 ? "No ChatGPT, comece uma <b>conversa nova</b>, cole com Ctrl+V e envie." : "Cole na <b>mesma conversa</b> do ChatGPT e envie."}</span></li>
+          <li><span>Quando o ChatGPT terminar, clique no botão de copiar do bloco de código da resposta e cole aqui:</span>
+            <textarea id="tr-ans" class="paste" placeholder="Clique aqui e aperte Ctrl+V"></textarea></li>
+        </ol>
+        <p id="tr-note" class="small">${note}</p>
+        <div class="lots">${chat.lots.map((l) => `<span class="lot ${l.missing.length === 0 ? "ok" : l.received ? "part" : ""} ${l.n === cur ? "cur" : ""}" title="Legendas ${l.first}–${l.last}">${l.n}</span>`).join("")}</div>
+        <p class="muted small"><button class="btn link small" data-tr="openchat">Abrir o ChatGPT</button> · ${doneLots === chat.lots.length ? "" : `<button class="btn link small" data-tr="finish-now">Concluir assim mesmo (o que faltar fica no original)</button>`}</p>
+      </div>`;
+    const ta = $("#tr-ans");
+    ta.addEventListener("paste", () => setTimeout(() => submitAnswer(ta.value), 0));
+    ta.addEventListener("input", () => { clearTimeout(ta._t); ta._t = setTimeout(() => submitAnswer(ta.value), 900); });
+  };
+  const submitAnswer = async (text) => {
+    if (!text.trim()) return;
+    const n = $("#tr-note");
+    try {
+      const r = await api("POST", `/api/editor/${ED.sid}/chat/${cur}`, { text });
+      chat.lots[cur - 1] = { ...chat.lots[cur - 1], received: r.received, missing: r.missing };
+      chat.done = r.done;
+      if (r.parsed === 0) {
+        n.className = "small note warn";
+        n.textContent = "Não reconheci a resposta. No ChatGPT, use o botão de copiar do bloco de código (canto do bloco) e cole aqui de novo.";
+        return;
+      }
+      if (r.missing.length) {
+        drawChat(`<span class="note warn" style="display:block">Vieram ${r.received} de ${r.count}. Faltaram ${r.missing.length} (${r.missing.slice(0, 8).join(", ")}${r.missing.length > 8 ? "…" : ""}).
+          <button class="btn small" data-tr="copy-missing">Copiar pedido das que faltaram</button></span>`);
+        return;
+      }
+      const next = chat.lots.find((l) => l.missing.length > 0);
+      if (!next) { await finishChat(); return; }
+      cur = next.n;
+      drawChat(`<span class="note ok" style="display:block">Parte recebida. Agora copie a parte ${cur} e cole na mesma conversa.</span>`);
+    } catch (e) { n.className = "small note err"; n.textContent = e.message; }
+  };
+  const finishChat = async () => {
+    $("#tr-body").innerHTML = `<p>Montando a legenda traduzida…</p><div class="bar indet"><i></i></div>`;
+    const r = await api("POST", `/api/editor/${ED.sid}/chat/finish`);
+    await openResult(r);
+  };
+  const runChat = async () => {
+    chat = await api("POST", `/api/editor/${ED.sid}/chat/start`, opt());
+    cur = 1;
+    $("#tr-setup").hidden = true;
+    $('[data-tr="go"]').hidden = true;
+    $('[data-tr="close"]').textContent = "Cancelar";
+    drawChat(chat.lots.length > 1 ? `São ${chat.lots.length} partes. Mande todas na mesma conversa do ChatGPT.` : "");
+  };
 
   ov.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-tr]");
-    if (e.target === ov && !jobId) return close();
+    if (e.target === ov && !busy) return close();
     if (!b) return;
-    if (b.dataset.tr === "close") {
-      if (jobId) { await api("POST", `/api/jobs/${jobId}/cancel`).catch(() => {}); }
-      return close();
-    }
-    if (b.dataset.tr === "swap") {
-      const a = $("#tr-src").value; $("#tr-src").value = $("#tr-dst").value; $("#tr-dst").value = a;
-      syncProfile(); estimate(); return;
-    }
-    if (b.dataset.tr === "go") {
-      b.disabled = true;
-      ov.querySelectorAll("select, [data-tr=swap]").forEach((x) => (x.disabled = true));
-      try {
-        const job = await api("POST", `/api/editor/${ED.sid}/translate`, opts());
-        jobId = job.id;
-        $('[data-tr="close"]').textContent = "Cancelar tradução";
-        $("#tr-body").innerHTML = `<p id="tr-msg">Na fila…</p><div class="bar" style="margin-top:8px"><i id="tr-bar" style="width:0%"></i></div><p class="muted small" id="tr-count" style="margin-top:6px"></p>`;
-        timer = setInterval(async () => {
-          let j; try { j = await api("GET", `/api/jobs/${jobId}`); } catch { return; }
-          const v = j.live?.steps?.traduzir;
-          if (j.live?.message) $("#tr-msg").textContent = j.live.message;
-          if (v && v[1]) { $("#tr-bar").style.width = `${Math.round((v[0] / v[1]) * 100)}%`; $("#tr-count").textContent = `${v[0]} de ${v[1]} legendas`; }
-          if (j.status === "pronto") {
-            clearInterval(timer);
-            $("#tr-bar").style.width = "100%";
-            $("#tr-msg").textContent = `Tradução pronta: ${j.outputs.srt.split(/[\\/]/).pop()}`;
-            $("#tr-count").textContent = `${j.issues || 0} ${j.issues === 1 ? "legenda precisa" : "legendas precisam"} de revisão · custo ${fmtUSD(j.usd)}`;
-            const r = await api("POST", "/api/editor/open", { srt: j.outputs.srt, video: ED.video, original: j.outputs.original, profile_key: j.params.profile_key });
-            ED.dirty = false;
-            close();
-            toast("Tradução aberta no editor. A coluna Original mostra o texto de partida.");
-            location.hash = `#/editor/${r.sid}`;
-          } else if (["erro", "cancelado", "interrompido"].includes(j.status)) {
-            clearInterval(timer);
-            $("#tr-msg").innerHTML = `<span class="note err" style="display:block">${esc(j.error || "A tradução foi interrompida.")}</span>`;
-            $('[data-tr="close"]').textContent = "Fechar";
-            jobId = null;
-          }
-        }, 1000);
-      } catch (err) { toast(err.message, true); b.disabled = false; ov.querySelectorAll("select, [data-tr=swap]").forEach((x) => (x.disabled = false)); }
+    const a = b.dataset.tr;
+    try {
+      if (a === "close") {
+        if (jobId) await api("POST", `/api/jobs/${jobId}/cancel`).catch(() => {});
+        if (chat && chat.done > 0 && !confirm("Cancelar a tradução? As partes já recebidas serão descartadas.")) return;
+        return close();
+      }
+      if (a === "swap") { const x = $("#tr-src").value; $("#tr-src").value = $("#tr-dst").value; $("#tr-dst").value = x; syncProfile(); estimate(); return; }
+      if (a === "go") {
+        b.disabled = true; busy = true;
+        setPref("legendas.metodo", chosen());
+        if (chosen() === "chat") await runChat(); else { ov.querySelectorAll("#tr-setup select, #tr-setup input, [data-tr=swap]").forEach((x) => (x.disabled = true)); await runApi(); }
+        return;
+      }
+      if (a === "copy" || a === "copy-missing") {
+        const p = await api("GET", `/api/editor/${ED.sid}/chat/${cur}${a === "copy-missing" ? "?faltam=1" : ""}`);
+        const ok = await copyText(p.text);
+        if (!chatOpened && a === "copy") { openChatGPT(); chatOpened = true; }
+        toast(ok ? `Parte ${cur} copiada${a === "copy-missing" ? " (só as que faltaram)" : ""}. Cole no ChatGPT com Ctrl+V.` : "Não consegui copiar automaticamente. Tente de novo.", !ok);
+        const ta = $("#tr-ans"); if (ta) { ta.value = ""; }
+        if (a === "copy" && cur === 1) b.textContent = "Copiar parte 1 de novo";
+        return;
+      }
+      if (a === "openchat") { openChatGPT(); chatOpened = true; return; }
+      if (a === "finish-now") { if (confirm("Concluir com as partes recebidas? O que faltar fica no idioma original, marcado para revisão.")) await finishChat(); return; }
+    } catch (err) {
+      toast(err.message, true);
+      if (a === "go") { b.disabled = false; busy = false; }
     }
   });
 }

@@ -409,3 +409,130 @@ def output_name(source_srt: Path, target: str) -> str:
     stem = source_srt.stem
     stem = re.sub(r"\.(pt|es|en)([-_][A-Za-z0-9]{2,3})?$", "", stem, flags=re.IGNORECASE)
     return f"{stem}.{target}.srt"
+
+
+# ================================================== modo ChatGPT (copiar e colar)
+#
+# Sem API: o programa prepara as mensagens, a usuária cola no ChatGPT dela, envia e
+# cola a resposta de volta. Todas as mensagens de um episódio vão na mesma conversa,
+# então o próprio ChatGPT guarda o contexto (nomes, tratamento) entre os lotes.
+
+CHAT_BATCH = 100
+
+_CHAT_FORMAT = """FORMATO DA RESPOSTA (muito importante)
+- Responda SOMENTE com um bloco de código ```json, sem nenhum texto antes ou depois.
+- Dentro dele: {"itens": [{"id": 1, "texto": "..."}, ...]} com TODOS os ids do lote, na ordem.
+- Quebra de linha dentro de uma legenda: use \\n dentro do texto."""
+
+
+@dataclass
+class ChatLot:
+    n: int                 # 1, 2, 3...
+    ids: list[int]
+
+    @property
+    def first(self) -> int:
+        return self.ids[0]
+
+    @property
+    def last(self) -> int:
+        return self.ids[-1]
+
+
+def plan_chat_lots(n_cues: int, size: int = CHAT_BATCH) -> list[ChatLot]:
+    ids = list(range(1, n_cues + 1))
+    return [ChatLot(k + 1, ids[i:i + size]) for k, i in enumerate(range(0, n_cues, size))]
+
+
+def _chat_data(cues: list[Cue], ids: list[int], profile: Profile, after: int = 4) -> str:
+    last = ids[-1]
+    payload = {
+        "traduzir": [{"id": i, "texto": "\n".join(cues[i - 1].lines),
+                      "max_caracteres": max_chars_for(cues[i - 1], profile)} for i in ids],
+        "seguintes_so_contexto": [{"id": i, "texto": cues[i - 1].text}
+                                  for i in range(last + 1, min(len(cues), last + after) + 1)],
+    }
+    # um item por linha: fica legível na conversa e curto
+    def block(items):
+        return "[\n" + ",\n".join(json.dumps(x, ensure_ascii=False, separators=(",", ":"))
+                                   for x in items) + "\n]"
+    return ('{"traduzir": ' + block(payload["traduzir"]) + ',\n"seguintes_so_contexto": '
+            + block(payload["seguintes_so_contexto"]) + "}")
+
+
+def chat_message(cues: list[Cue], lots: list[ChatLot], n: int, source: str, target: str,
+                 profile: Profile, glossary: list[Entry] | None = None, instructions: str = "",
+                 context: str = "", only_ids: list[int] | None = None) -> str:
+    """Texto que a usuária cola no ChatGPT para o lote `n` (ou só os ids que faltaram)."""
+    lot = lots[n - 1]
+    ids = only_ids or lot.ids
+    data = _chat_data(cues, ids, profile)
+    total = len(lots)
+    if only_ids:
+        head = (f"Na sua resposta do LOTE {n} faltaram {len(ids)} legendas. Traduza só estas, "
+                f"com as mesmas regras e o mesmo formato (bloco ```json com \"itens\").")
+    elif n == 1:
+        system = build_system_prompt(source, target, profile, glossary or [], instructions, context)
+        system = system.split("\nFORMATO\n")[0].rstrip()
+        head = (f"{system}\n\n{_CHAT_FORMAT}\n\nVou mandar a legenda em {total} lote(s), nesta mesma "
+                f"conversa. Em \"seguintes_so_contexto\" vão as próximas legendas só para você entender "
+                f"a frase que continua; NÃO as traduza ainda.\n\nLOTE 1 de {total} "
+                f"(legendas {lot.first} a {lot.last}):")
+    else:
+        head = (f"LOTE {n} de {total} (legendas {lot.first} a {lot.last}). Mesmas regras e mesmo "
+                f"formato. Mantenha nomes, tratamento e termos coerentes com os lotes anteriores. "
+                f"Responda só com o bloco ```json.")
+    return f"{head}\n\n```json\n{data}\n```"
+
+
+_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+_LINE = re.compile(r'^\s*\[?"?(\d+)"?\]?\s*[|:=\-–]\s*(.+?)\s*$')
+
+
+def _loads_lenient(raw: str):
+    raw = raw.strip()
+    try:
+        return json.loads(raw)
+    except ValueError:
+        pass
+    fixed = re.sub(r",\s*([}\]])", r"\1", raw)          # vírgula sobrando
+    fixed = fixed.replace("“", '"').replace("”", '"')   # aspas "inteligentes"
+    try:
+        return json.loads(fixed)
+    except ValueError:
+        return None
+
+
+def parse_chat_answer(text: str, expected: list[int]) -> dict[int, str]:
+    """Lê a resposta colada do ChatGPT. Aceita o bloco ```json, JSON solto ou linhas 'id | texto'."""
+    wanted = set(expected)
+    candidates = [m.group(1) for m in _FENCE.finditer(text)]
+    if not candidates:
+        a, b = text.find("{"), text.rfind("}")
+        if a != -1 and b > a:
+            candidates.append(text[a:b + 1])
+        a, b = text.find("["), text.rfind("]")
+        if a != -1 and b > a:
+            candidates.append(text[a:b + 1])
+    got: dict[int, str] = {}
+    for raw in candidates:
+        data = _loads_lenient(raw)
+        items = data.get("itens") or data.get("items") if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            continue
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            try:
+                i = int(it.get("id"))
+            except (TypeError, ValueError):
+                continue
+            t = _clean(str(it.get("texto") or it.get("text") or "").replace("\\n", "\n"))
+            if i in wanted and t:
+                got[i] = t
+    if not got:  # formato em linhas
+        for line in text.splitlines():
+            m = _LINE.match(line)
+            if m and int(m.group(1)) in wanted:
+                got[int(m.group(1))] = _clean(m.group(2).replace("\\n", "\n").replace(" / ", "\n"))
+    return got

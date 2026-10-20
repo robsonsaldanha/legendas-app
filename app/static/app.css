@@ -244,7 +244,8 @@ input:disabled, select:disabled { background: var(--panel-2); color: var(--muted
   font: 500 clamp(14px, 4.1cqi, 30px)/1.25 Arial, "Helvetica Neue", sans-serif;
   text-shadow: 0 0 3px #000, 0 2px 2px #000, 0 0 1px #000;
 }
-.sub div { white-space: pre; }
+.sub .cue { white-space: pre-line; }
+.screen .sub.top { position: absolute; top: 6%; left: 6%; right: 6%; }
 .screen .safe {
   position: absolute; inset: 5% 10%; border: 1px dashed rgba(255,255,255,.08); border-radius: 2px; pointer-events: none;
 }
@@ -384,7 +385,8 @@ body.editor-mode .main { padding: 0; max-width: none; height: 100vh; overflow: h
   color: #fff; font: 500 var(--subsize, 22px)/1.22 Arial, "Helvetica Neue", sans-serif;
   text-shadow: 0 0 3px #000, 0 2px 2px #000, 0 0 1px #000;
 }
-.vsub div { white-space: pre; }
+.vsub .cue { white-space: pre-line; }
+.vsub.top { bottom: auto; top: 6%; }
 .vmsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; color: #C9D3DC; font-size: 14px; line-height: 1.6; background: rgba(0,0,0,.6); }
 
 /* edição */
@@ -461,3 +463,25 @@ body.editor-mode .main { padding: 0; max-width: none; height: 100vh; overflow: h
 .ed-orig #ed-origtxt { font-size: 14px; color: var(--muted); line-height: 1.3; }
 .grid .c-o { color: var(--muted); }
 .ed-text textarea { min-height: 64px; }
+
+/* ------------------------------------------------ tradução pelo ChatGPT */
+.modal.wide { width: min(680px, 100%); max-height: 92vh; overflow: auto; }
+.methods { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.method { position: relative; display: flex; flex-direction: column; gap: 2px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--radius-m); padding: 12px 12px 12px 40px; }
+.method input { position: absolute; left: 12px; top: 14px; width: 18px; height: 18px; accent-color: var(--accent); }
+.method:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.chatflow { display: flex; flex-direction: column; gap: 12px; }
+.chatsteps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 12px; }
+.chatsteps li { display: flex; flex-direction: column; gap: 6px; }
+.chatsteps li .btn { align-self: flex-start; }
+textarea.paste { min-height: 96px; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; }
+.lots { display: flex; flex-wrap: wrap; gap: 6px; }
+.lot { min-width: 28px; height: 24px; padding: 0 6px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-variant-numeric: tabular-nums; border: 1px solid var(--line); color: var(--muted); }
+.lot.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.lot.part { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.lot.cur { box-shadow: 0 0 0 2px var(--accent); }
+@media (max-width: 640px) { .methods { grid-template-columns: 1fr; } }
+
+.vmsg.novideo { inset: 0 0 auto 0; padding: 12px 16px; background: none; font-size: 13px; color: #8696A5; }

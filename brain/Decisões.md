@@ -55,6 +55,13 @@
 - Contexto por lote: 15 anteriores já traduzidas (consistência de nomes e tratamento) + 6 seguintes (frases que continuam). Lotes em sequência, não em paralelo, por causa dessa consistência.
 - Pelo editor, o que é traduzido é o que está na tela (inclusive alterações não salvas); a legenda dela não é alterada.
 
+## 2026-10-20 — Tradução pelo ChatGPT (copiar e colar), sem automatizar o site
+- Pedido: usar a assinatura do ChatGPT em vez da API, para não ter custo, sem violar os termos.
+- Automatizar o site do ChatGPT (ou do Claude.ai) a partir do programa foi descartado: os termos da OpenAI proíbem extrair respostas de forma automática/programada, e a Anthropic proíbe usar a assinatura em apps de terceiros; risco de bloqueio da conta, além de quebrar com mudanças no site e verificações anti-robô.
+- Solução: a usuária é quem envia as mensagens no ChatGPT. O programa prepara cada parte (instruções completas na 1ª, só os dados nas seguintes — a própria conversa guarda o contexto), copia para a área de transferência, abre/foca a aba do ChatGPT sem recarregar a conversa, lê a resposta colada (bloco ```json, JSON solto, linhas "id | texto", aspas tortas, vírgulas sobrando), confere ids, pede só os que faltaram e monta o .srt igual ao da API.
+- Partes de 100 legendas: um episódio de 400 legendas = 4 idas e voltas.
+- Transcrição continua pela API; sincronização roda localmente (sem chat nem API).
+
 ## 2026-10-20 — Instalador: Python embutido (não PyInstaller)
 - Pedido: o instalador traz tudo; a usuária não instala Python nem nada.
 - Escolha: Python 3.12 embeddable oficial + bibliotecas instaladas em `python\Lib\site-packages`. Com torch é mais previsível que PyInstaller (sem "hooks", sem detecção de importações), e o código continua igual ao de desenvolvimento.

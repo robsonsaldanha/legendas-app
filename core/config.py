@@ -109,6 +109,8 @@ class Settings:
     translate_usd_per_mtok_in: float = 5.0
     translate_usd_per_mtok_out: float = 30.0
     translate_batch: int = 80
+    # "chat": pelo ChatGPT da usuária (copiar e colar, sem custo); "api": automático
+    translate_method: str = "chat"
     # Preço por minuto de áudio (USD), usado só para estimar custo.
     transcribe_usd_per_min: float = 0.0045
     # Quantos blocos de áudio transcrever em paralelo.

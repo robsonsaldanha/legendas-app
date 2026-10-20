@@ -264,3 +264,34 @@ def test_openai_translator_against_fake_api(tmp_path):
     assert [c.text for c in tr.cues] == ["ES Olá", "ES Tchau"] and tr.model == "gpt-5"
     assert [b["model"] for b in seen] == ["gpt-5.5", "gpt-5"]
     assert seen[-1]["response_format"]["type"] == "json_schema" and seen[-1]["reasoning_effort"] == "low"
+
+
+# ------------------------------------------------- modo ChatGPT (copiar e colar)
+
+from core.translate import chat_message, parse_chat_answer, plan_chat_lots  # noqa: E402
+
+
+def test_chat_lots_and_messages():
+    cs = cues(230)
+    lots = plan_chat_lots(len(cs))
+    assert [(l.first, l.last) for l in lots] == [(1, 100), (101, 200), (201, 230)]
+    m1 = chat_message(cs, lots, 1, "pt-BR", "es-419", NETFLIX_ES_419, [Entry("Narizinho", "Naricita")], "usted")
+    assert "tradutor-legendador" in m1 and "Narizinho → Naricita" in m1 and "LOTE 1 de 3" in m1
+    assert "```json" in m1 and '"id":100' in m1 and '"id":101' in m1  # 101 só como contexto
+    m2 = chat_message(cs, lots, 2, "pt-BR", "es-419", NETFLIX_ES_419)
+    assert m2.startswith("LOTE 2 de 3") and "tradutor-legendador" not in m2
+    data = json.loads(m2.split("```json\n")[1].split("\n```")[0])
+    assert [x["id"] for x in data["traduzir"]][0] == 101 and len(data["traduzir"]) == 100
+    miss = chat_message(cs, lots, 2, "pt-BR", "es-419", NETFLIX_ES_419, only_ids=[150, 151])
+    assert "faltaram 2" in miss and '"id":150' in miss and '"id":152' not in miss.split("seguintes")[0]
+
+
+def test_parse_chat_answer_variants():
+    ids = [1, 2, 3]
+    fenced = 'Aqui está:\n```json\n{"itens":[{"id":1,"texto":"Hola"},{"id":2,"texto":"Línea 1\\nLínea 2"},]}\n```\nListo.'
+    assert parse_chat_answer(fenced, ids) == {1: "Hola", 2: "Línea 1\nLínea 2"}
+    assert parse_chat_answer('{"itens": [{"id": 3, "texto": "Chau..."}]}', ids) == {3: "Chau…"}
+    assert parse_chat_answer('[{"id": 1, "text": "Hi"}]', ids) == {1: "Hi"}
+    assert parse_chat_answer("1 | Hola\n2 | Uno / dos\n7 | fuera", ids) == {1: "Hola", 2: "Uno\ndos"}
+    assert parse_chat_answer("não entendi", ids) == {}
+    assert parse_chat_answer("“curly” {“itens”: [{“id”: 1, “texto”: “Sí”}]}", ids) == {1: "Sí"}

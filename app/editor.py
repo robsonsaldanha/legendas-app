@@ -10,6 +10,7 @@ original. A legenda é sempre sincronizada com os tempos do arquivo original.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import shutil
@@ -28,9 +29,11 @@ from core.errors import LegendasError
 from core.linebreak import rewrap
 from core.media import SAMPLE_RATE, extract_audio, ffmpeg, load_wav, probe
 from core.profiles import Profile, default_profile_for
-from core.qc import check_rules
+from core.formatter import reflow_cues
+from core.qc import AVISO, Issue, check_rules, write_report
 from core.subtitle import Cue, read_srt, write_srt
-from core.translate import detect_language, opposite_language
+from core.translate import (ChatLot, chat_message, detect_language, opposite_language,
+                            output_name, parse_chat_answer, plan_chat_lots)
 
 log = logging.getLogger("legendas.editor")
 
@@ -86,8 +89,37 @@ class Session:
     backed_up: bool = False
     draft: list | None = None           # cópia de trabalho (sobrevive a recarregar a página)
     detected: str | None = None         # idioma detectado na legenda
+    chat: "ChatTranslation | None" = None
     profile: dict = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
+
+
+@dataclass
+class ChatTranslation:
+    """Tradução feita pelo ChatGPT da usuária (copiar e colar), sem API."""
+
+    cues: list[Cue]
+    source: str
+    target: str
+    profile_key: str
+    profile: Profile
+    glossary: list = field(default_factory=list)
+    instructions: str = ""
+    context: str = ""
+    lots: list[ChatLot] = field(default_factory=list)
+    done: dict[int, str] = field(default_factory=dict)
+    original_path: Path | None = None
+    out_path: Path | None = None
+
+    def lot_status(self, n: int) -> dict:
+        lot = self.lots[n - 1]
+        missing = [i for i in lot.ids if i not in self.done]
+        return {"n": n, "first": lot.first, "last": lot.last, "count": len(lot.ids),
+                "received": len(lot.ids) - len(missing), "missing": missing}
+
+    def summary(self) -> dict:
+        return {"total": len(self.cues), "done": len(self.done), "source": self.source,
+                "target": self.target, "lots": [self.lot_status(l.n) for l in self.lots]}
 
 
 class EditorManager:
@@ -331,6 +363,100 @@ class EditorManager:
         if not params["profile_key"]:
             params["profile_key"] = "netflix-pt-br" if params["target_lang"].startswith("pt") else "netflix-es-419"
         return inputs, params
+
+    # --------------------------------------------- tradução pelo ChatGPT
+
+    def chat_start(self, sid: str, raw: list[dict], opts: dict, project: dict | None,
+                   glossary: list) -> dict:
+        s = self._get(sid)
+        cues = sorted(self._cues(raw), key=lambda c: c.start)
+        empty = [i for i, c in enumerate(cues, start=1) if not c.lines]
+        if not cues:
+            raise EditorError("Não há legendas para traduzir.")
+        if empty:
+            raise EditorError(f"A legenda {empty[0]} está sem texto. Escreva algo ou apague-a antes de traduzir.")
+        source = opts.get("source_lang") or s.detected or "pt-BR"
+        target = opts.get("target_lang") or opposite_language(source)
+        if source == target:
+            raise EditorError("O idioma de origem e o de destino são iguais.")
+        key = opts.get("profile_key") or ("netflix-pt-br" if target.startswith("pt") else "netflix-es-419")
+        profile = self._profile(key, target)
+        base = s.srt or s.video
+        folder = editor_dir() / "traducoes" / s.sid
+        folder.mkdir(parents=True, exist_ok=True)
+        original = folder / (base.stem + ".srt")
+        write_srt(cues, original)
+        size = int(opts.get("batch_size") or 0) or None
+        s.chat = ChatTranslation(
+            cues=cues, source=source, target=target, profile_key=key, profile=profile,
+            glossary=glossary, instructions=(project or {}).get("instructions", ""),
+            context=" ".join(x for x in [(project or {}).get("context", ""), opts.get("context", "")] if x),
+            lots=plan_chat_lots(len(cues), size) if size else plan_chat_lots(len(cues)),
+            original_path=original)
+        return s.chat.summary()
+
+    def _chat(self, sid: str) -> ChatTranslation:
+        s = self._get(sid)
+        if s.chat is None:
+            raise EditorError("A tradução pelo ChatGPT não foi iniciada. Clique em Traduzir de novo.", 409)
+        return s.chat
+
+    def chat_prompt(self, sid: str, n: int, missing_only: bool = False) -> dict:
+        c = self._chat(sid)
+        if not 1 <= n <= len(c.lots):
+            raise EditorError("Lote inexistente.")
+        only = c.lot_status(n)["missing"] if missing_only else None
+        if missing_only and not only:
+            raise EditorError("Esse lote já está completo.")
+        text = chat_message(c.cues, c.lots, n, c.source, c.target, c.profile, c.glossary,
+                            c.instructions, c.context, only_ids=only)
+        return {"n": n, "text": text, "ids": only or c.lots[n - 1].ids}
+
+    def chat_answer(self, sid: str, n: int, text: str) -> dict:
+        c = self._chat(sid)
+        if not 1 <= n <= len(c.lots):
+            raise EditorError("Lote inexistente.")
+        lot = c.lots[n - 1]
+        got = parse_chat_answer(text or "", lot.ids)
+        # se colou a resposta do lote errado, aproveita do mesmo jeito
+        if not got:
+            got = parse_chat_answer(text or "", list(range(1, len(c.cues) + 1)))
+        c.done.update(got)
+        st = c.lot_status(n)
+        return {**st, "parsed": len(got), "done": len(c.done), "total": len(c.cues)}
+
+    def chat_finish(self, sid: str) -> dict:
+        s = self._get(sid)
+        c = self._chat(sid)
+        out, missing = [], []
+        for i, cue in enumerate(c.cues, start=1):
+            if i in c.done:
+                out.append(Cue(cue.start, cue.end, c.done[i].split("\n")))
+            else:
+                out.append(Cue(cue.start, cue.end, list(cue.lines)))
+                missing.append(i)
+        cues = reflow_cues(out, c.profile, c.target, s.info.get("fps"))
+        base = s.srt or s.video
+        if c.out_path is None:
+            target = base.parent / output_name(base, c.target)
+            if s.srt is not None and target.resolve() == s.srt.resolve():
+                target = target.with_name(target.name[:-4] + " (tradução).srt")
+            n = 2
+            cand = target
+            while cand.exists():
+                cand = target.with_name(f"{target.name[:-4]} ({n}).srt")
+                n += 1
+            c.out_path = cand
+        write_srt(cues, c.out_path)
+        issues = check_rules(cues, c.profile, s.info.get("fps"))
+        for i in missing:
+            issues.append(Issue(i, cues[i - 1].start, AVISO, "sem_traducao",
+                                "Ficou no idioma original (não veio na resposta do ChatGPT)."))
+        issues.sort(key=lambda x: x.index)
+        write_report(issues, cues, c.profile, c.out_path.with_name(c.out_path.name[:-4] + ".qc.txt"),
+                     title=base.name)
+        return {"srt": str(c.out_path), "original": str(c.original_path), "profile_key": c.profile_key,
+                "issues": len(issues), "missing": missing, "target": c.target}
 
     def set_draft(self, sid: str, raw: list[dict]) -> dict:
         s = self._get(sid)
