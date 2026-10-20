@@ -1,4 +1,14 @@
-# Como rodar (desenvolvimento)
+# Como rodar
+
+## Para usar (sem programar)
+1. Na página do repositório no GitHub, abra **Releases** e baixe o `Instalador_Legendas_<versão>.exe` mais recente.
+2. Dois cliques, avançar. Ele pede permissão de administrador porque instala para todos os perfis do Windows.
+3. Abra pelo atalho **Legendas** (menu Iniciar ou área de trabalho). Em cada perfil: Configurações → colar a chave da OpenAI; e, uma vez só no PC, baixar os modelos de alinhamento (PT e ES).
+
+## Gerar o instalador
+`packaging\build.ps1` (Windows, Python 3.12, Inno Setup 6). Normalmente quem gera é o GitHub Actions: criar a tag `vX.Y.Z` publica a versão.
+
+# Desenvolvimento
 
 ## Preparar (Windows, uma vez)
 1. Python 3.12 (python.org) e ffmpeg no PATH (`winget install Gyan.FFmpeg`).

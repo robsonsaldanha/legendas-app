@@ -4,6 +4,8 @@ Aplicativo Windows de legendagem automática: transcreve, sincroniza e traduz, g
 
 **Estado:** transcrição + formatação, interface no navegador e editor no layout do Subtitle Edit (vídeo no quadro exato).
 
+**Para instalar:** baixe o `Instalador_Legendas_<versão>.exe` em [Releases](../../releases) e dê dois cliques. Ele traz tudo (Python, bibliotecas, ffmpeg); não precisa instalar mais nada.
+
 Documentação completa em [`brain/`](brain/00%20-%20Início.md) (abre como vault no Obsidian):
 - [Como rodar](brain/Como%20rodar.md)
 - [Arquitetura](brain/Arquitetura.md)

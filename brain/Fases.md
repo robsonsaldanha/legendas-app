@@ -28,7 +28,10 @@ SRT → SRT traduzido (es-419), contexto do vídeo inteiro, JSON por ID com vali
 ## Fase 3 — Sincronizar
 (a) texto sem tempo → alinhamento; (b) SRT desalinhado → ffsubsync; (c) texto em outro idioma → transcrever, alinhar e casar frases via LLM.
 
-## Fase 5 — Instalador
-Empacotamento, ffmpeg em `bin/`, Inno Setup, build no GitHub Actions, teste em Windows limpo.
+## ✅ Fase 5 — Instalador (adiantada)
+- [x] Python embutido + bibliotecas + tkinter + ffmpeg + VC++ — nada para instalar à parte
+- [x] Inno Setup para todos os perfis, atalhos, pasta de modelos compartilhada, desinstalação limpa
+- [x] GitHub Actions: monta, instala, testa o programa instalado, desinstala; publica nas tags
+- [ ] Instalar no PC deles e testar nos dois perfis
 
 ## Fase 6 — Refinamentos com uso real
