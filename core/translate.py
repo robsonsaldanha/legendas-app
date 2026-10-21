@@ -324,13 +324,14 @@ class GatewayTranslator(OpenAITranslator):
 
     Nem todos aceitam JSON Schema: tenta schema → json_object → texto livre (lido com tolerância)."""
 
-    def __init__(self, base_url: str, model: str, api_key: str = "", client=None):
+    def __init__(self, base_url: str, model: str, api_key: str = "", client=None, label: str = "gateway"):
         if not base_url or not model:
             raise ApiError("Gateway sem endereço ou modelo. Configure em Configurações → Inteligência artificial.")
         super().__init__(model, reasoning_effort="", client=client)
         self.base_url = base_url.rstrip("/")
         self._key = api_key
         self._mode = "schema"
+        self.label = label
 
     @property
     def client(self):
@@ -360,7 +361,7 @@ class GatewayTranslator(OpenAITranslator):
                 cause = str(e.__cause__ or e).lower()
                 code = getattr(e.__cause__, "status_code", None)
                 if code in (401, 402, 403, 404):
-                    raise gateway_error(code, cause, "gateway", self.model) from e
+                    raise gateway_error(code, cause, self.label, self.model) from e
                 if self._mode != "text" and ("response_format" in cause or "json" in cause or "schema" in cause):
                     self._mode = "json" if self._mode == "schema" else "text"
                     log.warning("Gateway sem suporte a este formato; tentando %s.", self._mode)
@@ -380,42 +381,21 @@ class GatewayTranslator(OpenAITranslator):
             raise ApiError("A resposta do gateway não veio em JSON. Tente outro modelo.")
 
 
-PROVIDER_NAMES = {"openai": "OpenAI", "claude": "Claude", "gateway": "Gateway"}
-
-
 def make_translator(settings) -> "Translator":
-    """O tradutor automático escolhido em Configurações."""
-    from .openai_client import get_secret
-    prov = getattr(settings, "translate_provider", "openai") or "openai"
-    if prov == "claude":
-        return AnthropicTranslator(settings.claude_model, get_secret("anthropic_api_key"))
-    if prov == "gateway":
-        if getattr(settings, "gateway_format", "openai") == "anthropic":
-            base = settings.gateway_url.rstrip("/")
-            url = base if base.endswith("/messages") else (base + "/messages" if base.endswith("/v1") else base + "/v1/messages")
-            return AnthropicTranslator(settings.gateway_model, get_secret("gateway_api_key"), url=url,
-                                       label=settings.gateway_name or "gateway")
-        return GatewayTranslator(settings.gateway_url, settings.gateway_model, get_secret("gateway_api_key"))
-    return OpenAITranslator(settings.translate_model, settings.translate_reasoning)
+    """O tradutor automático escolhido em Configurações (ver core/ai.py)."""
+    from . import ai
+    return ai.make_translator(settings)
 
 
 def translate_prices(settings) -> tuple[float, float]:
-    """US$ por milhão de tokens (entrada, saída) do tradutor escolhido."""
-    prov = getattr(settings, "translate_provider", "openai") or "openai"
-    if prov == "claude":
-        return settings.claude_usd_per_mtok_in, settings.claude_usd_per_mtok_out
-    if prov == "gateway":
-        return settings.gateway_usd_per_mtok_in, settings.gateway_usd_per_mtok_out
-    return settings.translate_usd_per_mtok_in, settings.translate_usd_per_mtok_out
+    """US$ por milhão de tokens (entrada, saída) do modelo escolhido (0 se não informado)."""
+    from . import ai
+    return ai.prices(settings)
 
 
 def provider_label(settings) -> str:
-    prov = getattr(settings, "translate_provider", "openai") or "openai"
-    if prov == "claude":
-        return f"Claude ({settings.claude_model})"
-    if prov == "gateway":
-        return f"{settings.gateway_name or 'Gateway'} ({settings.gateway_model})"
-    return f"OpenAI ({settings.translate_model})"
+    from . import ai
+    return ai.label(settings)
 
 
 def _model_missing(cause) -> bool:

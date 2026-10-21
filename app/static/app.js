@@ -419,9 +419,9 @@ function validateDraft() {
     return "Para sincronizar, junte ao vídeo a legenda fora do tempo (.srt) ou o texto sem tempo (.txt/.docx).";
   const needsOpenAI = steps.includes("transcrever") || (steps.includes("sincronizar") && has("text"));
   if (needsOpenAI && !S.state.api_key) return "Configure a chave da OpenAI primeiro (Configurações).";
-  const prov = S.state.ai?.provider || "openai";
-  if (steps.includes("traduzir") && curMethod() === "api" && !(prov === "openai" ? S.state.api_key : S.state.ai?.[prov]?.key || prov === "gateway"))
-    return `Configure a chave do ${prov === "claude" ? "Claude" : "serviço de tradução"} em Configurações.`;
+  const prov = (S.state.ai?.providers || []).find((x) => x.id === S.state.ai?.provider);
+  if (steps.includes("traduzir") && curMethod() === "api" && prov && !prov.ready)
+    return `Configure o ${prov.name} em Configurações → Inteligência artificial.`;
   return "";
 }
 
@@ -1089,20 +1089,6 @@ async function renderSettings() {
     ${aiSection(st)}
 
     <section class="panel stack">
-      <div class="row" style="justify-content:space-between"><h2>OpenAI</h2><span class="label">transcrição · tradução</span></div>
-      <p class="muted small">Necessária para transcrever e para sincronizar texto sem tempo; também pode fazer a tradução automática. Traduzir pelo seu ChatGPT e sincronizar legendas não precisam de chave.</p>
-      ${st.api_key
-        ? `<p>Chave configurada, terminando em <strong class="tnum">${esc(st.api_key)}</strong>. Fica guardada no Gerenciador de Credenciais do Windows.</p>
-           <div class="row"><button class="btn" data-action="test-key">Testar chave</button><button class="btn danger" data-action="remove-key">Remover chave</button></div>`
-        : `<p class="muted">Crie uma chave em platform.openai.com, em API keys, e cole aqui. Ela fica guardada no Gerenciador de Credenciais do Windows, nunca em arquivo.</p>`}
-      <div class="row" style="flex-wrap:nowrap">
-        <input type="password" id="key-in" placeholder="sk-…" autocomplete="off" aria-label="Chave da OpenAI">
-        <button class="btn primary" data-action="save-key">${st.api_key ? "Trocar chave" : "Salvar e testar"}</button>
-      </div>
-      <p id="key-msg" hidden></p>
-    </section>
-
-    <section class="panel stack">
       <h2>Tempo das palavras</h2>
       <p class="muted">Para a legenda entrar e sair no momento exato da fala, o programa usa um modelo de alinhamento que roda no próprio computador. Sem ele, os tempos são estimados.</p>
       ${al.installed ? "" : `<p class="note warn">O alinhamento preciso não está instalado nesta versão. Os tempos serão estimados até a versão com instalador completo.</p>`}
@@ -1217,113 +1203,119 @@ function drawProfiles(list) {
 
 /* ---------------------------------------------- inteligência artificial */
 
+let AI_TAB = null;
+
 function aiSection(st) {
-  const ai = st.ai || { provider: "openai", openai: {}, claude: {}, gateway: {} };
-  const s = st.settings;
-  const radio = (v, t, sub, ok) => `<label class="method"><input type="radio" name="ai-prov" value="${v}" ${ai.provider === v ? "checked" : ""} ${ok ? "" : "disabled"}>
-    <strong>${t}</strong><span class="muted small">${sub}</span></label>`;
+  const ai = st.ai;
+  if (!ai?.providers) return "";
+  AI_TAB = AI_TAB || ai.provider;
+  const p = ai.providers.find((x) => x.id === AI_TAB) || ai.providers[0];
+  const price = (m) => m.usd_in != null || m.usd_out != null
+    ? `US$ ${nf1.format(m.usd_in ?? 0)} / ${nf1.format(m.usd_out ?? 0)}` : (p.subscription ? "assinatura" : "preço não informado");
+  const showFmt = p.id === "ghostcli" || p.id === "gateway";
   return `
     <section class="panel stack" id="ai">
       <div class="row" style="justify-content:space-between"><h2>Inteligência artificial</h2><span class="label">tradução automática</span></div>
-      <p class="muted small">Escolha quem faz a <b>tradução automática</b> (pela API). A transcrição continua pela OpenAI. As chaves ficam no Gerenciador de Credenciais do Windows, nunca em arquivo.</p>
-      <div class="methods three">
-        ${radio("openai", "OpenAI", esc(s.translate_model), !!st.api_key)}
-        ${radio("claude", "Claude", ai.claude.key ? esc(s.claude_model) : "falta a chave", !!ai.claude.key)}
-        ${radio("gateway", esc(s.gateway_name || "Gateway personalizado"), s.gateway_url ? esc(s.gateway_model || "sem modelo") : "falta configurar", !!(s.gateway_url && s.gateway_model))}
+      <p class="muted small">A <b>tradução automática</b> (pela API) usa o serviço marcado abaixo. A transcrição continua pela OpenAI. As chaves ficam no Gerenciador de Credenciais do Windows, nunca em arquivo.</p>
+      <div class="ai-use">
+        <span class="label">Traduzir com</span>
+        ${ai.providers.map((x) => `<label class="ai-chip ${x.ready ? "" : "off"}" title="${x.ready ? "" : "Falta configurar"}">
+          <input type="radio" name="ai-prov" value="${x.id}" ${ai.provider === x.id ? "checked" : ""} ${x.ready ? "" : "disabled"}>
+          <b>${esc(x.name)}</b><span class="mono small">${esc(x.selected || "—")}</span></label>`).join("")}
       </div>
-      <div class="ai-cards">
-        <div class="ai-card">
-          <div class="row" style="justify-content:space-between"><h3>Claude (Anthropic)</h3>${ai.claude.key ? `<span class="pill st-finalizado">chave …${esc(ai.claude.key.slice(-4))}</span>` : `<span class="pill">sem chave</span>`}</div>
-          <p class="muted small">Crie a chave em platform.claude.com → API keys. Ela começa com <span class="mono">sk-ant-</span>.</p>
-          <label class="field"><span>Chave</span><input type="password" id="ai-c-key" placeholder="${ai.claude.key ? "Já configurada — cole outra para trocar" : "sk-ant-…"}" autocomplete="off"></label>
-          <div class="grid-3">
-            <label class="field"><span>Modelo</span><input type="text" id="ai-c-model" list="ai-c-models" value="${esc(s.claude_model)}"></label>
-            <label class="field"><span>US$/milhão entrada</span><input type="number" step="0.01" min="0" id="ai-c-in" value="${s.claude_usd_per_mtok_in}"></label>
-            <label class="field"><span>US$/milhão saída</span><input type="number" step="0.01" min="0" id="ai-c-out" value="${s.claude_usd_per_mtok_out}"></label>
-          </div>
-          <datalist id="ai-c-models"><option value="claude-sonnet-5-5"><option value="claude-opus-5-5"><option value="claude-haiku-5-5"><option value="claude-fable-5-1"></datalist>
-          <p class="muted small">Sugestão: <span class="mono">claude-sonnet-5-5</span> (US$ 2 / 10 por milhão de tokens) — bom equilíbrio para tradução.</p>
-          <div class="row"><button class="btn primary" data-action="ai-save-claude">Salvar e testar</button>
-            ${ai.claude.key ? `<button class="btn" data-action="ai-test-claude">Testar</button><button class="btn danger" data-action="ai-del-claude">Remover chave</button>` : ""}</div>
-          <p class="note" id="ai-msg-claude" hidden></p>
+      <div class="seg ai-tabs" role="tablist">${ai.providers.map((x) => `<button data-action="ai-tab" data-p="${x.id}" aria-selected="${x.id === p.id}">${esc(x.name)}${x.key ? " ✓" : ""}</button>`).join("")}</div>
+      <div class="ai-card" id="ai-card" data-p="${p.id}">
+        <div class="row" style="justify-content:space-between"><h3>${esc(p.name)}</h3>
+          ${p.key ? `<span class="pill st-finalizado">chave ${esc(p.key)}</span>` : `<span class="pill">sem chave</span>`}</div>
+        <p class="muted small">${esc(p.help)}</p>
+        <div class="grid-2">
+          ${p.id === "gateway" ? `<label class="field"><span>Nome (aparece na tela)</span><input type="text" id="ai-name" value="${esc(p.name === "Gateway personalizado" ? "" : p.name)}" placeholder="Ex.: OpenRouter"></label>` : ""}
+          <label class="field" ${p.id === "gateway" ? "" : `style="grid-column:1/-1"`}><span>Chave ${p.id === "gateway" ? `<em class="muted small">(se o serviço pedir)</em>` : ""}</span>
+            <input type="password" id="ai-key" autocomplete="off" placeholder="${p.key ? "Já configurada — cole outra para trocar" : esc(p.key_prefix ? p.key_prefix + "…" : "chave")}"></label>
+          ${p.url_editable ? `<label class="field" style="grid-column:1/-1"><span>Endereço (host) ${p.default_url ? `<em class="muted small">· padrão ${esc(p.default_url)}</em>` : ""}</span>
+            <input type="text" id="ai-url" class="mono" value="${esc(p.url)}" placeholder="${esc(p.default_url || "https://…/v1")}"></label>` : ""}
         </div>
-        <div class="ai-card">
-          <div class="row" style="justify-content:space-between"><h3>Gateway personalizado</h3>${s.gateway_url ? `<span class="pill st-finalizado">configurado</span>` : `<span class="pill">não configurado</span>`}</div>
-          <p class="muted small">Serviço intermediário com API no formato da OpenAI ou da Anthropic: GhostCLI, OpenRouter, LiteLLM, Azure OpenAI, Ollama, servidor da empresa…</p>
-          <div class="row" style="gap:6px"><span class="small muted">Preencher para:</span>
-            <button class="btn sm" data-action="ai-preset-ghostcli">GhostCLI</button>
-            <button class="btn sm" data-action="ai-preset-openrouter">OpenRouter</button></div>
-          <div class="grid-2">
-            <label class="field" style="grid-column:1/-1"><span>Formato da API</span>
-              <select id="ai-g-format">
-                <option value="openai" ${s.gateway_format !== "anthropic" ? "selected" : ""}>OpenAI (…/v1/chat/completions)</option>
-                <option value="anthropic" ${s.gateway_format === "anthropic" ? "selected" : ""}>Anthropic (…/v1/messages) — melhor para modelos Claude</option>
-              </select></label>
-            <label class="field"><span>Nome (aparece na tela)</span><input type="text" id="ai-g-name" value="${esc(s.gateway_name)}" placeholder="Ex.: OpenRouter"></label>
-            <label class="field"><span>Modelo</span><input type="text" id="ai-g-model" value="${esc(s.gateway_model)}" placeholder="Ex.: anthropic/claude-sonnet-5.5"></label>
-            <label class="field" style="grid-column:1/-1"><span>Endereço (URL base)</span><input type="text" id="ai-g-url" class="mono" value="${esc(s.gateway_url)}" placeholder="https://openrouter.ai/api/v1"></label>
-            <label class="field" style="grid-column:1/-1"><span>Chave <em class="muted small">(se o serviço pedir)</em></span><input type="password" id="ai-g-key" placeholder="${ai.gateway.key ? "Já configurada — cole outra para trocar" : "chave do serviço"}" autocomplete="off"></label>
-            <label class="field"><span>US$/milhão entrada</span><input type="number" step="0.01" min="0" id="ai-g-in" value="${s.gateway_usd_per_mtok_in}"></label>
-            <label class="field"><span>US$/milhão saída</span><input type="number" step="0.01" min="0" id="ai-g-out" value="${s.gateway_usd_per_mtok_out}"></label>
-          </div>
-          <div class="row"><button class="btn primary" data-action="ai-save-gateway">Salvar e testar</button>
-            ${s.gateway_url ? `<button class="btn" data-action="ai-test-gateway">Testar</button>` : ""}${ai.gateway.key ? `<button class="btn danger" data-action="ai-del-gateway">Remover chave</button>` : ""}</div>
-          <p class="note" id="ai-msg-gateway" hidden></p>
+        <div class="row"><button class="btn primary" data-action="ai-save">Salvar e testar</button>
+          ${p.key || p.id === "gateway" ? `<button class="btn" data-action="ai-test">Testar</button>` : ""}
+          ${p.ready && ai.provider !== p.id ? `<button class="btn" data-action="ai-use">Usar para traduzir</button>` : ""}
+          ${p.key ? `<button class="btn danger" data-action="ai-del">Remover chave</button>` : ""}</div>
+        <p class="note" id="ai-msg" hidden></p>
+
+        <div class="ai-models">
+          <span class="label">Modelo</span>
+          ${p.models.length ? p.models.map((m) => `<label class="ai-model ${m.id === p.selected ? "on" : ""}">
+            <input type="radio" name="ai-model" value="${esc(m.id)}" ${m.id === p.selected ? "checked" : ""}>
+            <div><b>${esc(m.label)}</b> <span class="mono small muted">${esc(m.id)}</span>
+              ${showFmt ? `<span class="pill fmt">${m.api_format === "anthropic" ? "Anthropic" : "OpenAI"}</span>` : ""}
+              ${m.custom ? `<span class="pill">seu</span>` : ""}
+              <div class="muted small">${esc(price(m))}${m.note ? ` · ${esc(m.note)}` : ""}</div></div>
+            ${m.custom ? `<button class="btn link small" data-action="ai-rm" data-m="${esc(m.id)}">Remover</button>` : ""}
+          </label>`).join("") : `<p class="muted small">Nenhum modelo ainda. Acrescente abaixo.</p>`}
         </div>
+        <details class="ai-add" ${p.models.length ? "" : "open"}>
+          <summary>${ic("plus")} Adicionar outro modelo</summary>
+          <div class="grid-3" style="margin-top:10px">
+            <label class="field"><span>Código do modelo</span><input type="text" id="am-id" class="mono" placeholder="${p.id === "claude" ? "claude-…" : p.id === "gemini" ? "gemini-…" : p.id === "openai" ? "gpt-…" : "nome-do-modelo"}"></label>
+            <label class="field"><span>Nome <em class="muted small">(opcional)</em></span><input type="text" id="am-label"></label>
+            ${showFmt ? `<label class="field"><span>Formato da API</span><select id="am-fmt"><option value="">Automático${p.id === "ghostcli" ? " (claude-* = Anthropic)" : ""}</option>${Object.entries(ai.formats).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join("")}</select></label>` : `<span></span>`}
+            <label class="field"><span>US$/milhão entrada <em class="muted small">(opcional)</em></span><input type="text" id="am-in" inputmode="decimal"></label>
+            <label class="field"><span>US$/milhão saída <em class="muted small">(opcional)</em></span><input type="text" id="am-out" inputmode="decimal"></label>
+            <div style="align-self:end"><button class="btn primary" data-action="ai-add">${ic("plus")} Adicionar e usar</button></div>
+          </div>
+          <p class="muted small" style="margin-top:6px">Use o código exato do modelo, como aparece na documentação ou no painel do serviço.</p>
+        </details>
       </div>
     </section>`;
 }
 
 async function aiAction(a, b) {
-  const show = (prov, r) => {
-    const m = document.getElementById(`ai-msg-${prov}`);
+  const prov = document.getElementById("ai-card")?.dataset.p;
+  const v = (id) => (document.getElementById(id)?.value || "").trim();
+  const show = (r) => {
+    const m = document.getElementById("ai-msg");
     if (!m || !r) return;
     m.hidden = false; m.className = "note " + (r.ok ? "ok" : "err"); m.textContent = r.message;
   };
-  const v = (id) => document.getElementById(id).value.trim();
-  if (a === "ai-save-claude") {
+  const redraw = async (test) => { await renderSettings(); document.getElementById("ai")?.scrollIntoView({ block: "start" }); show(test); };
+  if (a === "ai-tab") { AI_TAB = b.dataset.p; await redraw(); return; }
+  if (a === "ai-save") {
     b.disabled = true;
-    const r = await api("PUT", "/api/ai/claude", { key: v("ai-c-key"), model: v("ai-c-model"),
-      claude_usd_per_mtok_in: Number(v("ai-c-in")), claude_usd_per_mtok_out: Number(v("ai-c-out")), test: true });
-    await renderSettings(); show("claude", r.test);
-    document.getElementById("ai")?.scrollIntoView({ block: "start" });
+    const body = { key: v("ai-key"), test: true };
+    if (document.getElementById("ai-url")) body.url = v("ai-url");
+    if (document.getElementById("ai-name")) body.name = v("ai-name");
+    const r = await api("PUT", `/api/ai/${prov}`, body);
+    await redraw(r.test);
   }
-  if (a === "ai-save-gateway") {
-    b.disabled = true;
-    const r = await api("PUT", "/api/ai/gateway", { key: v("ai-g-key"), url: v("ai-g-url"), model: v("ai-g-model"), name: v("ai-g-name"), format: v("ai-g-format"),
-      gateway_usd_per_mtok_in: Number(v("ai-g-in")), gateway_usd_per_mtok_out: Number(v("ai-g-out")), test: true });
-    await renderSettings(); show("gateway", r.test);
-    document.getElementById("ai")?.scrollIntoView({ block: "start" });
+  if (a === "ai-test") { b.disabled = true; show(await api("POST", `/api/ai/${prov}/test`)); b.disabled = false; }
+  if (a === "ai-use") { await api("PUT", `/api/ai/${prov}`, { use: true }); toast("Tradução automática por este serviço."); await redraw(); }
+  if (a === "ai-del") {
+    if (!confirm("Remover a chave deste serviço deste computador?")) return;
+    await api("DELETE", `/api/ai/${prov}`); toast("Chave removida."); await redraw();
   }
-  if (a === "ai-preset-ghostcli" || a === "ai-preset-openrouter") {
-    const P = a.endsWith("ghostcli")
-      ? { name: "GhostCLI", url: "https://ghostcli.cloud", format: "anthropic", model: "claude-sonnet-5", in: 0, out: 0 }
-      : { name: "OpenRouter", url: "https://openrouter.ai/api/v1", format: "openai", model: "", in: 0, out: 0 };
-    document.getElementById("ai-g-name").value = P.name;
-    document.getElementById("ai-g-url").value = P.url;
-    document.getElementById("ai-g-format").value = P.format;
-    if (P.model) document.getElementById("ai-g-model").value = P.model;
-    document.getElementById("ai-g-in").value = P.in; document.getElementById("ai-g-out").value = P.out;
-    toast(a.endsWith("ghostcli") ? "GhostCLI: cole a chave gcli_… e libere o IP deste computador no painel deles. Depois, Salvar e testar." : "Cole a chave e o modelo do OpenRouter. Depois, Salvar e testar.");
-    return;
+  if (a === "ai-add") {
+    if (!v("am-id")) { toast("Digite o código do modelo.", true); return; }
+    await api("PUT", `/api/ai/${prov}`, { add_model: { id: v("am-id"), label: v("am-label"), format: v("am-fmt"), usd_in: v("am-in"), usd_out: v("am-out") } });
+    toast("Modelo adicionado e selecionado."); await redraw();
   }
-  if (a === "ai-test-claude" || a === "ai-test-gateway") {
-    const prov = a.slice(8);
-    b.disabled = true; show(prov, await api("POST", `/api/ai/${prov}/test`)); b.disabled = false;
-  }
-  if (a === "ai-del-claude" || a === "ai-del-gateway") {
-    const prov = a.slice(7);
-    if (!confirm("Remover esta chave deste computador?")) return;
-    await api("DELETE", `/api/ai/${prov}`); toast("Chave removida."); renderSettings();
+  if (a === "ai-rm") {
+    await api("PUT", `/api/ai/${prov}`, { remove_model: b.dataset.m }); toast("Modelo removido."); await redraw();
   }
 }
 
 document.addEventListener("change", async (e) => {
-  if (e.target.name !== "ai-prov") return;
   try {
-    await api("PUT", `/api/ai/${e.target.value}`, { use: true });
-    await loadState();
-    toast(`Tradução automática: ${e.target.closest("label").querySelector("strong").textContent}.`);
+    if (e.target.name === "ai-prov") {
+      await api("PUT", `/api/ai/${e.target.value}`, { use: true });
+      await loadState();
+      toast(`Tradução automática: ${e.target.closest("label").querySelector("b").textContent}.`);
+    }
+    if (e.target.name === "ai-model") {
+      const prov = document.getElementById("ai-card").dataset.p;
+      await api("PUT", `/api/ai/${prov}`, { model: e.target.value });
+      document.querySelectorAll(".ai-model").forEach((l) => l.classList.toggle("on", l.contains(e.target)));
+      await loadState();
+      toast(`Modelo: ${e.target.value}.`);
+    }
   } catch (err) { toast(err.message, true); }
 });
 

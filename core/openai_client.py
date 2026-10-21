@@ -60,7 +60,8 @@ def delete_api_key() -> None:
 
 # ---------------------------------------------- outras chaves (Claude, gateway)
 
-SECRET_ENV = {"anthropic_api_key": "ANTHROPIC_API_KEY", "gateway_api_key": "LEGENDAS_GATEWAY_KEY"}
+SECRET_ENV = {"anthropic_api_key": "ANTHROPIC_API_KEY", "gateway_api_key": "LEGENDAS_GATEWAY_KEY",
+              "gemini_api_key": "GEMINI_API_KEY", "ghostcli_api_key": "GHOSTCLI_API_KEY"}
 
 
 def get_secret(name: str) -> str:

@@ -156,6 +156,11 @@ class Settings:
     gateway_model: str = ""
     gateway_usd_per_mtok_in: float = 0.0
     gateway_usd_per_mtok_out: float = 0.0
+    # Serviços de IA (core/ai.py): modelo escolhido, modelos acrescentados, endereços e nomes.
+    ai_selected: dict = field(default_factory=dict)
+    ai_models: dict = field(default_factory=dict)
+    ai_urls: dict = field(default_factory=dict)
+    ai_names: dict = field(default_factory=dict)
     # Nome para a assinatura no fim da legenda ("Traducción: Nome").
     translator_name: str = ""
     # Pasta onde ficam os projetos (perguntada na primeira abertura).
