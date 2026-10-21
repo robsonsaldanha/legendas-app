@@ -226,12 +226,15 @@ class AnthropicTranslator:
 
     URL = "https://api.anthropic.com/v1/messages"
 
-    def __init__(self, model: str, api_key: str, http=None):
+    def __init__(self, model: str, api_key: str, http=None, url: str | None = None, label: str = "Claude"):
         if not api_key:
-            raise ApiKeyError("Chave do Claude não configurada. Abra Configurações → Inteligência artificial.")
+            raise ApiKeyError(f"Chave do {label} não configurada. Abra Configurações → Inteligência artificial.")
         self.model = model
         self._key = api_key
         self._http = http
+        self.url = url or self.URL
+        self.label = label
+        self._structured = True    # gateways podem não aceitar output_config: cai para JSON no texto
 
     @property
     def http(self):
@@ -242,22 +245,26 @@ class AnthropicTranslator:
 
     def _post(self, system: str, user: str) -> dict:
         body = {"model": self.model, "max_tokens": 16000, "system": system,
-                "messages": [{"role": "user", "content": user}],
-                "output_config": {"format": {"type": "json_schema", "schema": SCHEMA}}}
-        r = self.http.post(self.URL, json=body, headers={
-            "x-api-key": self._key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+                "messages": [{"role": "user", "content": user}]}
+        if self._structured:
+            body["output_config"] = {"format": {"type": "json_schema", "schema": SCHEMA}}
+        else:
+            body["system"] = system + '\n\nResponda SOMENTE com JSON, sem texto antes ou depois: {"itens": [{"id": 1, "texto": "..."}]}'
+        r = self.http.post(self.url, json=body, headers={
+            "x-api-key": self._key, "authorization": f"Bearer {self._key}",
+            "anthropic-version": "2023-06-01", "content-type": "application/json"})
         if r.status_code >= 400:
             try:
-                msg = r.json().get("error", {}).get("message", r.text)
+                err_obj = r.json().get("error", {})
+                msg = err_obj.get("message", r.text) if isinstance(err_obj, dict) else str(err_obj)
             except ValueError:
                 msg = r.text
-            if r.status_code == 401:
-                raise ApiKeyError("A chave do Claude foi recusada. Confira em Configurações.")
-            if r.status_code == 404 or "model" in msg.lower() and r.status_code == 400:
-                raise ApiError(f"Modelo do Claude indisponível ({self.model}). Confira em Configurações.")
-            err = ApiError(f"Claude respondeu com erro {r.status_code}: {msg[:200]}")
-            err.retryable = r.status_code in (408, 409, 429, 500, 502, 503, 504, 529)
-            raise err
+            low = msg.lower()
+            if r.status_code == 400 and self._structured and ("output_config" in low or "format" in low or "schema" in low):
+                self._structured = False
+                log.warning("%s sem JSON Schema; pedindo JSON no texto.", self.label)
+                return self._post(system, user)
+            raise gateway_error(r.status_code, msg, self.label, self.model)
         return r.json()
 
     def translate_batch(self, system: str, user: str) -> tuple[dict, Usage]:
@@ -288,9 +295,28 @@ class AnthropicTranslator:
         try:
             return json.loads(text or "{}"), usage
         except ValueError as e:
+            if "{" in text:
+                loose = _loads_lenient(text[text.find("{"):text.rfind("}") + 1])
+                if isinstance(loose, dict):
+                    return loose, usage
             if data.get("stop_reason") == "max_tokens":
                 raise ApiError("A resposta do Claude veio cortada. Tente lotes menores.") from e
             raise ApiError("A resposta do Claude veio incompleta. Tente de novo.") from e
+
+
+def gateway_error(status: int, msg: str, label: str, model: str) -> ApiError:
+    """Erro HTTP de um serviço de tradução em português claro."""
+    if status == 401:
+        return ApiKeyError(f"A chave do {label} foi recusada. Confira em Configurações.")
+    if status == 402:
+        return ApiError(f"O {label} recusou por pagamento/plano (402). Confira se o plano inclui acesso pela API.")
+    if status == 403:
+        return ApiError(f"O {label} bloqueou o acesso (403). Se o serviço exige liberar o seu IP, autorize-o no painel dele.")
+    if status == 404 or (status == 400 and "model" in msg.lower()):
+        return ApiError(f"Modelo indisponível no {label} ({model}) ou endereço errado. Confira em Configurações.")
+    err = ApiError(f"{label} respondeu com erro {status}: {msg[:200]}")
+    err.retryable = status in (408, 409, 429, 500, 502, 503, 504, 529)
+    return err
 
 
 class GatewayTranslator(OpenAITranslator):
@@ -332,6 +358,9 @@ class GatewayTranslator(OpenAITranslator):
                 resp = with_retry(lambda: self._create(self.model, system, user))
             except ApiError as e:
                 cause = str(e.__cause__ or e).lower()
+                code = getattr(e.__cause__, "status_code", None)
+                if code in (401, 402, 403, 404):
+                    raise gateway_error(code, cause, "gateway", self.model) from e
                 if self._mode != "text" and ("response_format" in cause or "json" in cause or "schema" in cause):
                     self._mode = "json" if self._mode == "schema" else "text"
                     log.warning("Gateway sem suporte a este formato; tentando %s.", self._mode)
@@ -361,6 +390,11 @@ def make_translator(settings) -> "Translator":
     if prov == "claude":
         return AnthropicTranslator(settings.claude_model, get_secret("anthropic_api_key"))
     if prov == "gateway":
+        if getattr(settings, "gateway_format", "openai") == "anthropic":
+            base = settings.gateway_url.rstrip("/")
+            url = base if base.endswith("/messages") else (base + "/messages" if base.endswith("/v1") else base + "/v1/messages")
+            return AnthropicTranslator(settings.gateway_model, get_secret("gateway_api_key"), url=url,
+                                       label=settings.gateway_name or "gateway")
         return GatewayTranslator(settings.gateway_url, settings.gateway_model, get_secret("gateway_api_key"))
     return OpenAITranslator(settings.translate_model, settings.translate_reasoning)
 

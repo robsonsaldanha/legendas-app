@@ -185,7 +185,7 @@ class App:
                 "openai": {"key": mask(oa), "model": st.translate_model},
                 "claude": {"key": mask(get_secret("anthropic_api_key")), "model": st.claude_model},
                 "gateway": {"key": mask(get_secret("gateway_api_key")), "url": st.gateway_url,
-                            "model": st.gateway_model, "name": st.gateway_name}}
+                            "model": st.gateway_model, "name": st.gateway_name, "format": st.gateway_format}}
 
     def test_provider(self, prov: str) -> dict:
         import httpx
@@ -211,25 +211,32 @@ class App:
             return {"ok": True, "models": ids,
                     "message": f"Chave válida. Modelo {st.claude_model} " + ("disponível." if ok else "não apareceu na lista desta chave.")}
         if prov == "gateway":
-            if not st.gateway_url:
-                raise ApiError("Informe o endereço do gateway.")
+            if not st.gateway_url or not st.gateway_model:
+                raise ApiError("Informe o endereço e o modelo do gateway.")
+            from core.translate import gateway_error
             key = get_secret("gateway_api_key")
+            base = st.gateway_url.rstrip("/")
+            name = st.gateway_name or "gateway"
+            if st.gateway_format == "anthropic":
+                url = base if base.endswith("/messages") else (base + "/messages" if base.endswith("/v1") else base + "/v1/messages")
+                body = {"model": st.gateway_model, "max_tokens": 16, "messages": [{"role": "user", "content": "Responda apenas: OK"}]}
+                headers = {"x-api-key": key, "authorization": f"Bearer {key}", "anthropic-version": "2023-06-01"}
+            else:
+                url = base + "/chat/completions"
+                body = {"model": st.gateway_model, "max_tokens": 16, "messages": [{"role": "user", "content": "Responda apenas: OK"}]}
+                headers = {"authorization": f"Bearer {key}"} if key else {}
             try:
-                r = httpx.get(st.gateway_url.rstrip("/") + "/models", timeout=20,
-                              headers={"Authorization": f"Bearer {key}"} if key else {})
+                r = httpx.post(url, json=body, headers=headers, timeout=60)
             except httpx.HTTPError as e:
-                return {"ok": False, "message": f"Não consegui acessar o gateway: {e}"}
-            if r.status_code in (401, 403):
-                return {"ok": False, "message": "O gateway recusou a chave."}
+                return {"ok": False, "message": f"Não consegui acessar {name}: {e}"}
             if r.status_code >= 400:
-                return {"ok": False, "message": f"O gateway respondeu com erro {r.status_code}."}
-            try:
-                ids = [m.get("id") for m in r.json().get("data", [])]
-            except ValueError:
-                ids = []
-            return {"ok": True, "models": ids[:200],
-                    "message": "Gateway respondeu." + (f" Modelo {st.gateway_model} disponível." if st.gateway_model in ids else
-                                                       f" {len(ids)} modelo(s) na lista." if ids else "")}
+                try:
+                    err = r.json().get("error", r.text)
+                    msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+                except ValueError:
+                    msg = r.text
+                return {"ok": False, "message": str(gateway_error(r.status_code, msg, name, st.gateway_model))}
+            return {"ok": True, "message": f"{name} respondeu com o modelo {st.gateway_model}. Pronto para traduzir."}
         raise ApiError("Serviço desconhecido.")
 
     def test_key(self) -> dict:
@@ -617,6 +624,8 @@ class Handler(BaseHTTPRequestHandler):
             for k in ("name", "model"):
                 if k in b:
                     setattr(st, f"gateway_{k}", str(b[k] or "").strip())
+            if b.get("format") in ("openai", "anthropic"):
+                st.gateway_format = b["format"]
             for k in ("gateway_usd_per_mtok_in", "gateway_usd_per_mtok_out"):
                 if k in b:
                     setattr(st, k, max(0.0, float(b[k] or 0)))

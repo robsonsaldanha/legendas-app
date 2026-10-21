@@ -151,6 +151,8 @@ class Settings:
     # Gateway personalizado (OpenRouter, LiteLLM, Azure, servidor próprio… compatível com OpenAI)
     gateway_name: str = ""
     gateway_url: str = ""
+    # Formato da API do gateway: "openai" (/v1/chat/completions) ou "anthropic" (/v1/messages).
+    gateway_format: str = "openai"
     gateway_model: str = ""
     gateway_usd_per_mtok_in: float = 0.0
     gateway_usd_per_mtok_out: float = 0.0

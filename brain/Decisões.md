@@ -130,3 +130,9 @@
 - **Tradução automática por outros serviços** (Configurações → Inteligência artificial): OpenAI (como antes), **Claude** (API da Anthropic, `output_config.format` com JSON Schema, sem dependência nova: `httpx`, que já vem com o `openai`) e **gateway personalizado** compatível com OpenAI (URL base + chave + modelo; tenta JSON Schema → json_object → texto). Chaves no Gerenciador de Credenciais (`anthropic_api_key`, `gateway_api_key`).
 - Padrão do Claude: `claude-sonnet-5-5`, US$ 2 / 10 por milhão de tokens (platform.claude.com/docs/en/models/overview, conferido em 21/10/2026). Editável.
 - A transcrição continua só pela OpenAI (`gpt-transcribe`).
+
+## 2026-10-21 — Gateway no formato Anthropic (GhostCLI)
+- Róbson quer usar o GhostCLI (ghostcli.cloud/docs): assinatura mensal com Claude Opus 5.5, Sonnet 5, Fable 5.1 e GPT-6 Astra por uma chave `gcli_…`; expõe `/v1/messages` (Anthropic), `/v1/chat/completions` e `/v1/responses` (OpenAI). Exige IP liberado no painel (senão 403) e o complemento de API no plano (senão 402). Não documenta `/v1/models` nem JSON Schema.
+- O gateway agora tem **formato da API**: OpenAI ou Anthropic. No formato Anthropic usa o mesmo tradutor do Claude com a URL do gateway (`<base>/v1/messages`, sem duplicar `/v1`), envia a chave em `x-api-key` e `Authorization: Bearer`, e se o serviço recusar `output_config` pede o JSON no texto e lê com tolerância.
+- Botão "GhostCLI" preenche: formato Anthropic, `https://ghostcli.cloud`, modelo `claude-sonnet-5`, preço 0 (assinatura). "Testar" faz um pedido mínimo de verdade (o `/models` não é garantido em gateways) e traduz 401/402/403/404 em mensagens claras.
+- Alerta dado ao Róbson: os termos do GhostCLI não identificam a empresa nem dizem como acessam os modelos ou se guardam os textos; legendas de clientes (Encripta/Netflix) costumam ter confidencialidade.

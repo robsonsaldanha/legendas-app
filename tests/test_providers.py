@@ -118,3 +118,35 @@ def test_ai_settings_api(monkeypatch, tmp_path):
     st, r = call(port, "DELETE", "/api/ai/claude", token=app.token)
     assert r["provider"] == "openai" and r["claude"]["key"] == ""
     srv.shutdown()
+
+
+def test_gateway_anthropic_format_ghostcli_style(monkeypatch):
+    """Gateway no formato Anthropic: URL /v1/messages, Bearer + x-api-key, e cai para JSON no texto
+    quando o serviço não aceita output_config."""
+    import core.openai_client as oc
+    monkeypatch.setattr(oc, "get_secret", lambda name: "gcli_teste" if name == "gateway_api_key" else "")
+    st = Settings(translate_provider="gateway", gateway_url="https://ghostcli.cloud", gateway_format="anthropic",
+                  gateway_model="claude-sonnet-5", gateway_name="GhostCLI")
+    tr = make_translator(st)
+    assert isinstance(tr, AnthropicTranslator) and tr.url == "https://ghostcli.cloud/v1/messages" and tr.label == "GhostCLI"
+    calls = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        calls.append((str(req.url), req.headers.get("authorization"), "output_config" in body))
+        if "output_config" in body:
+            return httpx.Response(400, json={"error": {"message": "Unknown field: output_config"}})
+        return httpx.Response(200, json={"content": [{"type": "text", "text": 'Aqui: {"itens":[{"id":1,"texto":"Hola."}]}'}],
+                                         "usage": {"input_tokens": 5, "output_tokens": 3}})
+    tr._http = httpx.Client(transport=httpx.MockTransport(handler))
+    data, _ = tr.translate_batch("s", "u")
+    assert data["itens"][0]["texto"] == "Hola."
+    assert [c[2] for c in calls] == [True, False] and calls[0][0].endswith("/v1/messages") and calls[0][1] == "Bearer gcli_teste"
+
+    def h403(req):
+        return httpx.Response(403, json={"error": {"message": "ip not allowed"}})
+    tr._http = httpx.Client(transport=httpx.MockTransport(h403))
+    with pytest.raises(ApiError, match="IP"):
+        tr.translate_batch("s", "u")
+    st.gateway_url = "https://ghostcli.cloud/v1"
+    assert make_translator(st).url == "https://ghostcli.cloud/v1/messages"

@@ -1249,8 +1249,16 @@ function aiSection(st) {
         </div>
         <div class="ai-card">
           <div class="row" style="justify-content:space-between"><h3>Gateway personalizado</h3>${s.gateway_url ? `<span class="pill st-finalizado">configurado</span>` : `<span class="pill">não configurado</span>`}</div>
-          <p class="muted small">Qualquer serviço compatível com a API da OpenAI: OpenRouter, LiteLLM, Azure OpenAI, Ollama, um servidor da empresa…</p>
+          <p class="muted small">Serviço intermediário com API no formato da OpenAI ou da Anthropic: GhostCLI, OpenRouter, LiteLLM, Azure OpenAI, Ollama, servidor da empresa…</p>
+          <div class="row" style="gap:6px"><span class="small muted">Preencher para:</span>
+            <button class="btn sm" data-action="ai-preset-ghostcli">GhostCLI</button>
+            <button class="btn sm" data-action="ai-preset-openrouter">OpenRouter</button></div>
           <div class="grid-2">
+            <label class="field" style="grid-column:1/-1"><span>Formato da API</span>
+              <select id="ai-g-format">
+                <option value="openai" ${s.gateway_format !== "anthropic" ? "selected" : ""}>OpenAI (…/v1/chat/completions)</option>
+                <option value="anthropic" ${s.gateway_format === "anthropic" ? "selected" : ""}>Anthropic (…/v1/messages) — melhor para modelos Claude</option>
+              </select></label>
             <label class="field"><span>Nome (aparece na tela)</span><input type="text" id="ai-g-name" value="${esc(s.gateway_name)}" placeholder="Ex.: OpenRouter"></label>
             <label class="field"><span>Modelo</span><input type="text" id="ai-g-model" value="${esc(s.gateway_model)}" placeholder="Ex.: anthropic/claude-sonnet-5.5"></label>
             <label class="field" style="grid-column:1/-1"><span>Endereço (URL base)</span><input type="text" id="ai-g-url" class="mono" value="${esc(s.gateway_url)}" placeholder="https://openrouter.ai/api/v1"></label>
@@ -1282,10 +1290,22 @@ async function aiAction(a, b) {
   }
   if (a === "ai-save-gateway") {
     b.disabled = true;
-    const r = await api("PUT", "/api/ai/gateway", { key: v("ai-g-key"), url: v("ai-g-url"), model: v("ai-g-model"), name: v("ai-g-name"),
+    const r = await api("PUT", "/api/ai/gateway", { key: v("ai-g-key"), url: v("ai-g-url"), model: v("ai-g-model"), name: v("ai-g-name"), format: v("ai-g-format"),
       gateway_usd_per_mtok_in: Number(v("ai-g-in")), gateway_usd_per_mtok_out: Number(v("ai-g-out")), test: true });
     await renderSettings(); show("gateway", r.test);
     document.getElementById("ai")?.scrollIntoView({ block: "start" });
+  }
+  if (a === "ai-preset-ghostcli" || a === "ai-preset-openrouter") {
+    const P = a.endsWith("ghostcli")
+      ? { name: "GhostCLI", url: "https://ghostcli.cloud", format: "anthropic", model: "claude-sonnet-5", in: 0, out: 0 }
+      : { name: "OpenRouter", url: "https://openrouter.ai/api/v1", format: "openai", model: "", in: 0, out: 0 };
+    document.getElementById("ai-g-name").value = P.name;
+    document.getElementById("ai-g-url").value = P.url;
+    document.getElementById("ai-g-format").value = P.format;
+    if (P.model) document.getElementById("ai-g-model").value = P.model;
+    document.getElementById("ai-g-in").value = P.in; document.getElementById("ai-g-out").value = P.out;
+    toast(a.endsWith("ghostcli") ? "GhostCLI: cole a chave gcli_… e libere o IP deste computador no painel deles. Depois, Salvar e testar." : "Cole a chave e o modelo do OpenRouter. Depois, Salvar e testar.");
+    return;
   }
   if (a === "ai-test-claude" || a === "ai-test-gateway") {
     const prov = a.slice(8);
