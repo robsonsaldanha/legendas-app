@@ -55,7 +55,8 @@ def _plain(text: str) -> str:
 
 def style_issues(text: str, profile: Profile, language: str) -> list[tuple[str, str]]:
     """[(código, mensagem)] — avisos de estilo do manual do cliente."""
-    if not profile.style_checks:
+    on = profile.checks()
+    if not on:
         return []
     out: list[tuple[str, str]] = []
     plain = _plain(text)
@@ -63,18 +64,18 @@ def style_issues(text: str, profile: Profile, language: str) -> list[tuple[str, 
 
     found = sorted({m.group(1) for m in _INTERJ.finditer(plain)}, key=str.lower)
     if found:
-        out.append(("interjeicao", "Interjeição que o manual não aceita: "
+        out.append(("interjeicao", "Interjeição (a regra do perfil não aceita): "
                     + ", ".join(f"“{w}”" for w in found) + "."))
 
     if _DOUBLE.search(plain) or "???" in plain or "!!!" in plain:
         out.append(("pontuacao_dupla", "Pontuação dupla (ex.: ??, !!, ?!, ¡¿)."))
 
     if profile.ellipsis == "..." and "…" in plain:
-        out.append(("reticencias", "Reticências com o caractere “…”; o manual pede três pontos “...”."))
+        out.append(("reticencias", "Reticências com o caractere “…”; o perfil pede três pontos “...”."))
     elif profile.ellipsis == "…" and re.search(r"(?<!\.)\.\.\.(?!\.)", plain):
         out.append(("reticencias", "Reticências com três pontos; o perfil pede o caractere “…”."))
     if profile.dialogue_dash == "-" and any(re.match(r"^\s*[-–—]\s+\S", l) for l in lines):
-        out.append(("travessao", "Hífen de diálogo com espaço; o manual pede sem espaço (“-Texto”)."))
+        out.append(("travessao", "Hífen de diálogo com espaço; o perfil pede sem espaço (“-Texto”)."))
     if any(re.match(r"^\s*[–—]", l) for l in lines) and profile.dialogue_dash.strip() == "-":
         out.append(("travessao", "Diálogo com travessão longo (– ou —); use o hífen “-”."))
 
@@ -112,8 +113,8 @@ def style_issues(text: str, profile: Profile, language: str) -> list[tuple[str, 
     # Número de 0 a 10 em algarismo (fora de horas, porcentagens, medidas e dinheiro).
     if re.search(r"(?<![\d:,.$%º°])(?<!US\$ )\b([0-9]|10)\b(?![\d:,.%º°]|\s?(%|km|cm|kg|m|g|mm|°|a\. m|p\. m|h\b))",
                  plain):
-        out.append(("numero", "Número de zero a dez em algarismo; o manual pede por extenso."))
-    return out
+        out.append(("numero", "Número de zero a dez em algarismo; a regra pede por extenso."))
+    return [x for x in out if x[0] in on]
 
 
 def output_name(stem: str, target: str, naming: str = "") -> str:

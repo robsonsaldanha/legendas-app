@@ -56,3 +56,9 @@ Fonte: *Manual de traducción y subtítulos en español 3.0* da Encripta (PDF en
 - QC de estilo (`core/style.py`, só perfis com `style_checks`): interjeição proibida, pontuação dupla, `…` em vez de `...`, hífen com espaço, palavra repetida, pergunta/exclamação sem `¿`/`¡` (espanhol), texto de tela em maiúsculas com ponto final, maiúscula depois de dois-pontos, número de 0 a 10 em algarismo. São **avisos**: a revisão decide.
 - Normalização automática ao formatar/traduzir: reticências e hífen de diálogo no formato do perfil.
 - Fora do alcance da máquina (fica no manual para o modelo e na revisão): itálico por contexto, legendas de localização, nacionalização de títulos, assinatura "Traducción: Nombre" depois da última cena.
+
+## Regras de estilo por perfil (versão 1.1)
+- Cada perfil tem a sua lista de regras (Configurações → Perfis de regras → clicar no perfil). As **ligadas** vão para a IA; as que têm **verificação automática** também aparecem no Verificar.
+- Encripta (ES e PT): regras do manual 3.0 (interjeições proibidas, sem pontuação dupla, "...", "-Texto", localização em maiúsculas sem ponto, números por extenso etc.).
+- Netflix (ES e PT): interjeições permitidas quando têm sentido, palavrões no mesmo nível, repetição de hesitação pode ser reduzida, itálico para fora de cena/narração/aparelhos/música, ¿¡ obrigatórios no espanhol, números de 1 a 10 por extenso. Conferir com o guia atual da Netflix.
+- Para um cliente novo: Novo perfil (ou Duplicar um parecido), escrever as regras, e escolher o perfil no Cliente.

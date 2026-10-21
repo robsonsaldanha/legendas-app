@@ -83,8 +83,12 @@ def test_style_checks():
     assert "numero" in codes("Tengo 3 hermanos.")
     assert not ({"numero"} & codes("Son las 3:15 p. m. y corrí 5 km. Gané 30."))
     assert codes("-¿Puedes ayudarme?\n-Por supuesto que sí.") == set()
-    # Netflix não faz essas verificações
-    assert style_issues("¡Oh, no, no!!", NETFLIX_ES_419, "es-419") == []
+    # Netflix aceita interjeição e repetição de hesitação; pontuação dupla continua errada
+    assert {c for c, _ in style_issues("¡Oh, no, no!!", NETFLIX_ES_419, "es-419")} == {"pontuacao_dupla"}
+    # regra desligada = sem aviso
+    import dataclasses
+    rules = [dict(r, active=False) if r["check"] == "interjeicao" else r for r in ES.rules]
+    assert "interjeicao" not in codes("¡Oh, Dios mío!", dataclasses.replace(ES, rules=rules))
 
 
 def test_qc_reports_style_and_gap_in_ms():
@@ -98,9 +102,22 @@ def test_qc_reports_style_and_gap_in_ms():
 
 def test_prompt_carries_manual_and_rules():
     sp = build_system_prompt("pt-BR", "es-419", ES, [])
-    assert "MANUAL DO CLIENTE" in sp and "interjecciones" in sp.lower()
+    assert "REGRAS DO PERFIL" in sp and "interjecciones" in sp.lower()
     assert '"-Texto"' in sp and 'três pontos "..."' in sp
-    assert "padrão de qualidade do manual do cliente" in sp
+    assert 'padrão de qualidade do perfil "Encripta' in sp
     assert "…'" not in sp
     sp2 = build_system_prompt("pt-BR", "es-419", NETFLIX_ES_419, [])
-    assert "MANUAL DO CLIENTE" not in sp2 and '"- "' in sp2 and "da Netflix" in sp2
+    assert "REGRAS DO PERFIL" in sp2 and '"- "' in sp2 and "Interjeições são permitidas" in sp2
+    assert "No uses interjecciones" not in sp2
+
+
+def test_chat_message_carries_profile_rules():
+    from core.translate import chat_message, plan_chat_lots
+    cues = [Cue(i, i + 1, [f"Frase {i}"]) for i in range(5)]
+    lots = plan_chat_lots(5, 2)
+    m1 = chat_message(cues, lots, 1, "pt-BR", "es-419", ES)
+    assert "REGRAS DO PERFIL" in m1 and "No uses interjecciones" in m1
+    m2 = chat_message(cues, lots, 2, "pt-BR", "es-419", ES)
+    assert "REGRAS DO PERFIL" not in m2           # a conversa já tem as regras
+    m2r = chat_message(cues, lots, 2, "pt-BR", "es-419", ES, with_rules=True)
+    assert "No uses interjecciones" in m2r

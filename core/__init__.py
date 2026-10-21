@@ -4,4 +4,4 @@ Cada módulo recebe e devolve dados/arquivos simples para poder ser usado
 pela interface PySide6, pela linha de comando e pelos testes.
 """
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"

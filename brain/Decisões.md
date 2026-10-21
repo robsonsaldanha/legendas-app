@@ -105,3 +105,11 @@
   3. **Copiar com as instruções** a parte atual, para colar numa conversa nova se a atual travar (leva as 6 legendas anteriores como contexto);
   4. **Traduzir só aquela parte pela API** (centavos), sem sair do fluxo do ChatGPT.
 - O que já foi recebido nunca se perde.
+
+## 2026-10-21 — Regras do perfil (o que pode e o que não pode) vão para a IA
+- Pedido: cada perfil tem que levar para a IA exatamente as regras daquele cliente (ex.: Encripta proíbe interjeições, a Netflix aceita), e ela precisa poder criar regras novas.
+- `Profile.rules`: lista de regras `{categoria, texto, ligada, verificação}` (`core/rules.py`). As ligadas entram no pedido de tradução (API e ChatGPT) na seção "REGRAS DO PERFIL", agrupadas por categoria, com prioridade sobre as regras gerais. O texto livre (`guide`) virou "Observações livres" e vai depois.
+- Cada regra pode ligar uma verificação automática (interjeição, pontuação dupla, reticências, hífen, repetição, ¿/¡, texto de tela, dois-pontos, números). O Verificar só aponta o que alguma regra ligada pede — desligar a regra das interjeições desliga o aviso. Perfis salvos na 0.5 com `style_checks` continuam com todas.
+- Perfis prontos agora são editáveis: a alteração fica gravada por cima (mesma chave) e "Restaurar original" apaga a alteração.
+- Página do perfil (`#/perfil/<chave>`): regras por categoria (ligar/desligar, editar, categoria, verificação, remover, adicionar, procurar), limites técnicos e "Ver o que vai para a IA" (o texto exato das instruções).
+- Regras Netflix escritas a partir do que sabemos dos Timed Text Style Guides (o site da Netflix não abriu daqui); conferir com o guia atual e ajustar no próprio perfil.

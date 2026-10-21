@@ -60,7 +60,7 @@ function checkCue(i) {
     if (gap < -0.0005) out.push(["e", "sobrepõe a próxima"]);
     else if (gap < minGap() - 0.001) out.push(["w", "intervalo curto"]);
   }
-  if (p.style_checks) styleChecks(c.text || "", out);
+  if (profChecks(p).size) styleChecks(c.text || "", out);
   return out;
 }
 function recheckAll() {
@@ -560,14 +560,24 @@ function minGap() {
 }
 /* Avisos de estilo do manual do cliente (mesmas regras de core/style.py, versão rápida). */
 const INTERJ = /(^|[^\p{L}])(woo hoo|ah|ay|ey|oye|eh|ih|oh|ei|ui|uau|psiu|oba|eba|epa|opa|ufa|hey)(?![\p{L}])/iu;
+/* verificações ligadas pelas regras ativas do perfil (perfis antigos: style_checks liga todas) */
+const ALL_CHECKS = ["interjeicao", "pontuacao_dupla", "reticencias", "travessao", "repeticao", "abertura", "localizacao", "dois_pontos", "numero"];
+function profChecks(p) {
+  if (p._checks && p._checksSrc === p.rules) return p._checks;
+  const set = p.rules?.length ? new Set(p.rules.filter((r) => r.active !== false && r.check).map((r) => r.check))
+    : new Set(p.style_checks ? ALL_CHECKS : []);
+  Object.defineProperty(p, "_checks", { value: set, writable: true, enumerable: false, configurable: true });
+  Object.defineProperty(p, "_checksSrc", { value: p.rules, writable: true, enumerable: false, configurable: true });
+  return set;
+}
 function styleChecks(text, out) {
-  const p = ED.profile, plain = text.replace(/<[^>]+>|\{\\[^}]*\}/g, "");
+  const p = ED.profile, on = profChecks(p), plain = text.replace(/<[^>]+>|\{\\[^}]*\}/g, "");
   const lines = plain.split("\n").filter((l) => l.trim());
-  if (INTERJ.test(plain)) out.push(["w", "interjeição"]);
-  if (/\?\?|!!|\?!|!\?|¿¡|¡¿/.test(plain)) out.push(["w", "pontuação dupla"]);
-  if (p.ellipsis === "..." && plain.includes("…")) out.push(["w", "use ... (três pontos)"]);
-  if (p.dialogue_dash === "-" && lines.some((l) => /^\s*[-–—]\s+\S/.test(l))) out.push(["w", "hífen sem espaço"]);
-  if (/(^|[^\p{L}])(\p{L}{2,})[,.!?]*\s+\2(?![\p{L}])/iu.test(plain)) out.push(["w", "palavra repetida"]);
+  if (on.has("interjeicao") && INTERJ.test(plain)) out.push(["w", "interjeição"]);
+  if (on.has("pontuacao_dupla") && /\?\?|!!|\?!|!\?|¿¡|¡¿/.test(plain)) out.push(["w", "pontuação dupla"]);
+  if (on.has("reticencias") && p.ellipsis === "..." && plain.includes("…")) out.push(["w", "use ... (três pontos)"]);
+  if (on.has("travessao") && p.dialogue_dash === "-" && lines.some((l) => /^\s*[-–—]\s+\S/.test(l))) out.push(["w", "hífen sem espaço"]);
+  if (on.has("repeticao") && /(^|[^\p{L}])(\p{L}{2,})[,.!?]*\s+\2(?![\p{L}])/iu.test(plain)) out.push(["w", "palavra repetida"]);
 }
 
 function act(name) {

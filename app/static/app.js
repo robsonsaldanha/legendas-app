@@ -158,6 +158,7 @@ const routes = [
   [/^#\/projetos$/, renderProjects],
   [/^#\/projeto\/(novo|\d+)$/, renderProject],
   [/^#\/configuracoes$/, renderSettings],
+  [/^#\/perfil\/(novo|[\w\-]+)$/, renderProfile],
   [/^#\/editor(?:\/(\w+))?$/, renderEditor],
 ];
 
@@ -181,7 +182,7 @@ async function router() {
   if (!hash.startsWith("#/editor/")) { document.body.classList.remove("editor-mode"); ED.sid = null; ED.dirty = false; }
   ["ed-find", "ed-drawer", "ed-syncmenu-float"].forEach((id) => document.getElementById(id)?.remove());
   const section = hash.split("/")[1] || "inicio";
-  const navKey = { trabalho: "trabalhos", projeto: "clientes", projetos: "clientes", cliente: "clientes", novo: "trabalhos" }[section] || section;
+  const navKey = { trabalho: "trabalhos", projeto: "clientes", projetos: "clientes", cliente: "clientes", novo: "trabalhos", perfil: "configuracoes" }[section] || section;
   document.querySelectorAll("[data-nav]").forEach((a) => {
     if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -931,7 +932,7 @@ async function renderProject(id) {
         <label class="field"><span>Empresa (opcional)</span><input type="text" id="p-client" value="${esc(p.client)}"></label>
         <label class="field"><span>Idioma de origem</span><select id="p-src">${langOptions(p.source_lang)}</select></label>
         <label class="field"><span>Idioma da tradução</span><select id="p-dst">${langOptions(p.target_lang)}</select></label>
-        <label class="field"><span>Regras (perfil)</span><select id="p-profile">${S.state.profiles.map((x) => `<option value="${esc(x.key)}" ${x.key === p.profile_key ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>
+        <label class="field"><span>Regras (perfil) · <a href="#/perfil/${esc(p.profile_key)}" id="p-rules-link">ver e editar as regras</a></span><select id="p-profile">${S.state.profiles.map((x) => `<option value="${esc(x.key)}" ${x.key === p.profile_key ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>
         <p class="muted small" style="align-self:end">As regras acompanham o idioma da legenda: Encripta Español ↔ Encripta Português, Netflix ES ↔ PT.</p>
         <label class="field" style="grid-column:1/-1"><span>Sobre o material</span>
           <textarea id="p-context" placeholder="Assunto, época, personagens principais. Vai como contexto para a transcrição.">${esc(p.context)}</textarea></label>
@@ -966,6 +967,7 @@ async function renderProject(id) {
     if (t.dataset.i != null) gloss[Number(t.dataset.i)][t.dataset.k] = t.value;
   });
 
+  document.getElementById("p-profile").addEventListener("change", (e) => { document.getElementById("p-rules-link").href = `#/perfil/${e.target.value}`; });
   const collect = () => ({
     name: document.getElementById("p-name").value, client: document.getElementById("p-client").value,
     source_lang: document.getElementById("p-src").value, target_lang: document.getElementById("p-dst").value,
@@ -1059,9 +1061,9 @@ async function renderSettings() {
     </section>
 
     <section class="panel">
-      <h2>Perfis de regras</h2>
+      <div class="row" style="justify-content:space-between"><h2>Perfis de regras</h2><a class="btn" href="#/perfil/novo">Novo perfil</a></div>
+      <p class="muted small">Cada perfil tem os limites técnicos e a lista de regras do que pode e do que não pode. Clique para ver e editar; as regras ligadas vão para a IA na tradução.</p>
       <table class="table" id="profiles"></table>
-      <div id="profile-form"></div>
     </section>
 
     <section class="panel stack">
@@ -1146,76 +1148,19 @@ async function renderSettings() {
         await api("POST", "/api/shutdown");
         main.innerHTML = `<div class="panel empty"><p>O programa foi fechado. Pode fechar esta aba.</p></div>`;
       }
-      if (a === "dup-profile" || a === "edit-profile") {
-        const p = S.state.profiles.find((x) => x.key === b.dataset.key);
-        S.editingProfile = a === "dup-profile" ? { ...p, key: null, builtin: false, name: p.name + " (cópia)" } : p;
-        profileForm(S.editingProfile);
-      }
-      if (a === "del-profile") {
-        if (!confirm("Apagar este perfil?")) return;
-        const r = await api("DELETE", `/api/profiles/${b.dataset.key}`);
-        S.state.profiles = r.profiles; drawProfiles(r.profiles); document.getElementById("profile-form").innerHTML = "";
-      }
-      if (a === "save-profile") {
-        const f = (id) => document.getElementById(id).value;
-        const base = { ...(S.editingProfile || {}) };
-        delete base.key; delete base.builtin;
-        const opt = Number(f("pf-opt")), gapMs = Number(f("pf-gapms"));
-        const data = {
-          ...base,
-          name: f("pf-name"), language: f("pf-lang"), max_chars_per_line: Number(f("pf-cpl")), max_lines: Number(f("pf-lines")),
-          max_cps: Number(f("pf-cps")), optimal_cps: opt > 0 ? opt : null,
-          min_duration: Number(f("pf-min")), max_duration: Number(f("pf-max")), min_gap_frames: Number(f("pf-gap")),
-          min_gap_ms: gapMs > 0 ? gapMs : null,
-          dialogue_dash: f("pf-dash"), ellipsis: f("pf-ell"), guide: f("pf-guide"),
-        };
-        const key = b.dataset.key;
-        const r = key ? await api("PUT", `/api/profiles/${key}`, data) : await api("POST", "/api/profiles", data);
-        S.state.profiles = r.profiles; drawProfiles(r.profiles); document.getElementById("profile-form").innerHTML = "";
-        toast("Perfil salvo.");
-      }
-      if (a === "cancel-profile") document.getElementById("profile-form").innerHTML = "";
     } catch (err) { toast(err.message, true); }
   };
 }
 
 function drawProfiles(list) {
-  document.getElementById("profiles").innerHTML = `<thead><tr><th>Perfil</th><th class="num">Caracteres</th><th class="num">Linhas</th><th class="num">CPS</th><th class="num">Duração</th><th></th></tr></thead><tbody>`
-    + list.map((p) => `<tr>
-      <td>${esc(p.name)}${p.builtin ? ` <span class="muted small">pronto</span>` : ""}</td>
-      <td class="num">${p.max_chars_per_line}</td><td class="num">${p.max_lines}</td><td class="num">${nf1.format(p.max_cps)}</td>
+  document.getElementById("profiles").innerHTML = `<thead><tr><th>Perfil</th><th class="num">Regras</th><th class="num">Caracteres</th><th class="num">CPS</th><th class="num">Duração</th></tr></thead><tbody>`
+    + list.map((p) => `<tr class="click" data-href="#/perfil/${esc(p.key)}">
+      <td><strong>${esc(p.name)}</strong>${p.builtin ? ` <span class="muted small">${p.modified ? "pronto · alterado" : "pronto"}</span>` : ""}</td>
+      <td class="num">${(p.rules || []).filter((r) => r.active).length}</td>
+      <td class="num">${p.max_chars_per_line} × ${p.max_lines}</td><td class="num">${nf1.format(p.max_cps)}</td>
       <td class="num">${nf1.format(p.min_duration)}–${nf1.format(p.max_duration)} s</td>
-      <td class="num"><button class="btn link" data-action="dup-profile" data-key="${esc(p.key)}">Duplicar</button>
-        ${p.builtin ? "" : `<button class="btn link" data-action="edit-profile" data-key="${esc(p.key)}">Editar</button><button class="btn link" data-action="del-profile" data-key="${esc(p.key)}">Apagar</button>`}</td>
     </tr>`).join("") + "</tbody>";
-}
-
-function profileForm(p) {
-  const sel = (id, label, v, opts) => `<label class="field"><span>${label}</span><select id="${id}">${opts.map(([val, t]) => `<option value="${esc(val)}" ${val === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>`;
-  const num = (id, label, v, step = "1", min = "0") => `<label class="field"><span>${label}</span><input type="number" id="${id}" value="${v}" step="${step}" min="${min}"></label>`;
-  document.getElementById("profile-form").innerHTML = `
-    <div class="stack" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
-      <h3>${p.key ? "Editar perfil" : "Novo perfil"}</h3>
-      <div class="grid-2">
-        <label class="field"><span>Nome</span><input type="text" id="pf-name" value="${esc(p.name)}"></label>
-        <label class="field"><span>Idioma</span><select id="pf-lang">${langOptions(p.language)}</select></label>
-        ${num("pf-cpl", "Caracteres por linha", p.max_chars_per_line, "1", "10")}
-        ${num("pf-lines", "Linhas", p.max_lines, "1", "1")}
-        ${num("pf-cps", "Velocidade máxima (CPS)", p.max_cps, "0.5", "1")}
-        ${num("pf-opt", "CPS ideal (vazio = igual ao máximo)", p.optimal_cps ?? "", "0.5", "0")}
-        ${num("pf-gap", "Intervalo entre legendas (quadros)", p.min_gap_frames)}
-        ${num("pf-gapms", "…ou intervalo em milissegundos (tem prioridade)", p.min_gap_ms ?? "", "1", "0")}
-        ${num("pf-min", "Duração mínima (s)", Math.round(p.min_duration * 1000) / 1000, "0.001", "0.1")}
-        ${num("pf-max", "Duração máxima (s)", p.max_duration, "0.001", "1")}
-        ${sel("pf-dash", "Diálogo", p.dialogue_dash ?? "- ", [["- ", "Hífen com espaço (- Texto)"], ["-", "Hífen sem espaço (-Texto)"]])}
-        ${sel("pf-ell", "Reticências", p.ellipsis ?? "…", [["…", "Caractere único (…)"], ["...", "Três pontos (...)"]])}
-      </div>
-      <label class="field"><span>Manual do cliente (vai junto na tradução, pela API e pelo ChatGPT)</span>
-        <textarea id="pf-guide" rows="8">${esc(p.guide || "")}</textarea></label>
-      <div class="row"><button class="btn primary" data-action="save-profile" data-key="${p.key || ""}">Salvar perfil</button>
-      <button class="btn" data-action="cancel-profile">Cancelar</button></div>
-    </div>`;
-  document.getElementById("pf-name").focus();
+  document.querySelectorAll("#profiles tr[data-href]").forEach((tr) => tr.addEventListener("click", () => (location.hash = tr.dataset.href)));
 }
 
 /* ================================================================ início */

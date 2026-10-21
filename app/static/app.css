@@ -546,3 +546,15 @@ textarea.paste { min-height: 96px; font-family: Consolas, "Cascadia Mono", monos
 .blocked summary { cursor: pointer; font-size: 13px; font-weight: 600; }
 .blocked[open] summary { margin-bottom: 8px; }
 .blocked .btn { margin-right: 8px; }
+
+/* perfil de regras */
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; }
+@media (max-width: 900px) { .grid-3 { grid-template-columns: 1fr 1fr; } }
+.rule-cat { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 6px; }
+.rule { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.rule textarea { min-height: 38px; resize: vertical; font-size: 14px; }
+.rule .rule-on { display: flex; align-items: center; gap: 6px; align-self: start; padding-top: 8px; }
+.rule .rule-meta { grid-column: 2; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.rule .rule-meta select { width: auto; font-size: 13px; padding: 4px 8px; }
+.rule.off textarea { opacity: .55; text-decoration: line-through; }
+.prompt-view { width: 100%; min-height: 50vh; font: 12.5px/1.45 ui-monospace, Consolas, monospace; white-space: pre-wrap; }

@@ -198,20 +198,30 @@ class Database:
     # ------------------------------------------------------------ profiles
 
     def list_profiles(self) -> list[dict]:
-        out = [{"key": k, "builtin": True, **p.to_dict()} for k, p in BUILTIN_PROFILES.items()]
-        for r in self._q("SELECT key, data FROM profiles ORDER BY key"):
-            out.append({"key": r["key"], "builtin": False, **json.loads(r["data"])})
+        """Prontos (com as alterações dela, se houver) e depois os próprios."""
+        saved = {r["key"]: json.loads(r["data"]) for r in self._q("SELECT key, data FROM profiles ORDER BY key")}
+        out = []
+        for k, p in BUILTIN_PROFILES.items():
+            data = saved.pop(k, None)
+            prof = Profile.from_dict(data) if data else p
+            out.append({"key": k, "builtin": True, "modified": data is not None, **prof.to_dict()})
+        for k, data in saved.items():
+            out.append({"key": k, "builtin": False, "modified": False, **Profile.from_dict(data).to_dict()})
         return out
 
     def get_profile(self, key: str) -> Profile:
+        rows = self._q("SELECT data FROM profiles WHERE key = ?", (key,))
+        if rows:   # perfil próprio, ou pronto alterado por ela
+            return Profile.from_dict(json.loads(rows[0]["data"]))
         if key in BUILTIN_PROFILES:
             return BUILTIN_PROFILES[key]
-        rows = self._q("SELECT data FROM profiles WHERE key = ?", (key,))
-        if not rows:
-            raise KeyError(f"Perfil não encontrado: {key}")
-        return Profile.from_dict(json.loads(rows[0]["data"]))
+        raise KeyError(f"Perfil não encontrado: {key}")
 
     def save_profile(self, key: str | None, data: dict) -> str:
+        from core.rules import clean_rules
+        data = dict(data)
+        if "rules" in data:
+            data["rules"] = clean_rules(data["rules"])
         p = Profile.from_dict(data)
         if not p.name.strip():
             raise ValueError("Dê um nome ao perfil.")
@@ -219,8 +229,14 @@ class Database:
             raise ValueError("Valores do perfil inválidos.")
         if p.min_duration <= 0 or p.max_duration <= p.min_duration:
             raise ValueError("A duração máxima precisa ser maior que a mínima.")
-        if key in BUILTIN_PROFILES:
-            raise ValueError("Perfis prontos não podem ser alterados. Duplique para editar.")
+        if p.optimal_cps is not None and p.optimal_cps <= 0:
+            p.optimal_cps = None
+        if p.min_gap_ms is not None and p.min_gap_ms <= 0:
+            p.min_gap_ms = None
+        if p.ellipsis not in ("…", "..."):
+            p.ellipsis = "…"
+        if p.dialogue_dash not in ("- ", "-"):
+            p.dialogue_dash = "- "
         if not key:
             key = "proprio-" + str(int(time.time() * 1000))
         self._exec("INSERT OR REPLACE INTO profiles (key, data) VALUES (?, ?)",
@@ -228,8 +244,7 @@ class Database:
         return key
 
     def delete_profile(self, key: str) -> None:
-        if key in BUILTIN_PROFILES:
-            raise ValueError("Perfis prontos não podem ser apagados.")
+        """Perfil próprio: apaga. Pronto: volta ao original (desfaz as alterações)."""
         self._exec("DELETE FROM profiles WHERE key = ?", (key,))
 
     # ----------------------------------------------------------------- jobs

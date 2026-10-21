@@ -618,6 +618,31 @@ class Handler(BaseHTTPRequestHandler):
 
     # -------------------------------------------------------------- perfis
 
+    @route("GET", r"/api/profiles/([\w\-]+)/prompt")
+    def api_profile_prompt(self, key):
+        """O texto de instruções que vai para a IA com este perfil (para conferir)."""
+        from core.translate import _CHAT_FORMAT, build_system_prompt
+        try:
+            prof = self.app.db.get_profile(key)
+        except KeyError as e:
+            raise ApiError("Perfil não encontrado.", 404) from e
+        src = self.query.get("src") or ("es-419" if prof.language.startswith("pt") else "pt-BR")
+        dst = self.query.get("dst") or prof.language
+        text = build_system_prompt(src, dst, prof, [], "", "").split("\nFORMATO\n")[0].rstrip()
+        return {"text": f"{text}\n\n{_CHAT_FORMAT}", "source": src, "target": dst}
+
+    @route("GET", r"/api/profiles/([\w\-]+)")
+    def api_profile_get(self, key):
+        try:
+            prof = self.app.db.get_profile(key)
+        except KeyError as e:
+            raise ApiError("Perfil não encontrado.", 404) from e
+        from core.profiles import BUILTIN_PROFILES
+        from core.rules import CATEGORIES, CHECKS
+        listed = next((p for p in self.app.db.list_profiles() if p["key"] == key), {})
+        return {"key": key, "builtin": key in BUILTIN_PROFILES, "modified": listed.get("modified", False),
+                **prof.to_dict(), "categories": CATEGORIES, "checks": CHECKS}
+
     @route("POST", r"/api/profiles")
     def api_profile_create(self):
         key = self.app.db.save_profile(None, self._body())

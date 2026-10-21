@@ -141,8 +141,26 @@ def test_projects_crud(server):
 
 def test_profiles(server):
     app, port, _ = server
-    st, err = call(port, "PUT", "/api/profiles/netflix-es-419", {"name": "x"}, token=app.token)
-    assert st == 400
+    # perfil pronto: dá para alterar as regras e depois restaurar o original
+    st, prof = call(port, "GET", "/api/profiles/encripta-es-419", token=app.token)
+    assert st == 200 and prof["builtin"] and not prof["modified"] and "Interjeições" in prof["categories"]
+    assert any(r["check"] == "interjeicao" for r in prof["rules"]) and "interjeicao" in prof["checks"]
+    rules = [dict(r, active=False) if r["check"] == "interjeicao" else r for r in prof["rules"]]
+    rules.append({"category": "Linguagem e tom", "text": "Trate o protagonista por \"usted\".", "active": True})
+    rules.append({"category": "Outros", "text": "   "})          # vazia: descartada
+    body = {k: v for k, v in prof.items() if k not in ("key", "builtin", "modified", "categories", "checks")}
+    st, r = call(port, "PUT", "/api/profiles/encripta-es-419", {**body, "rules": rules}, token=app.token)
+    assert st == 200, r
+    st, prof2 = call(port, "GET", "/api/profiles/encripta-es-419", token=app.token)
+    assert prof2["modified"] and len(prof2["rules"]) == len(prof["rules"]) + 1
+    st, pr = call(port, "GET", "/api/profiles/encripta-es-419/prompt", token=app.token)
+    assert 'usted' in pr["text"] and "No uses interjecciones" not in pr["text"] and "FORMATO DA RESPOSTA" in pr["text"]
+    assert "interjeicao" not in app.db.get_profile("encripta-es-419").checks()
+    st, r = call(port, "DELETE", "/api/profiles/encripta-es-419", token=app.token)   # restaurar
+    st, prof3 = call(port, "GET", "/api/profiles/encripta-es-419", token=app.token)
+    assert not prof3["modified"] and "interjeicao" in app.db.get_profile("encripta-es-419").checks()
+    st, r = call(port, "GET", "/api/profiles/nao-existe", token=app.token)
+    assert st == 404
     st, r = call(port, "POST", "/api/profiles", {"name": "Cliente Y", "max_cps": 15, "language": "es-419"},
                  token=app.token)
     assert st == 200

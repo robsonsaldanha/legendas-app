@@ -253,14 +253,18 @@ def build_system_prompt(source: str, target: str, profile: Profile, glossary: li
     if context.strip():
         extra += f"\n\nSOBRE O MATERIAL:\n{context.strip()}"
     manual = ""
+    from .rules import render_rules
+    rules_txt = render_rules(profile.rules)
+    if rules_txt:
+        manual += (f"\n\nREGRAS DO PERFIL \"{profile.name}\" — obrigatórias; em caso de conflito com as "
+                   f"regras gerais acima, valem estas:\n{rules_txt}")
     if profile.guide.strip():
-        manual = (f"\n\nMANUAL DO CLIENTE ({profile.name}) — siga à risca; em caso de conflito com as "
-                  f"regras acima, vale o manual:\n{profile.guide.strip()}")
+        manual += f"\n\nOBSERVAÇÕES DO CLIENTE:\n{profile.guide.strip()}"
     dash = profile.dialogue_dash
     dash_txt = f'"{dash}" (hífen sem espaço, ex.: "{dash}Texto")' if dash == "-" else f'"{dash}"'
     ell = ('três pontos "..." (nunca o caractere "…")' if profile.ellipsis == "..."
            else 'o caractere único "…"')
-    standard = "do manual do cliente" if profile.guide.strip() else "da Netflix"
+    standard = f"do perfil \"{profile.name}\""
     return f"""Você é um tradutor-legendador profissional. Traduza legendas de {lang_name(source)} para {lang_name(target)}, no padrão de qualidade {standard}.
 
 SOBRE O MATERIAL
