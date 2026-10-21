@@ -58,6 +58,37 @@ def delete_api_key() -> None:
             pass
 
 
+# ---------------------------------------------- outras chaves (Claude, gateway)
+
+SECRET_ENV = {"anthropic_api_key": "ANTHROPIC_API_KEY", "gateway_api_key": "LEGENDAS_GATEWAY_KEY"}
+
+
+def get_secret(name: str) -> str:
+    """Chave guardada no Gerenciador de Credenciais (vazio se não houver)."""
+    env = os.environ.get(SECRET_ENV.get(name, ""), "").strip() if name in SECRET_ENV else ""
+    if env:
+        return env
+    try:
+        import keyring
+        return (keyring.get_password(KEYRING_SERVICE, name) or "").strip()
+    except Exception as e:  # noqa: BLE001
+        log.debug("keyring indisponível: %s", e)
+        return ""
+
+
+def set_secret(name: str, value: str) -> None:
+    import keyring
+    keyring.set_password(KEYRING_SERVICE, name, value.strip())
+
+
+def delete_secret(name: str) -> None:
+    import keyring
+    try:
+        keyring.delete_password(KEYRING_SERVICE, name)
+    except Exception:
+        pass
+
+
 def make_client():
     from openai import OpenAI
     return OpenAI(api_key=get_api_key(), max_retries=0, timeout=180.0)

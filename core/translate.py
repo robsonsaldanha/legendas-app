@@ -18,12 +18,14 @@ from __future__ import annotations
 import json
 import logging
 import math
+import random
+import time
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Protocol
 
-from .errors import ApiError
+from .errors import ApiError, ApiKeyError
 from .glossary import Entry
 from .lang import base_language, visible_len
 from .openai_client import make_client, with_retry
@@ -217,6 +219,169 @@ class OpenAITranslator:
                 self._no_reasoning = True  # modelo sem esse parâmetro: tenta sem
                 return with_retry(lambda: self._create(model, system, user))
             raise
+
+
+class AnthropicTranslator:
+    """Tradução pelo Claude (API da Anthropic), com saída em JSON Schema (output_config)."""
+
+    URL = "https://api.anthropic.com/v1/messages"
+
+    def __init__(self, model: str, api_key: str, http=None):
+        if not api_key:
+            raise ApiKeyError("Chave do Claude não configurada. Abra Configurações → Inteligência artificial.")
+        self.model = model
+        self._key = api_key
+        self._http = http
+
+    @property
+    def http(self):
+        if self._http is None:
+            import httpx
+            self._http = httpx.Client(timeout=180.0)
+        return self._http
+
+    def _post(self, system: str, user: str) -> dict:
+        body = {"model": self.model, "max_tokens": 16000, "system": system,
+                "messages": [{"role": "user", "content": user}],
+                "output_config": {"format": {"type": "json_schema", "schema": SCHEMA}}}
+        r = self.http.post(self.URL, json=body, headers={
+            "x-api-key": self._key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+        if r.status_code >= 400:
+            try:
+                msg = r.json().get("error", {}).get("message", r.text)
+            except ValueError:
+                msg = r.text
+            if r.status_code == 401:
+                raise ApiKeyError("A chave do Claude foi recusada. Confira em Configurações.")
+            if r.status_code == 404 or "model" in msg.lower() and r.status_code == 400:
+                raise ApiError(f"Modelo do Claude indisponível ({self.model}). Confira em Configurações.")
+            err = ApiError(f"Claude respondeu com erro {r.status_code}: {msg[:200]}")
+            err.retryable = r.status_code in (408, 409, 429, 500, 502, 503, 504, 529)
+            raise err
+        return r.json()
+
+    def translate_batch(self, system: str, user: str) -> tuple[dict, Usage]:
+        last = None
+        for attempt in range(4):
+            try:
+                data = self._post(system, user)
+                break
+            except ApiError as e:
+                if not getattr(e, "retryable", False) or attempt == 3:
+                    raise
+                last = e
+                time.sleep(min(30, 2 ** attempt * 2 + random.random()))
+            except ApiKeyError:
+                raise
+            except Exception as e:  # noqa: BLE001  (rede)
+                if attempt == 3:
+                    raise ApiError("Não consegui falar com o Claude. Confira a internet.") from e
+                last = e
+                time.sleep(2 ** attempt * 2)
+        else:  # pragma: no cover
+            raise ApiError("Claude indisponível.") from last
+        if data.get("stop_reason") == "refusal":
+            raise ApiError("O Claude recusou traduzir este trecho.")
+        u = data.get("usage") or {}
+        usage = Usage(int(u.get("input_tokens", 0) or 0), int(u.get("output_tokens", 0) or 0))
+        text = next((b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"), "")
+        try:
+            return json.loads(text or "{}"), usage
+        except ValueError as e:
+            if data.get("stop_reason") == "max_tokens":
+                raise ApiError("A resposta do Claude veio cortada. Tente lotes menores.") from e
+            raise ApiError("A resposta do Claude veio incompleta. Tente de novo.") from e
+
+
+class GatewayTranslator(OpenAITranslator):
+    """Qualquer serviço compatível com a API da OpenAI (OpenRouter, LiteLLM, Azure, Ollama…).
+
+    Nem todos aceitam JSON Schema: tenta schema → json_object → texto livre (lido com tolerância)."""
+
+    def __init__(self, base_url: str, model: str, api_key: str = "", client=None):
+        if not base_url or not model:
+            raise ApiError("Gateway sem endereço ou modelo. Configure em Configurações → Inteligência artificial.")
+        super().__init__(model, reasoning_effort="", client=client)
+        self.base_url = base_url.rstrip("/")
+        self._key = api_key
+        self._mode = "schema"
+
+    @property
+    def client(self):
+        if self._client is None:
+            from openai import OpenAI
+            self._client = OpenAI(api_key=self._key or "sem-chave", base_url=self.base_url,
+                                  max_retries=0, timeout=180.0)
+        return self._client
+
+    def _create(self, model: str, system: str, user: str):
+        kwargs: dict = {"model": model,
+                        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+        if self._mode == "schema":
+            kwargs["response_format"] = {"type": "json_schema",
+                                         "json_schema": {"name": "traducao", "strict": True, "schema": SCHEMA}}
+        elif self._mode == "json":
+            kwargs["response_format"] = {"type": "json_object"}
+        else:
+            kwargs["messages"][0]["content"] = system + '\n\nResponda só com JSON: {"itens": [{"id": ..., "texto": ...}]}'
+        return self.client.chat.completions.create(**kwargs)
+
+    def translate_batch(self, system: str, user: str) -> tuple[dict, Usage]:
+        while True:
+            try:
+                resp = with_retry(lambda: self._create(self.model, system, user))
+            except ApiError as e:
+                cause = str(e.__cause__ or e).lower()
+                if self._mode != "text" and ("response_format" in cause or "json" in cause or "schema" in cause):
+                    self._mode = "json" if self._mode == "schema" else "text"
+                    log.warning("Gateway sem suporte a este formato; tentando %s.", self._mode)
+                    continue
+                raise
+            break
+        choice = resp.choices[0]
+        u = getattr(resp, "usage", None)
+        usage = Usage(getattr(u, "prompt_tokens", 0) or 0, getattr(u, "completion_tokens", 0) or 0)
+        content = choice.message.content or "{}"
+        try:
+            return json.loads(content), usage
+        except ValueError:
+            data = _loads_lenient(content[content.find("{"):content.rfind("}") + 1] if "{" in content else content)
+            if isinstance(data, dict):
+                return data, usage
+            raise ApiError("A resposta do gateway não veio em JSON. Tente outro modelo.")
+
+
+PROVIDER_NAMES = {"openai": "OpenAI", "claude": "Claude", "gateway": "Gateway"}
+
+
+def make_translator(settings) -> "Translator":
+    """O tradutor automático escolhido em Configurações."""
+    from .openai_client import get_secret
+    prov = getattr(settings, "translate_provider", "openai") or "openai"
+    if prov == "claude":
+        return AnthropicTranslator(settings.claude_model, get_secret("anthropic_api_key"))
+    if prov == "gateway":
+        return GatewayTranslator(settings.gateway_url, settings.gateway_model, get_secret("gateway_api_key"))
+    return OpenAITranslator(settings.translate_model, settings.translate_reasoning)
+
+
+def translate_prices(settings) -> tuple[float, float]:
+    """US$ por milhão de tokens (entrada, saída) do tradutor escolhido."""
+    prov = getattr(settings, "translate_provider", "openai") or "openai"
+    if prov == "claude":
+        return settings.claude_usd_per_mtok_in, settings.claude_usd_per_mtok_out
+    if prov == "gateway":
+        return settings.gateway_usd_per_mtok_in, settings.gateway_usd_per_mtok_out
+    return settings.translate_usd_per_mtok_in, settings.translate_usd_per_mtok_out
+
+
+def provider_label(settings) -> str:
+    prov = getattr(settings, "translate_provider", "openai") or "openai"
+    if prov == "claude":
+        return f"Claude ({settings.claude_model})"
+    if prov == "gateway":
+        return f"{settings.gateway_name or 'Gateway'} ({settings.gateway_model})"
+    return f"OpenAI ({settings.translate_model})"
 
 
 def _model_missing(cause) -> bool:

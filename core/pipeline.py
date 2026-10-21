@@ -37,7 +37,7 @@ from .profiles import Profile, default_profile_for, get_profile
 from .qc import AVISO, Issue, check_rules, write_report
 from .subtitle import Cue, Word, read_srt, write_srt
 from .transcribe import OpenAITranscriber, Segment, Transcriber, build_prompt, run_transcription
-from .translate import (OpenAITranslator, Translator, detect_language, estimate_tokens, output_name,
+from .translate import (OpenAITranslator, make_translator, provider_label, translate_prices, Translator, detect_language, estimate_tokens, output_name,
                         translate_cues)
 
 log = logging.getLogger("legendas")
@@ -94,7 +94,7 @@ class Callbacks:
 def _params_for_id(req: JobRequest, profile: Profile, settings: Settings) -> dict:
     return {"steps": sorted(req.steps), "src": req.source_lang, "dst": req.target_lang,
             "profile": profile.to_dict(), "model": settings.transcribe_model,
-            "tmodel": settings.translate_model if TRANSLATE in req.steps else "",
+            "tmodel": provider_label(settings) if TRANSLATE in req.steps else "",
             "instr": req.instructions, "stem": req.output_stem or "",
             "glossary": str(req.glossary) if req.glossary else "",
             "glossary_entries": [[e.term, e.translation] for e in (req.glossary_entries or [])],
@@ -345,8 +345,8 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         if estimate_only:
             return result
         cb.status(f"Traduzindo {len(source_cues)} legendas para "
-                  f"{_lang_label(req.target_lang)} (OpenAI)…")
-        translator = translator or OpenAITranslator(settings.translate_model, settings.translate_reasoning)
+                  f"{_lang_label(req.target_lang)} ({provider_label(settings)})…")
+        translator = translator or make_translator(settings)
         tr = translate_cues(
             source_cues, src_lang, req.target_lang, final_profile, translator, job.path("traducao"),
             glossary=glossary, instructions=req.instructions, context=req.context,
@@ -354,8 +354,8 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
             progress=lambda d, t: cb.progress(TRANSLATE, d, t), cancelled=cb.cancelled)
         cb.check_cancel()
         result.tokens_in, result.tokens_out = tr.usage.input_tokens, tr.usage.output_tokens
-        result.translate_usd = (tr.usage.input_tokens * settings.translate_usd_per_mtok_in
-                                + tr.usage.output_tokens * settings.translate_usd_per_mtok_out) / 1e6
+        pin, pout = translate_prices(settings)
+        result.translate_usd = (tr.usage.input_tokens * pin + tr.usage.output_tokens * pout) / 1e6
         result.estimated_usd = (result.audio_minutes * settings.transcribe_usd_per_min
                                 + result.translate_usd)
         job.mark(TRANSLATE, "ok", legendas=len(tr.cues), faltaram=len(tr.missing),
@@ -411,7 +411,8 @@ def _lang_label(code: str) -> str:
 
 def _add_translate_estimate(result: JobResult, cues: list[Cue], settings: Settings) -> None:
     tin, tout = estimate_tokens(cues, settings.translate_batch)
-    usd = (tin * settings.translate_usd_per_mtok_in + tout * settings.translate_usd_per_mtok_out) / 1e6
+    pin, pout = translate_prices(settings)
+    usd = (tin * pin + tout * pout) / 1e6
     result.tokens_in, result.tokens_out, result.translate_usd = tin, tout, usd
     result.cues = len(cues)
     result.estimated_usd = result.audio_minutes * settings.transcribe_usd_per_min + usd

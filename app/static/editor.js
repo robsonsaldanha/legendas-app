@@ -758,7 +758,7 @@ async function openTranslate(opts = {}) {
           <label class="method"><input type="radio" name="tr-m" value="chat" ${method === "chat" ? "checked" : ""}>
             <strong>Pelo meu ChatGPT</strong><span class="muted small">Sem custo. Você cola cada parte no ChatGPT e cola a resposta aqui.</span></label>
           <label class="method"><input type="radio" name="tr-m" value="api" ${method === "api" ? "checked" : ""}>
-            <strong>Automática (API)</strong><span class="muted small" id="tr-cost">Sem trabalho manual. Custo na OpenAI.</span></label>
+            <strong>Automática (API)</strong><span class="muted small" id="tr-cost">Sem trabalho manual. Custo no serviço escolhido em Configurações.</span></label>
         </div>
         <div class="langs">
           <label class="field"><span>De</span><select id="tr-src">${langOptions(src)}</select></label>
@@ -795,7 +795,7 @@ async function openTranslate(opts = {}) {
     $('[data-tr="go"]').disabled = false;
     try {
       const r = await api("POST", `/api/editor/${ED.sid}/translate`, { ...opt(), estimate: true });
-      c.innerHTML = `Sem trabalho manual. Custo estimado: <b>${fmtUSD(r.usd)}</b>.`;
+      c.innerHTML = `Sem trabalho manual · ${esc(r.provider || "OpenAI")}. Custo estimado: <b>${fmtUSD(r.usd)}</b>.`;
     } catch { /* sem chave, por exemplo: o texto padrão fica */ }
   };
   const syncProfile = () => { const p = profFor($("#tr-dst").value); if ([...$("#tr-profile").options].some((o) => o.value === p)) $("#tr-profile").value = p; };

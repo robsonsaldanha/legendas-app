@@ -739,3 +739,28 @@ a.brand { text-decoration: none; color: inherit; }
 .hero > div:first-child { min-width: 0; }
 .hero-side .seg { align-self: flex-end; }
 @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-side { align-items: flex-start; } .hero-side .path { text-align: left; } }
+.methods.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ai-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ai-card { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--panel-2); display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 1100px) { .ai-cards, .methods.three { grid-template-columns: 1fr; } }
+
+/* lista de projetos (menu Projetos) */
+.panel.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 14px 16px; margin-bottom: 6px; }
+.panel.toolbar select { width: auto; }
+.panel.toolbar .search { flex: 1; min-width: 200px; }
+.panel.toolbar .search input { min-width: 0; width: 100%; }
+.prow { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; box-shadow: var(--shadow); overflow: hidden; }
+.prow-head { display: grid; grid-template-columns: auto auto minmax(180px, 1fr) auto auto auto; gap: 14px; align-items: center; padding: 14px 16px; }
+.prow .caret svg.i { transition: transform .15s; }
+.prow.open .caret svg.i { transform: rotate(90deg); }
+.prow-name { display: flex; flex-direction: column; min-width: 0; }
+.prow-name a { color: var(--ink); text-decoration: none; font-size: 16px; }
+.prow-name a:hover { color: var(--accent); }
+.prow-stats { display: flex; gap: 22px; }
+.prow-stats > span { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.prow-stats .label { font-size: 9.5px; }
+.prow-acts { display: flex; gap: 6px; }
+.prow-body:not(:empty) { border-top: 1px solid var(--line); padding: 6px 16px 12px; background: var(--panel-2); }
+.table.mini td, .table.mini th { padding: 7px 8px; }
+@media (max-width: 1350px) { .prow-stats > span:nth-child(n+4) { display: none; } }
+@media (max-width: 1100px) { .prow-head { grid-template-columns: auto auto 1fr; } .prow-stats, .prow-head > select { grid-column: 3; } .prow-acts { grid-column: 1 / -1; } }

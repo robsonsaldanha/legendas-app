@@ -124,3 +124,9 @@
 - **Métricas** (`core/metrics.py`): legendas, linhas, palavras, letras, caracteres (com/sem espaço), frases, duração do vídeo, tempo com legenda na tela, legendas por minuto, médias (caracteres, palavras, duração, intervalo, palavras por frase), CPS médio/mediano/máximo e acima do perfil, 1/2/3+ linhas, diálogos, itálico, {\an8}, curtas/longas, apontamentos por tipo, tamanho da tradução vs original, e produtividade (legendas, palavras e minutos de vídeo por hora).
 - Relatórios: geral (filtros de período, cliente e status; por mês, por cliente, por projeto, tempo por dia; exporta CSV), do projeto (abas Episódios/Métricas/Histórico) e do episódio (métricas, evolução, tempo por dia).
 - "Abrir legenda avulsa" (fora de projeto) continua no menu Editor.
+
+## 2026-10-21 — Tela Projetos própria; Claude e gateway personalizado
+- O menu Projetos abria a mesma tela do Início. Agora: Início = boas-vindas + Novo/Abrir/Continuar + **projetos recentes** (8); Projetos = lista completa com filtros (status, filme/série, cliente), ordenação, busca, status editável na linha e episódios abertos ali mesmo (seta).
+- **Tradução automática por outros serviços** (Configurações → Inteligência artificial): OpenAI (como antes), **Claude** (API da Anthropic, `output_config.format` com JSON Schema, sem dependência nova: `httpx`, que já vem com o `openai`) e **gateway personalizado** compatível com OpenAI (URL base + chave + modelo; tenta JSON Schema → json_object → texto). Chaves no Gerenciador de Credenciais (`anthropic_api_key`, `gateway_api_key`).
+- Padrão do Claude: `claude-sonnet-5-5`, US$ 2 / 10 por milhão de tokens (platform.claude.com/docs/en/models/overview, conferido em 21/10/2026). Editável.
+- A transcrição continua só pela OpenAI (`gpt-transcribe`).

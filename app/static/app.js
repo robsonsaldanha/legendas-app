@@ -417,9 +417,11 @@ function validateDraft() {
   if (steps.includes("sincronizar") && has("subtitle") && has("text")) return "Para sincronizar use a legenda OU o texto, não os dois.";
   if (steps.includes("sincronizar") && !has("subtitle") && !has("text") && !steps.includes("transcrever"))
     return "Para sincronizar, junte ao vídeo a legenda fora do tempo (.srt) ou o texto sem tempo (.txt/.docx).";
-  const needsKey = steps.includes("transcrever") || (steps.includes("sincronizar") && has("text"))
-    || (steps.includes("traduzir") && curMethod() === "api");
-  if (needsKey && !S.state.api_key) return "Configure a chave da OpenAI primeiro.";
+  const needsOpenAI = steps.includes("transcrever") || (steps.includes("sincronizar") && has("text"));
+  if (needsOpenAI && !S.state.api_key) return "Configure a chave da OpenAI primeiro (Configurações).";
+  const prov = S.state.ai?.provider || "openai";
+  if (steps.includes("traduzir") && curMethod() === "api" && !(prov === "openai" ? S.state.api_key : S.state.ai?.[prov]?.key || prov === "gateway"))
+    return `Configure a chave do ${prov === "claude" ? "Claude" : "serviço de tradução"} em Configurações.`;
   return "";
 }
 
@@ -1084,9 +1086,11 @@ async function renderSettings() {
       </div>
     </section>
 
+    ${aiSection(st)}
+
     <section class="panel stack">
-      <h2>Chave da OpenAI</h2>
-      <p class="muted small">Só para transcrever, traduzir pela API e sincronizar texto sem tempo. Traduzir pelo seu ChatGPT e sincronizar legendas não precisam dela.</p>
+      <div class="row" style="justify-content:space-between"><h2>OpenAI</h2><span class="label">transcrição · tradução</span></div>
+      <p class="muted small">Necessária para transcrever e para sincronizar texto sem tempo; também pode fazer a tradução automática. Traduzir pelo seu ChatGPT e sincronizar legendas não precisam de chave.</p>
       ${st.api_key
         ? `<p>Chave configurada, terminando em <strong class="tnum">${esc(st.api_key)}</strong>. Fica guardada no Gerenciador de Credenciais do Windows.</p>
            <div class="row"><button class="btn" data-action="test-key">Testar chave</button><button class="btn danger" data-action="remove-key">Remover chave</button></div>`
@@ -1149,6 +1153,7 @@ async function renderSettings() {
     const msg = document.getElementById("key-msg");
     const showKeyMsg = (r) => { msg.hidden = false; msg.className = "note " + (r.ok ? "ok" : "err"); msg.textContent = r.message; };
     try {
+      if (a.startsWith("ai-")) { await aiAction(a, b); return; }
       if (a === "save-key") {
         const v = document.getElementById("key-in").value.trim();
         if (!v) { toast("Cole a chave no campo.", true); return; }
@@ -1209,6 +1214,98 @@ function drawProfiles(list) {
     </tr>`).join("") + "</tbody>";
   document.querySelectorAll("#profiles tr[data-href]").forEach((tr) => tr.addEventListener("click", () => (location.hash = tr.dataset.href)));
 }
+
+/* ---------------------------------------------- inteligência artificial */
+
+function aiSection(st) {
+  const ai = st.ai || { provider: "openai", openai: {}, claude: {}, gateway: {} };
+  const s = st.settings;
+  const radio = (v, t, sub, ok) => `<label class="method"><input type="radio" name="ai-prov" value="${v}" ${ai.provider === v ? "checked" : ""} ${ok ? "" : "disabled"}>
+    <strong>${t}</strong><span class="muted small">${sub}</span></label>`;
+  return `
+    <section class="panel stack" id="ai">
+      <div class="row" style="justify-content:space-between"><h2>Inteligência artificial</h2><span class="label">tradução automática</span></div>
+      <p class="muted small">Escolha quem faz a <b>tradução automática</b> (pela API). A transcrição continua pela OpenAI. As chaves ficam no Gerenciador de Credenciais do Windows, nunca em arquivo.</p>
+      <div class="methods three">
+        ${radio("openai", "OpenAI", esc(s.translate_model), !!st.api_key)}
+        ${radio("claude", "Claude", ai.claude.key ? esc(s.claude_model) : "falta a chave", !!ai.claude.key)}
+        ${radio("gateway", esc(s.gateway_name || "Gateway personalizado"), s.gateway_url ? esc(s.gateway_model || "sem modelo") : "falta configurar", !!(s.gateway_url && s.gateway_model))}
+      </div>
+      <div class="ai-cards">
+        <div class="ai-card">
+          <div class="row" style="justify-content:space-between"><h3>Claude (Anthropic)</h3>${ai.claude.key ? `<span class="pill st-finalizado">chave …${esc(ai.claude.key.slice(-4))}</span>` : `<span class="pill">sem chave</span>`}</div>
+          <p class="muted small">Crie a chave em platform.claude.com → API keys. Ela começa com <span class="mono">sk-ant-</span>.</p>
+          <label class="field"><span>Chave</span><input type="password" id="ai-c-key" placeholder="${ai.claude.key ? "Já configurada — cole outra para trocar" : "sk-ant-…"}" autocomplete="off"></label>
+          <div class="grid-3">
+            <label class="field"><span>Modelo</span><input type="text" id="ai-c-model" list="ai-c-models" value="${esc(s.claude_model)}"></label>
+            <label class="field"><span>US$/milhão entrada</span><input type="number" step="0.01" min="0" id="ai-c-in" value="${s.claude_usd_per_mtok_in}"></label>
+            <label class="field"><span>US$/milhão saída</span><input type="number" step="0.01" min="0" id="ai-c-out" value="${s.claude_usd_per_mtok_out}"></label>
+          </div>
+          <datalist id="ai-c-models"><option value="claude-sonnet-5-5"><option value="claude-opus-5-5"><option value="claude-haiku-5-5"><option value="claude-fable-5-1"></datalist>
+          <p class="muted small">Sugestão: <span class="mono">claude-sonnet-5-5</span> (US$ 2 / 10 por milhão de tokens) — bom equilíbrio para tradução.</p>
+          <div class="row"><button class="btn primary" data-action="ai-save-claude">Salvar e testar</button>
+            ${ai.claude.key ? `<button class="btn" data-action="ai-test-claude">Testar</button><button class="btn danger" data-action="ai-del-claude">Remover chave</button>` : ""}</div>
+          <p class="note" id="ai-msg-claude" hidden></p>
+        </div>
+        <div class="ai-card">
+          <div class="row" style="justify-content:space-between"><h3>Gateway personalizado</h3>${s.gateway_url ? `<span class="pill st-finalizado">configurado</span>` : `<span class="pill">não configurado</span>`}</div>
+          <p class="muted small">Qualquer serviço compatível com a API da OpenAI: OpenRouter, LiteLLM, Azure OpenAI, Ollama, um servidor da empresa…</p>
+          <div class="grid-2">
+            <label class="field"><span>Nome (aparece na tela)</span><input type="text" id="ai-g-name" value="${esc(s.gateway_name)}" placeholder="Ex.: OpenRouter"></label>
+            <label class="field"><span>Modelo</span><input type="text" id="ai-g-model" value="${esc(s.gateway_model)}" placeholder="Ex.: anthropic/claude-sonnet-5.5"></label>
+            <label class="field" style="grid-column:1/-1"><span>Endereço (URL base)</span><input type="text" id="ai-g-url" class="mono" value="${esc(s.gateway_url)}" placeholder="https://openrouter.ai/api/v1"></label>
+            <label class="field" style="grid-column:1/-1"><span>Chave <em class="muted small">(se o serviço pedir)</em></span><input type="password" id="ai-g-key" placeholder="${ai.gateway.key ? "Já configurada — cole outra para trocar" : "chave do serviço"}" autocomplete="off"></label>
+            <label class="field"><span>US$/milhão entrada</span><input type="number" step="0.01" min="0" id="ai-g-in" value="${s.gateway_usd_per_mtok_in}"></label>
+            <label class="field"><span>US$/milhão saída</span><input type="number" step="0.01" min="0" id="ai-g-out" value="${s.gateway_usd_per_mtok_out}"></label>
+          </div>
+          <div class="row"><button class="btn primary" data-action="ai-save-gateway">Salvar e testar</button>
+            ${s.gateway_url ? `<button class="btn" data-action="ai-test-gateway">Testar</button>` : ""}${ai.gateway.key ? `<button class="btn danger" data-action="ai-del-gateway">Remover chave</button>` : ""}</div>
+          <p class="note" id="ai-msg-gateway" hidden></p>
+        </div>
+      </div>
+    </section>`;
+}
+
+async function aiAction(a, b) {
+  const show = (prov, r) => {
+    const m = document.getElementById(`ai-msg-${prov}`);
+    if (!m || !r) return;
+    m.hidden = false; m.className = "note " + (r.ok ? "ok" : "err"); m.textContent = r.message;
+  };
+  const v = (id) => document.getElementById(id).value.trim();
+  if (a === "ai-save-claude") {
+    b.disabled = true;
+    const r = await api("PUT", "/api/ai/claude", { key: v("ai-c-key"), model: v("ai-c-model"),
+      claude_usd_per_mtok_in: Number(v("ai-c-in")), claude_usd_per_mtok_out: Number(v("ai-c-out")), test: true });
+    await renderSettings(); show("claude", r.test);
+    document.getElementById("ai")?.scrollIntoView({ block: "start" });
+  }
+  if (a === "ai-save-gateway") {
+    b.disabled = true;
+    const r = await api("PUT", "/api/ai/gateway", { key: v("ai-g-key"), url: v("ai-g-url"), model: v("ai-g-model"), name: v("ai-g-name"),
+      gateway_usd_per_mtok_in: Number(v("ai-g-in")), gateway_usd_per_mtok_out: Number(v("ai-g-out")), test: true });
+    await renderSettings(); show("gateway", r.test);
+    document.getElementById("ai")?.scrollIntoView({ block: "start" });
+  }
+  if (a === "ai-test-claude" || a === "ai-test-gateway") {
+    const prov = a.slice(8);
+    b.disabled = true; show(prov, await api("POST", `/api/ai/${prov}/test`)); b.disabled = false;
+  }
+  if (a === "ai-del-claude" || a === "ai-del-gateway") {
+    const prov = a.slice(7);
+    if (!confirm("Remover esta chave deste computador?")) return;
+    await api("DELETE", `/api/ai/${prov}`); toast("Chave removida."); renderSettings();
+  }
+}
+
+document.addEventListener("change", async (e) => {
+  if (e.target.name !== "ai-prov") return;
+  try {
+    await api("PUT", `/api/ai/${e.target.value}`, { use: true });
+    await loadState();
+    toast(`Tradução automática: ${e.target.closest("label").querySelector("strong").textContent}.`);
+  } catch (err) { toast(err.message, true); }
+});
 
 /* ================================================================ início */
 

@@ -109,8 +109,9 @@ async function renderStart() {
 
     <section class="panel">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
-        <h2>Projetos</h2>
+        <h2>Projetos recentes</h2>
         <div class="row" style="gap:8px">
+          <a class="btn sm ghost" href="#/projetos">Ver todos os projetos ${ic("right")}</a>
           <div class="seg" role="tablist" id="st-filter">
             ${[["", "Todos", all.length], ["novo", "Novos", cnt("novo")], ["andamento", "Em andamento", cnt("andamento")], ["finalizado", "Finalizados", cnt("finalizado")]]
               .map(([k, t, n]) => `<button role="tab" data-f="${k}" aria-selected="${START_FILTER.status === k}">${t} <span class="mono">${n}</span></button>`).join("")}
@@ -124,7 +125,7 @@ async function renderStart() {
   const draw = () => {
     const q = START_FILTER.q.toLowerCase();
     const rows = all.filter((o) => (!START_FILTER.status || o.status === START_FILTER.status)
-      && (!q || `${o.name} ${o.client_name}`.toLowerCase().includes(q)));
+      && (!q || `${o.name} ${o.client_name}`.toLowerCase().includes(q))).slice(0, 8);
     document.getElementById("st-table").innerHTML = `
       <thead><tr><th>Projeto</th><th>Tipo</th><th>Cliente</th><th>Status</th><th class="num">Episódios</th><th class="num">Legendas</th><th class="num">Palavras</th><th class="num">Vídeo</th><th class="num">Tempo</th><th>Atualizado</th></tr></thead>
       <tbody>${rows.length ? rows.map((o) => `<tr class="click" data-href="#/obra/${o.id}">
@@ -602,5 +603,120 @@ async function renderItem(id) {
   };
 }
 
-/* lista completa de projetos (menu Projetos) = tela inicial focada na lista */
-async function renderProjectsList() { return renderStart(); }
+/* ------------------------------------------------------------ todos os projetos (menu Projetos) */
+
+let PL = { status: "", kind: "", client: "", sort: "updated", q: "", open: {} };
+
+async function renderProjectsList() {
+  await Promise.all([loadState(), loadProjects()]);
+  if (!S.state.projects_root) { location.hash = "#/bemvindo"; return; }
+  const data = await api("GET", "/api/obras");
+  const all = data.obras;
+  main.innerHTML = `
+    <div class="page-head">
+      <div><span class="eyebrow">Trabalho</span><h1 style="margin-top:6px">Projetos</h1>
+        <p class="muted">Todos os filmes e séries, com os episódios. Clique na seta para ver os episódios sem sair da lista.</p></div>
+      <div class="row"><button class="btn" data-l="open">${ic("open")} Abrir pela pasta</button><a class="btn primary" href="#/obra/nova">${ic("plus")} Novo projeto</a></div>
+    </div>
+    <section class="panel toolbar">
+      <div class="seg" id="pl-status">${[["", "Todos"], ["novo", "Novos"], ["andamento", "Em andamento"], ["finalizado", "Finalizados"]]
+        .map(([k, t]) => `<button data-st="${k}" aria-selected="${PL.status === k}">${t} <span class="mono">${k ? all.filter((o) => o.status === k).length : all.length}</span></button>`).join("")}</div>
+      <div class="seg" id="pl-kind">${[["", "Filmes e séries"], ["filme", "Filmes"], ["serie", "Séries"]]
+        .map(([k, t]) => `<button data-kind="${k}" aria-selected="${PL.kind === k}">${t}</button>`).join("")}</div>
+      <select id="pl-client" aria-label="Cliente"><option value="">Todos os clientes</option>${(S.projects || []).map((c) => `<option value="${c.id}" ${String(c.id) === PL.client ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>
+      <select id="pl-sort" aria-label="Ordenar"><option value="updated">Mexidos por último</option><option value="created">Criados por último</option><option value="name">Nome (A–Z)</option><option value="subs">Mais legendas</option><option value="time">Mais tempo de trabalho</option></select>
+      <label class="search">${ic("search")}<input type="search" id="pl-q" placeholder="Procurar" value="${esc(PL.q)}"></label>
+    </section>
+    <p class="muted small" id="pl-sum" style="margin:4px 4px 10px"></p>
+    <div id="pl-list"></div>`;
+  document.getElementById("pl-sort").value = PL.sort;
+
+  const filtered = () => {
+    const q = PL.q.toLowerCase();
+    const rows = all.filter((o) => (!PL.status || o.status === PL.status) && (!PL.kind || o.kind === PL.kind)
+      && (!PL.client || String(o.client_id) === PL.client) && (!q || `${o.name} ${o.client_name} ${o.folder}`.toLowerCase().includes(q)));
+    const by = { updated: (a, b) => b.updated_at.localeCompare(a.updated_at), created: (a, b) => b.created_at.localeCompare(a.created_at),
+      name: (a, b) => a.name.localeCompare(b.name, "pt-BR"), subs: (a, b) => (b.legendas || 0) - (a.legendas || 0), time: (a, b) => (b.seconds || 0) - (a.seconds || 0) };
+    return rows.sort(by[PL.sort] || by.updated);
+  };
+  const draw = () => {
+    const rows = filtered();
+    document.getElementById("pl-sum").textContent = `${rows.length} projeto(s) · ${rows.reduce((a, o) => a + (o.n_itens || 0), 0)} episódio(s)/filme(s) · ${n0(rows.reduce((a, o) => a + (o.legendas || 0), 0))} legendas · ${fmtHM(rows.reduce((a, o) => a + (o.seconds || 0), 0))} de trabalho`;
+    document.getElementById("pl-list").innerHTML = rows.length ? rows.map((o) => `
+      <article class="prow ${PL.open[o.id] ? "open" : ""}" data-id="${o.id}">
+        <div class="prow-head">
+          <button class="btn icon ghost caret" data-l="toggle" aria-label="Mostrar episódios" aria-expanded="${!!PL.open[o.id]}">${ic("right")}</button>
+          <span class="chip ${o.kind === "serie" ? "c-violet" : "c-info"}">${ic(o.kind === "serie" ? "tv" : "film")}</span>
+          <div class="prow-name"><a href="#/obra/${o.id}"><b>${esc(o.name)}</b></a>
+            <span class="muted small">${o.kind === "serie" ? "Série" : "Filme"}${o.client_name ? ` · ${esc(o.client_name)}` : ""} · criado ${esc(when(o.created_at))}${o.exists ? "" : ` · <span style="color:var(--err)">pasta não encontrada</span>`}</span></div>
+          <div class="prow-stats">
+            <span><span class="label">Episódios</span><b class="mono">${o.kind === "serie" ? `${o.n_fin}/${o.n_itens}` : "—"}</b></span>
+            <span><span class="label">Legendas</span><b class="mono">${n0(o.legendas)}</b></span>
+            <span><span class="label">Vídeo</span><b class="mono">${o.duracao_video_s ? fmtHMS(o.duracao_video_s) : "—"}</b></span>
+            <span><span class="label">Tempo</span><b class="mono">${fmtHM(o.seconds)}</b></span>
+            <span><span class="label">Atualizado</span><b class="mono small">${esc(when(o.updated_at))}</b></span>
+          </div>
+          <select class="st-sel st-${o.status}" data-ost="${o.id}" aria-label="Status">${["novo", "andamento", "finalizado"].map((x) => `<option value="${x}" ${x === o.status ? "selected" : ""}>${STATUS_TXT[x]}</option>`).join("")}</select>
+          <div class="prow-acts">
+            <a class="btn sm primary" href="#/obra/${o.id}">Abrir projeto</a>
+            <button class="btn sm" data-l="folder" data-path="${esc(o.folder)}" title="Abrir a pasta no Windows">${ic("open")}</button>
+            <button class="btn sm ghost" data-l="remove" title="Tirar da lista (a pasta fica)">${ic("trash")}</button>
+          </div>
+        </div>
+        <div class="prow-body" id="pl-body-${o.id}">${PL.open[o.id] ? `<p class="muted small">Carregando…</p>` : ""}</div>
+      </article>`).join("")
+      : `<section class="panel"><p class="muted">${all.length ? "Nenhum projeto com esses filtros." : "Nenhum projeto ainda. Clique em <b>Novo projeto</b>."}</p></section>`;
+    Object.keys(PL.open).forEach((id) => PL.open[id] && loadBody(Number(id)));
+  };
+  const loadBody = async (id) => {
+    const el = document.getElementById(`pl-body-${id}`);
+    if (!el) return;
+    const o = await api("GET", `/api/obras/${id}`);
+    el.innerHTML = `<table class="table report mini"><thead><tr><th>${o.kind === "serie" ? "Episódio" : "Filme"}</th><th>Título</th><th>Status</th><th>Arquivos</th><th class="num">Legendas</th><th class="num">Tempo</th><th>Atualizado</th><th></th></tr></thead><tbody>
+      ${o.items.map((it) => `<tr><td class="mono"><b>${esc(it.label)}</b></td><td>${esc(it.title || "—")}</td><td>${pill(it.status)}</td><td class="small">${fileBadges(it)}</td>
+        <td class="num mono">${n0(it.metrics?.legendas)}</td><td class="num mono">${fmtHM(it.seconds)}</td><td class="mono small">${esc(when(it.updated_at))}</td>
+        <td class="acts"><button class="btn sm primary" data-l="edit" data-i="${it.id}">${ic("editor")} Abrir no editor</button> <a class="btn sm" href="#/item/${it.id}" title="Métricas">${ic("chart")}</a></td></tr>`).join("")}
+      </tbody></table>`;
+  };
+  draw();
+  document.getElementById("pl-q").addEventListener("input", (e) => { PL.q = e.target.value; draw(); });
+  main.onchange = async (e) => {
+    const t = e.target;
+    if (t.id === "pl-client") { PL.client = t.value; draw(); }
+    if (t.id === "pl-sort") { PL.sort = t.value; draw(); }
+    if (t.dataset.ost) {
+      try {
+        await api("PUT", `/api/obras/${t.dataset.ost}`, { status: t.value });
+        const o = all.find((x) => String(x.id) === t.dataset.ost);
+        toast(o.status === "finalizado" && t.value !== "finalizado" ? `“${o.name}” reaberto.` : `“${o.name}”: ${STATUS_TXT[t.value]}.`);
+        o.status = t.value; t.className = `st-sel st-${t.value}`;
+      } catch (err) { toast(err.message, true); }
+    }
+  };
+  main.onclick = async (e) => {
+    const st = e.target.closest("[data-st]");
+    if (st) { PL.status = st.dataset.st; document.querySelectorAll("#pl-status button").forEach((x) => x.setAttribute("aria-selected", String(x === st))); draw(); return; }
+    const k = e.target.closest("[data-kind]");
+    if (k) { PL.kind = k.dataset.kind; document.querySelectorAll("#pl-kind button").forEach((x) => x.setAttribute("aria-selected", String(x === k))); draw(); return; }
+    const b = e.target.closest("[data-l]");
+    if (!b) return;
+    const row = b.closest(".prow");
+    const id = row ? Number(row.dataset.id) : null;
+    try {
+      if (b.dataset.l === "toggle") {
+        PL.open[id] = !PL.open[id];
+        row.classList.toggle("open", PL.open[id]); b.setAttribute("aria-expanded", String(PL.open[id]));
+        const body = document.getElementById(`pl-body-${id}`);
+        if (PL.open[id]) { body.innerHTML = `<p class="muted small">Carregando…</p>`; await loadBody(id); } else body.innerHTML = "";
+      }
+      if (b.dataset.l === "edit") await openItem(Number(b.dataset.i));
+      if (b.dataset.l === "folder") await api("POST", "/api/open", { path: b.dataset.path });
+      if (b.dataset.l === "open") await openProjectFolder();
+      if (b.dataset.l === "remove") {
+        const o = all.find((x) => x.id === id);
+        if (!confirm(`Tirar “${o.name}” da lista? A pasta e os arquivos continuam no computador; dá para reabrir pelo botão Abrir.`)) return;
+        await api("DELETE", `/api/obras/${id}`); toast("Projeto tirado da lista."); renderProjectsList();
+      }
+    } catch (err) { toast(err.message, true); }
+  };
+}

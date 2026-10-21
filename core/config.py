@@ -142,6 +142,18 @@ class Settings:
     align: str = "auto"
     align_device: str = "cpu"
     keep_job_days: int = 30
+    # Quem faz a tradução automática: "openai", "claude" ou "gateway" (compatível com OpenAI).
+    translate_provider: str = "openai"
+    # Claude (Anthropic). Preços em platform.claude.com/docs/en/models/overview (out/2026).
+    claude_model: str = "claude-sonnet-5-5"
+    claude_usd_per_mtok_in: float = 2.0
+    claude_usd_per_mtok_out: float = 10.0
+    # Gateway personalizado (OpenRouter, LiteLLM, Azure, servidor próprio… compatível com OpenAI)
+    gateway_name: str = ""
+    gateway_url: str = ""
+    gateway_model: str = ""
+    gateway_usd_per_mtok_in: float = 0.0
+    gateway_usd_per_mtok_out: float = 0.0
     # Nome para a assinatura no fim da legenda ("Traducción: Nome").
     translator_name: str = ""
     # Pasta onde ficam os projetos (perguntada na primeira abertura).

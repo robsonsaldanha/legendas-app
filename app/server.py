@@ -159,6 +159,7 @@ class App:
             "phase": {"transcrever": True, "sincronizar": True, "traduzir": True},
             "recent": self.recent(),
             "projects_root": Settings.load().projects_root,
+            "ai": self.ai_status(),
             "home_dir": str(Path.home()),
         }
 
@@ -171,6 +172,65 @@ class App:
             out.append({**r, "name": (srt or video).name,
                         "folder": str((srt or video).parent)})
         return out
+
+    def ai_status(self) -> dict:
+        from core.openai_client import get_secret
+        st = Settings.load()
+        mask = lambda k: ("…" + k[-4:]) if k else ""   # noqa: E731
+        try:
+            oa = get_api_key()
+        except LegendasError:
+            oa = ""
+        return {"provider": st.translate_provider,
+                "openai": {"key": mask(oa), "model": st.translate_model},
+                "claude": {"key": mask(get_secret("anthropic_api_key")), "model": st.claude_model},
+                "gateway": {"key": mask(get_secret("gateway_api_key")), "url": st.gateway_url,
+                            "model": st.gateway_model, "name": st.gateway_name}}
+
+    def test_provider(self, prov: str) -> dict:
+        import httpx
+        from core.openai_client import get_secret
+        st = Settings.load()
+        if prov == "openai":
+            return self.test_key()
+        if prov == "claude":
+            key = get_secret("anthropic_api_key")
+            if not key:
+                raise ApiError("Cole a chave do Claude primeiro.")
+            try:
+                r = httpx.get("https://api.anthropic.com/v1/models", timeout=20,
+                              headers={"x-api-key": key, "anthropic-version": "2023-06-01"})
+            except httpx.HTTPError as e:
+                raise ApiError("Não consegui falar com o Claude. Confira a internet.") from e
+            if r.status_code == 401:
+                return {"ok": False, "message": "A chave do Claude foi recusada."}
+            if r.status_code >= 400:
+                return {"ok": False, "message": f"Claude respondeu com erro {r.status_code}."}
+            ids = [m.get("id") for m in r.json().get("data", [])]
+            ok = st.claude_model in ids or not ids
+            return {"ok": True, "models": ids,
+                    "message": f"Chave válida. Modelo {st.claude_model} " + ("disponível." if ok else "não apareceu na lista desta chave.")}
+        if prov == "gateway":
+            if not st.gateway_url:
+                raise ApiError("Informe o endereço do gateway.")
+            key = get_secret("gateway_api_key")
+            try:
+                r = httpx.get(st.gateway_url.rstrip("/") + "/models", timeout=20,
+                              headers={"Authorization": f"Bearer {key}"} if key else {})
+            except httpx.HTTPError as e:
+                return {"ok": False, "message": f"Não consegui acessar o gateway: {e}"}
+            if r.status_code in (401, 403):
+                return {"ok": False, "message": "O gateway recusou a chave."}
+            if r.status_code >= 400:
+                return {"ok": False, "message": f"O gateway respondeu com erro {r.status_code}."}
+            try:
+                ids = [m.get("id") for m in r.json().get("data", [])]
+            except ValueError:
+                ids = []
+            return {"ok": True, "models": ids[:200],
+                    "message": "Gateway respondeu." + (f" Modelo {st.gateway_model} disponível." if st.gateway_model in ids else
+                                                       f" {len(ids)} modelo(s) na lista." if ids else "")}
+        raise ApiError("Serviço desconhecido.")
 
     def test_key(self) -> dict:
         client = make_client()
@@ -519,6 +579,77 @@ class Handler(BaseHTTPRequestHandler):
     def api_key_delete(self):
         delete_api_key()
         return {"ok": True}
+
+    @route("GET", r"/api/ai")
+    def api_ai(self):
+        return self.app.ai_status()
+
+    @route("PUT", r"/api/ai/(openai|claude|gateway)")
+    def api_ai_set(self, prov):
+        from core.openai_client import set_secret
+        b = self._body()
+        st = Settings.load()
+        key = (b.get("key") or "").strip()
+        if prov == "openai":
+            if key:
+                if not key.startswith("sk-") or len(key) < 20:
+                    raise ApiError("Isso não parece uma chave da OpenAI (ela começa com sk-).")
+                set_api_key(key)
+            if b.get("model"):
+                st.translate_model = str(b["model"]).strip()
+        elif prov == "claude":
+            if key:
+                if not key.startswith("sk-ant-") or len(key) < 30:
+                    raise ApiError("Isso não parece uma chave do Claude (ela começa com sk-ant-).")
+                set_secret("anthropic_api_key", key)
+            if b.get("model"):
+                st.claude_model = str(b["model"]).strip()
+            for k in ("claude_usd_per_mtok_in", "claude_usd_per_mtok_out"):
+                if k in b:
+                    setattr(st, k, max(0.0, float(b[k] or 0)))
+        else:
+            url = str(b.get("url") if "url" in b else st.gateway_url).strip()
+            if url and not url.startswith(("http://", "https://")):
+                raise ApiError("O endereço do gateway começa com http:// ou https:// (ex.: https://openrouter.ai/api/v1).")
+            st.gateway_url = url
+            if key:
+                set_secret("gateway_api_key", key)
+            for k in ("name", "model"):
+                if k in b:
+                    setattr(st, f"gateway_{k}", str(b[k] or "").strip())
+            for k in ("gateway_usd_per_mtok_in", "gateway_usd_per_mtok_out"):
+                if k in b:
+                    setattr(st, k, max(0.0, float(b[k] or 0)))
+        if b.get("use"):
+            st.translate_provider = prov
+        st.save()
+        out = self.app.ai_status()
+        if key or b.get("test"):
+            try:
+                out["test"] = self.app.test_provider(prov)
+            except LegendasError as e:
+                out["test"] = {"ok": False, "message": str(e)}
+        return out
+
+    @route("POST", r"/api/ai/(openai|claude|gateway)/test")
+    def api_ai_test(self, prov):
+        try:
+            return self.app.test_provider(prov)
+        except LegendasError as e:
+            return {"ok": False, "message": str(e)}
+
+    @route("DELETE", r"/api/ai/(openai|claude|gateway)")
+    def api_ai_delete(self, prov):
+        from core.openai_client import delete_secret
+        if prov == "openai":
+            delete_api_key()
+        else:
+            delete_secret("anthropic_api_key" if prov == "claude" else "gateway_api_key")
+        st = Settings.load()
+        if st.translate_provider == prov and prov != "openai":
+            st.translate_provider = "openai"
+            st.save()
+        return self.app.ai_status()
 
     @route("PUT", r"/api/settings")
     def api_settings(self):
@@ -910,14 +1041,15 @@ class Handler(BaseHTTPRequestHandler):
     def api_chat_api(self, sid, n):
         st = Settings.load()
         factory = self.app.worker._translator_factory
+        from core.translate import make_translator, translate_prices
         if factory is not None:
             translator = factory()
         else:
-            get_api_key()   # sem chave: mensagem clara antes de tentar
-            from core.translate import OpenAITranslator
-            translator = OpenAITranslator(st.translate_model, st.translate_reasoning)
-        return self.app.editor.chat_api(sid, int(n), translator, st.translate_usd_per_mtok_in,
-                                        st.translate_usd_per_mtok_out)
+            if st.translate_provider == "openai":
+                get_api_key()   # sem chave: mensagem clara antes de tentar
+            translator = make_translator(st)
+        pin, pout = translate_prices(st)
+        return self.app.editor.chat_api(sid, int(n), translator, pin, pout)
 
     @route("POST", r"/api/editor/(\w+)/chat/(\d+)")
     def api_chat_answer(self, sid, n):
