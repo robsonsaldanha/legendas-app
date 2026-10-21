@@ -218,7 +218,7 @@ def test_transcribe_then_translate(tmp_path, monkeypatch):
 
 def test_cli_translate(srt, capsys, monkeypatch):
     import core.pipeline as pl
-    monkeypatch.setattr(pl, "OpenAITranslator", lambda *a, **k: FakeTranslator())
+    monkeypatch.setattr(pl, "make_translator", lambda *a, **k: FakeTranslator())
     assert main(["-i", str(srt), "-s", "traduzir", "--dst-lang", "es-419"]) == 0
     out = capsys.readouterr().out
     assert "Episódio 2.es-419.srt" in out and "pt-BR → es-419" in out
