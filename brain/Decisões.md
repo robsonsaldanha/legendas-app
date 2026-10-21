@@ -144,3 +144,7 @@
 - Gemini: endpoint compatível com OpenAI do Google (`https://generativelanguage.googleapis.com/v1beta/openai`), chave do AI Studio; modelos gemini-3.8-flash (recomendado para texto), gemini-3.5-flash-lite, gemini-4-argon, gemini-3.6-flash (ai.google.dev/gemini-api/docs/models, 21/10/2026). Preços não informados (conferir na página de preços do Google).
 - Configurações → Inteligência artificial: "Traduzir com" (serviço ativo) + uma aba por serviço com chave, endereço (quando editável), lista de modelos (escolher/remover os seus) e "Adicionar outro modelo" (código, nome, formato, preços). O "Testar" faz um pedido mínimo real no formato do modelo escolhido.
 - Configurações antigas do gateway (2.1/2.2) continuam valendo.
+
+## 2026-10-21 — Correção: "No module named 'httpx'" no programa instalado (2.3.1)
+- O `openai` atual depende de `httpx2`, não mais do `httpx`; nos testes o `httpx` vinha do requirements-dev, por isso só falhou no instalado (GhostCLI/Claude/Gemini usam `httpx`).
+- `httpx` entrou no requirements.txt e o teste do programa instalado agora importa o `httpx` e monta o tradutor do GhostCLI.

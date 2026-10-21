@@ -34,7 +34,7 @@ def main(wav: str, text: str) -> None:
     check("python embutido", str(INSTALL).lower() in sys.executable.lower(), sys.executable)
     check("sem site do sistema", all("hostedtoolcache" not in p.lower() for p in sys.path), str(sys.path))
 
-    import keyring, numpy, openai, tkinter, torch, transformers  # noqa: F401,E401
+    import httpx, keyring, numpy, openai, tkinter, torch, transformers  # noqa: F401,E401
     check("bibliotecas", True, f"torch {torch.__version__}, transformers {transformers.__version__}")
     check("tkinter", tkinter.Tcl().eval("info patchlevel").startswith("8."))
 
@@ -121,6 +121,15 @@ def main(wav: str, text: str) -> None:
     from core.subtitle import read_srt as _rs
     m = pm.record_metrics(serie["items"][0]["id"], _rs(res.outputs["srt"]), None, 3.0)
     check("métricas", m["legendas"] >= 1 and m["palavras"] >= 5, str({k: m[k] for k in ("legendas", "palavras")}))
+
+    # serviços de IA (Claude/GhostCLI/Gemini): tradutor monta e conversa (resposta simulada)
+    from core import ai as _ai
+    from core.translate import AnthropicTranslator
+    st_ai = Settings(translate_provider="ghostcli")
+    tr_ai = AnthropicTranslator("claude-sonnet-5", "gcli_teste", url=_ai.messages_url(_ai.base_url(st_ai, "ghostcli")), label="GhostCLI")
+    tr_ai._http = httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json={
+        "content": [{"type": "text", "text": '{"itens":[{"id":1,"texto":"Hola."}]}'}], "usage": {}})))
+    check("tradutor GhostCLI", tr_ai.translate_batch("s", "u")[0]["itens"][0]["texto"] == "Hola.", tr_ai.url)
 
     # servidor + sessão
     from app.server import App, make_server
