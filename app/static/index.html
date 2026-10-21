@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="token" content="{{TOKEN}}">
+  <title>CNT Legendas</title>
+  <link rel="icon" href="/icon.png" type="image/png">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/theme.js"></script>
+</head>
+<body>
+  <div class="shell" id="shell">
+    <aside class="side" aria-label="Ferramentas">
+      <a class="brand" href="#/inicio" title="Início"><img src="/logo.png" alt="CNT"><span class="brand-sub">LEGENDAS</span></a>
+      <nav class="nav" aria-label="Principal" id="nav"></nav>
+      <div class="side-foot">
+        <span class="ver">Versão {{VERSION}}</span>
+        <button class="collapse-btn" id="collapse" type="button"><span></span></button>
+      </div>
+    </aside>
+    <div class="content">
+      <header class="topbar">
+        <span class="crumb" id="crumb">Início</span>
+        <span class="grow"></span>
+        <label class="theme"><span class="label">Tema</span>
+          <select id="theme-sel" aria-label="Tema">
+            <option value="dark">Escuro</option><option value="light">Claro</option><option value="auto">Automático (Windows)</option>
+          </select></label>
+      </header>
+      <main id="main" class="main" tabindex="-1"></main>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/icons.js"></script>
+  <script src="/editor.js"></script>
+  <script src="/tools.js"></script>
+  <script src="/home.js"></script>
+  <script src="/profiles.js"></script>
+  <script src="/projects.js"></script>
+  <script src="/reports.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

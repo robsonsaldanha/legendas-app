@@ -1,0 +1,191 @@
+"""Caminhos e configurações do aplicativo.
+
+No Windows os dados ficam em %APPDATA%\\CNT Legendas (até a 0.5 era %APPDATA%\\Legendas;
+a pasta antiga é trazida automaticamente na primeira abertura). Em outros sistemas (dev/testes)
+em ~/.legendas. A variável LEGENDAS_HOME sobrescreve os dois.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from dataclasses import dataclass, asdict, field
+from pathlib import Path
+
+APP_NAME = "CNT Legendas"
+OLD_APP_NAME = "Legendas"   # nome até a versão 0.5
+
+
+def _migrate(old: Path, new: Path) -> None:
+    """Traz a pasta da versão antiga (só dados do próprio programa)."""
+    if new.exists() or not old.is_dir():
+        return
+    try:
+        old.rename(new)
+    except OSError:
+        import shutil
+        try:
+            shutil.copytree(old, new)
+        except OSError:
+            pass
+
+
+def data_dir() -> Path:
+    override = os.environ.get("LEGENDAS_HOME")
+    if override:
+        p = Path(override)
+    elif sys.platform == "win32":
+        root = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        p = root / APP_NAME
+        _migrate(root / OLD_APP_NAME, p)
+    else:
+        p = Path.home() / ".legendas"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def jobs_dir() -> Path:
+    p = data_dir() / "trabalhos"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _writable(p: Path) -> bool:
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        probe = p / f".teste-{os.getpid()}"
+        probe.write_bytes(b"")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def shared_dir() -> Path | None:
+    """Pasta comum a todos os perfis do Windows (C:\\ProgramData\\CNT Legendas)."""
+    override = os.environ.get("LEGENDAS_SHARED")
+    if override:
+        return Path(override)
+    if sys.platform == "win32" and not os.environ.get("LEGENDAS_HOME"):
+        root = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
+        _migrate(root / OLD_APP_NAME, root / APP_NAME)   # o instalador já tenta antes
+        return root / APP_NAME
+    return None
+
+
+def models_dir() -> Path:
+    """Modelos de alinhamento (≈1,2 GB por idioma) ficam numa pasta comum a todos
+    os perfis do Windows, para não baixar duas vezes. Se não der para escrever
+    lá, cada perfil usa a sua."""
+    shared = shared_dir()
+    if shared is not None and _writable(shared / "modelos"):
+        return shared / "modelos"
+    p = data_dir() / "modelos"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def user_id() -> str:
+    """Identificador estável do perfil do Windows (para não misturar perfis)."""
+    import getpass
+    import hashlib
+    try:
+        name = getpass.getuser()
+    except Exception:  # noqa: BLE001
+        name = "?"
+    return hashlib.sha1(f"{name}|{data_dir()}".encode("utf-8")).hexdigest()[:12]
+
+
+def preferred_port() -> int:
+    """Porta fixa por perfil: dois perfis logados ao mesmo tempo não disputam a mesma."""
+    return 8765 + int(user_id()[:6], 16) % 200
+
+
+def logs_dir() -> Path:
+    p = data_dir() / "logs"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def app_root() -> Path:
+    """Pasta do aplicativo instalado (onde ficam bin/ffmpeg.exe etc.)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent
+
+
+@dataclass
+class Settings:
+    # Modelos da OpenAI (configuráveis). gpt-transcribe: lançado em jul/2026,
+    # substitui gpt-4o-transcribe; aceita "keywords" e "languages".
+    # Ver developers.openai.com/api/docs/guides/speech-to-text
+    transcribe_model: str = "gpt-transcribe"
+    # Tradução (Chat Completions + JSON estruturado). gpt-5.5: US$ 5 / 30 por milhão de
+    # tokens de entrada/saída (conferido em out/2026). Se a chave não tiver acesso, o
+    # programa tenta gpt-5 e gpt-4.1.
+    translate_model: str = "gpt-5.5"
+    translate_reasoning: str = "low"
+    translate_usd_per_mtok_in: float = 5.0
+    translate_usd_per_mtok_out: float = 30.0
+    translate_batch: int = 80
+    # "chat": pelo ChatGPT da usuária (copiar e colar, sem custo); "api": automático
+    translate_method: str = "chat"
+    # Preço por minuto de áudio (USD), usado só para estimar custo.
+    transcribe_usd_per_min: float = 0.0045
+    # Quantos blocos de áudio transcrever em paralelo.
+    parallel_requests: int = 4
+    # Duração alvo dos blocos (s). Blocos curtos dão tempos mais precisos.
+    chunk_target: float = 30.0
+    chunk_max: float = 60.0
+    # Alinhamento local: "auto" usa o modelo se instalado, senão estima tempos.
+    align: str = "auto"
+    align_device: str = "cpu"
+    keep_job_days: int = 30
+    # Quem faz a tradução automática: "openai", "claude" ou "gateway" (compatível com OpenAI).
+    translate_provider: str = "openai"
+    # Claude (Anthropic). Preços em platform.claude.com/docs/en/models/overview (out/2026).
+    claude_model: str = "claude-sonnet-5-5"
+    claude_usd_per_mtok_in: float = 2.0
+    claude_usd_per_mtok_out: float = 10.0
+    # Gateway personalizado (OpenRouter, LiteLLM, Azure, servidor próprio… compatível com OpenAI)
+    gateway_name: str = ""
+    gateway_url: str = ""
+    # Formato da API do gateway: "openai" (/v1/chat/completions) ou "anthropic" (/v1/messages).
+    gateway_format: str = "openai"
+    gateway_model: str = ""
+    gateway_usd_per_mtok_in: float = 0.0
+    gateway_usd_per_mtok_out: float = 0.0
+    # Serviços de IA (core/ai.py): modelo escolhido, modelos acrescentados, endereços e nomes.
+    ai_selected: dict = field(default_factory=dict)
+    ai_models: dict = field(default_factory=dict)
+    ai_urls: dict = field(default_factory=dict)
+    ai_names: dict = field(default_factory=dict)
+    ai_ipv4: dict = field(default_factory=dict)      # serviço → sair só por IPv4
+    # Nome para a assinatura no fim da legenda ("Traducción: Nome").
+    translator_name: str = ""
+    # Pasta onde ficam os projetos (perguntada na primeira abertura).
+    projects_root: str = ""
+    extra: dict = field(default_factory=dict)
+
+    @classmethod
+    def path(cls) -> Path:
+        return data_dir() / "config.json"
+
+    @classmethod
+    def load(cls) -> "Settings":
+        p = cls.path()
+        if p.exists():
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+                s = cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+                if not s.translate_model:
+                    s.translate_model = cls.translate_model
+                return s
+            except (ValueError, TypeError):
+                pass
+        return cls()
+
+    def save(self) -> None:
+        self.path().write_text(json.dumps(asdict(self), ensure_ascii=False, indent=2),
+                               encoding="utf-8")

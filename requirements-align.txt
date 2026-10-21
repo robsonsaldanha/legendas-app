@@ -1,0 +1,4 @@
+# Alinhamento forçado local (wav2vec2). Instale o torch versão CPU:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements-align.txt
+transformers>=4.40,<5
