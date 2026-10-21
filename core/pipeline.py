@@ -27,11 +27,12 @@ from .align import align_segments
 from .chunking import Chunk, plan_chunks
 from .config import Settings, logs_dir
 from .errors import LegendasError, PipelineError
-from .formatter import format_words, reflow_cues
+from .formatter import FormatResult, format_words, reflow_cues
+from .sync import auto_sync, read_script, speech_activity, sync_script
 from .glossary import Entry, load_glossary, transcription_keywords
 from .jobs import Job, job_id_for
 from .media import detect_silences, extract_audio, load_wav, probe
-from .plan import FORMAT, TRANSCRIBE, TRANSLATE, Inputs, build_plan, parse_steps
+from .plan import FORMAT, SYNC, TRANSCRIBE, TRANSLATE, Inputs, build_plan, parse_steps
 from .profiles import Profile, default_profile_for, get_profile
 from .qc import AVISO, Issue, check_rules, write_report
 from .subtitle import Cue, Word, read_srt, write_srt
@@ -72,6 +73,7 @@ class JobResult:
     tokens_out: int = 0
     translate_usd: float = 0.0
     untranslated: int = 0
+    sync: dict = field(default_factory=dict)
 
 
 class Callbacks:
@@ -163,16 +165,26 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
     inputs = Inputs.from_paths(req.inputs)
     plan = build_plan(req.steps, inputs)
     translating = TRANSLATE in plan.steps
+    syncing = SYNC in plan.steps
+    text_sync = syncing and inputs.text is not None          # roteiro sem tempo
+    sub_sync = syncing and inputs.subtitle is not None         # legenda fora do tempo
+    needs_words = TRANSCRIBE in plan.steps or text_sync
 
     # idioma de origem: o informado, ou detectado pela legenda recebida
     source_cues: list[Cue] | None = None
-    if translating and TRANSCRIBE not in plan.steps:
+    script = ""
+    if inputs.subtitle is not None and not needs_words:
         source_cues = read_srt(inputs.subtitle)
         if not source_cues:
             raise PipelineError(f"A legenda {inputs.subtitle.name} está vazia ou não é um SRT válido.")
+    if text_sync:
+        script = read_script(inputs.text)
+        if not script.strip():
+            raise PipelineError(f"O texto {inputs.text.name} está vazio.")
     src_lang = req.source_lang
     if src_lang in ("", "auto"):
-        src_lang = (detect_language([c.text for c in source_cues]) if source_cues else None) or "pt-BR"
+        sample = [c.text for c in source_cues] if source_cues else script.splitlines()
+        src_lang = (detect_language(sample) if sample else None) or "pt-BR"
     if translating and src_lang == req.target_lang:
         raise PipelineError("O idioma de origem e o de destino são iguais. Escolha outro idioma "
                             "para a tradução.")
@@ -198,8 +210,48 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
     fps = None
     estimated: list[bool] = []
 
+    # ------------------------------------- sincronizar legenda pelo áudio
+    if sub_sync:
+        media = inputs.media
+        wav, info, _chunks = prepare_audio(job, media, cb, settings)
+        fps = info.get("fps")
+        if estimate_only:
+            if translating:
+                _add_translate_estimate(result, source_cues, settings)
+            return result
+        cb.status("Sincronizando a legenda com a fala do vídeo…")
+        speech = speech_activity(load_wav(wav))
+        sr = auto_sync(source_cues, speech, min_gap=final_profile.min_gap(fps),
+                       progress=lambda f: cb.progress(SYNC, int(f * 100), 100))
+        cb.check_cancel()
+        source_cues = sr.cues
+        job.mark(SYNC, "ok", deslocamento=sr.offset, proporcao=sr.ratio, trechos=sr.parts,
+                 antes=round(sr.before, 3), depois=round(sr.after, 3))
+        log.info("Sincronia: deslocamento %.2f s, proporção %.5f, %d trecho(s), %.0f%% → %.0f%%",
+                 sr.offset, sr.ratio, sr.parts, sr.before * 100, sr.after * 100)
+        folder = req.out_dir or inputs.subtitle.parent
+        synced = write_srt(source_cues, _unique(folder / f"{inputs.subtitle.stem} (sincronizada).srt",
+                                                job, "srt_sincronizada"))
+        _remember_output(job, "srt_sincronizada", synced)
+        result.outputs["srt"] = synced
+        result.sync = {"offset": sr.offset, "ratio": sr.ratio, "parts": sr.parts,
+                       "before": sr.before, "after": sr.after, "notes": sr.notes}
+        if not translating:
+            issues = check_rules(source_cues, source_profile, fps, None, src_lang)
+            qc_txt = synced.with_name(synced.name[:-4] + ".qc.txt")
+            write_report(issues, source_cues, source_profile, qc_txt, job.path("qc.json"),
+                         title=inputs.subtitle.name,
+                         note=f"Sincronizada: deslocamento de {sr.offset:+.2f} s"
+                              + (f", proporção {sr.ratio:.4f}" if sr.ratio != 1 else "")
+                              + (f", {sr.parts} trechos" if sr.parts > 1 else "") + ".")
+            job.mark(FORMAT, "ok", legendas=len(source_cues), apontamentos=len(issues))
+            result.outputs["qc"] = qc_txt
+            result.issues, result.cues = len(issues), len(source_cues)
+        else:
+            result.outputs["original"] = synced
+
     # ------------------------------------------------------------ transcrever
-    if TRANSCRIBE in plan.steps:
+    if needs_words:
         media = inputs.media
         wav, info, chunks = prepare_audio(job, media, cb, settings)
         fps = info.get("fps")
@@ -250,8 +302,14 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
                      estimadas=sum(1 for w in words if not w.aligned))
         cb.check_cancel()
 
-        cb.status("Montando as legendas…")
-        fmt = format_words(words, source_profile, src_lang, fps)
+        if text_sync:
+            cb.status("Encaixando o texto na fala…")
+            synced_cues, estimated = sync_script(script, words, source_profile, src_lang, fps)
+            fmt = FormatResult(cues=synced_cues, estimated_timing=estimated)
+            job.mark(SYNC, "ok", legendas=len(synced_cues))
+        else:
+            cb.status("Montando as legendas…")
+            fmt = format_words(words, source_profile, src_lang, fps)
         estimated = fmt.estimated_timing
         base = _output_base(media, req.out_dir)
         src_srt = write_srt(fmt.cues, _unique(base.parent / output_name(Path(f"{base}.srt"), src_lang,
@@ -276,7 +334,7 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
     # --------------------------------------------------------------- traduzir
     if translating:
         assert source_cues is not None
-        if TRANSCRIBE not in plan.steps:
+        if not needs_words and not sub_sync:
             result.outputs["original"] = inputs.subtitle
             if inputs.media is not None:
                 try:
@@ -306,7 +364,7 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
 
         cb.status("Formatando a tradução…")
         cues = reflow_cues(tr.cues, final_profile, req.target_lang, fps)
-        if TRANSCRIBE in plan.steps:
+        if needs_words:
             mb = _output_base(inputs.media, req.out_dir)
             target = mb.parent / output_name(Path(f"{mb}.srt"), req.target_lang, final_profile)
         else:
@@ -431,7 +489,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--align", choices=["auto", "model", "estimate"], default=None,
                     help="alinhamento: auto (padrão), model (exige modelo), estimate")
     ap.add_argument("--verbose", "-v", action="store_true")
-    ap.add_argument("--version", action="version", version=f"Legendas {__version__}")
+    ap.add_argument("--version", action="version", version=f"CNT Legendas {__version__}")
     args = ap.parse_args(argv)
 
     setup_logging(args.verbose)

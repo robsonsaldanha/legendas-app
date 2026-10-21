@@ -45,14 +45,17 @@ def test_translate_needs_subtitle_or_transcribe(files):
         build_plan(parse_steps("traduzir"), Inputs.from_paths([v]))
 
 
-def test_translate_only_and_unimplemented_sync(files):
+def test_translate_only_and_sync(files):
     v, s, _ = files
     assert build_plan(parse_steps("traduzir"), Inputs.from_paths([s])).steps == ["traduzir", "formatar"]
     assert build_plan(parse_steps("traduzir"), Inputs.from_paths([v, s])).steps == ["traduzir", "formatar"]
     assert build_plan(parse_steps("transcrever,traduzir"), Inputs.from_paths([v])).steps == [
         "transcrever", "traduzir", "formatar"]
-    with pytest.raises(PipelineError, match="Fase 3"):
-        build_plan(parse_steps("sincronizar"), Inputs.from_paths([v, s]))
+    assert build_plan(parse_steps("sincronizar"), Inputs.from_paths([v, s])).steps == ["sincronizar", "formatar"]
+    assert build_plan(parse_steps("sincronizar,traduzir"), Inputs.from_paths([v, s])).steps == [
+        "sincronizar", "traduzir", "formatar"]
+    with pytest.raises(PipelineError, match="vídeo"):
+        build_plan(parse_steps("sincronizar"), Inputs.from_paths([s]))
 
 
 def test_transcribe_with_subtitle_is_ambiguous(files):

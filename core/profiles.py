@@ -45,6 +45,12 @@ class Profile:
     naming: str = ""
     # Verificações de estilo do cliente no QC (interjeições, pontuação dupla etc.).
     style_checks: bool = False
+    # Intervalos menores que isto (em quadros) são fechados no intervalo mínimo
+    # pela correção automática (Netflix: 12). 0 = não encadeia.
+    chain_frames: int = 0
+    # Encaixe nos cortes de cena (quadros): janela e distância antes do corte.
+    shot_window_frames: int = 12
+    shot_gap_frames: int = 2
 
     def min_gap(self, fps: float | None = None) -> float:
         if self.min_gap_ms:
@@ -81,12 +87,14 @@ class Profile:
 
 NETFLIX_ES_419 = Profile(
     name="Netflix — Espanhol (LatAm)",
+    chain_frames=12,
     language="es-419",
     notes="Netflix Spanish (Latin America & Spain) TTSG: 42 CPL, 17 CPS adulto.",
 )
 
 NETFLIX_ES_419_KIDS = Profile(
     name="Netflix — Espanhol (LatAm) infantil",
+    chain_frames=12,
     language="es-419",
     max_cps=13.0,
     notes="Programas infantis: 13 CPS.",
@@ -94,12 +102,14 @@ NETFLIX_ES_419_KIDS = Profile(
 
 NETFLIX_PT_BR = Profile(
     name="Netflix — Português (Brasil)",
+    chain_frames=12,
     language="pt-BR",
     notes="Netflix Brazilian Portuguese TTSG: 42 CPL, 17 CPS adulto.",
 )
 
 NETFLIX_PT_BR_KIDS = Profile(
     name="Netflix — Português (Brasil) infantil",
+    chain_frames=12,
     language="pt-BR",
     max_cps=13.0,
 )

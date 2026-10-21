@@ -1,6 +1,6 @@
-﻿# Monta o programa completo em build\Legendas e gera o instalador.
+﻿# Monta o programa completo em build\CNTLegendas e gera o instalador.
 #
-# Resultado: build\Output\Instalador_Legendas_<versão>.exe
+# Resultado: build\Output\Instalador_CNT_Legendas_<versão>.exe
 #
 # Precisa (só na máquina que monta, não na da usuária): Python 3.12 no PATH,
 # Inno Setup 6 e internet. O GitHub Actions roda este script.
@@ -26,12 +26,12 @@ $VcRedist  = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 
 $Root  = Resolve-Path (Join-Path $PSScriptRoot "..")
 $Build = Join-Path $Root "build"
-$App   = Join-Path $Build "Legendas"
+$App   = Join-Path $Build "CNTLegendas"
 $Py    = Join-Path $App "python"
 $Dl    = Join-Path $Build "downloads"
 
 $Version = (& python -c "import sys; sys.path.insert(0, r'$Root'); import core; print(core.__version__)").Trim()
-Write-Host "== Legendas $Version =="
+Write-Host "== CNT Legendas $Version =="
 
 Remove-Item $App -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $App, $Py, $Dl, (Join-Path $App "bin"), (Join-Path $Build "redist") | Out-Null

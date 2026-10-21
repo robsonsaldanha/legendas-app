@@ -1,4 +1,4 @@
-﻿; Instalador do Legendas (Inno Setup 6).
+﻿; Instalador do CNT Legendas (Inno Setup 6).
 ; Gerado por packaging\build.ps1, que define AppVersion e BuildDir.
 
 #ifndef AppVersion
@@ -10,12 +10,14 @@
 
 [Setup]
 AppId={{6F3B1E7A-9C2D-4C1B-8B8E-3A5D2F1C7E42}
-AppName=Legendas
+AppName=CNT Legendas
 AppVersion={#AppVersion}
-AppVerName=Legendas {#AppVersion}
+AppVerName=CNT Legendas {#AppVersion}
 AppPublisher=Róbson Saldanha
-DefaultDirName={autopf}\Legendas
-DefaultGroupName=Legendas
+DefaultDirName={autopf}\CNT Legendas
+; mesma AppId da versão "Legendas": atualiza por cima, mas na pasta nova
+UsePreviousAppDir=no
+DefaultGroupName=CNT Legendas
 DisableProgramGroupPage=yes
 ; Instala para todos os perfis do Windows (o PC tem mais de um usuário)
 PrivilegesRequired=admin
@@ -23,10 +25,10 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir={#BuildDir}\Output
-OutputBaseFilename=Instalador_Legendas_{#AppVersion}
-SetupIconFile={#BuildDir}\Legendas\legendas.ico
+OutputBaseFilename=Instalador_CNT_Legendas_{#AppVersion}
+SetupIconFile={#BuildDir}\CNTLegendas\legendas.ico
 UninstallDisplayIcon={app}\legendas.ico
-UninstallDisplayName=Legendas
+UninstallDisplayName=CNT Legendas
 Compression=lzma2/max
 SolidCompression=yes
 LZMANumBlockThreads=4
@@ -43,29 +45,54 @@ Name: "desktopicon"; Description: "Criar atalho na área de trabalho (para todos
 
 [Dirs]
 ; Modelos de alinhamento compartilhados entre os perfis: todos podem gravar
-Name: "{commonappdata}\Legendas"; Permissions: users-modify
-Name: "{commonappdata}\Legendas\modelos"; Permissions: users-modify
+Name: "{commonappdata}\CNT Legendas"; Permissions: users-modify
+Name: "{commonappdata}\CNT Legendas\modelos"; Permissions: users-modify
 
 [Files]
-Source: "{#BuildDir}\Legendas\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#BuildDir}\CNTLegendas\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#BuildDir}\redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: VCRedistNeeded
 
 [Icons]
-Name: "{commonprograms}\Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m app"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"
-Name: "{commondesktop}\Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m app"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"; Tasks: desktopicon
+Name: "{commonprograms}\CNT Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m app"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"
+Name: "{commondesktop}\CNT Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m app"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"; Tasks: desktopicon
 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Instalando componentes do Windows (Visual C++)..."; Flags: waituntilterminated; Check: VCRedistNeeded
-Filename: "{app}\python\pythonw.exe"; Parameters: "-m app"; WorkingDir: "{app}"; Description: "Abrir o Legendas agora"; Flags: nowait postinstall skipifsilent runasoriginaluser
+Filename: "{app}\python\pythonw.exe"; Parameters: "-m app"; WorkingDir: "{app}"; Description: "Abrir o CNT Legendas agora"; Flags: nowait postinstall skipifsilent runasoriginaluser
+
+[InstallDelete]
+; versão antiga, com o nome "Legendas": programa e atalhos (os dados ficam e são migrados)
+Type: filesandordirs; Name: "{autopf}\Legendas\python"
+Type: filesandordirs; Name: "{autopf}\Legendas\core"
+Type: filesandordirs; Name: "{autopf}\Legendas\app"
+Type: filesandordirs; Name: "{autopf}\Legendas\bin"
+Type: files; Name: "{autopf}\Legendas\*"
+Type: dirifempty; Name: "{autopf}\Legendas"
+Type: files; Name: "{commonprograms}\Legendas.lnk"
+Type: files; Name: "{commondesktop}\Legendas.lnk"
 
 [UninstallDelete]
-; arquivos .pyc gerados em uso; os dados de cada perfil (%APPDATA%\Legendas) são mantidos
+; arquivos .pyc gerados em uso; os dados de cada perfil (%APPDATA%\CNT Legendas) são mantidos
 Type: filesandordirs; Name: "{app}\core"
 Type: filesandordirs; Name: "{app}\app"
 Type: filesandordirs; Name: "{app}\python"
 Type: dirifempty; Name: "{app}"
 
 [Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  OldDir, NewDir: String;
+begin
+  if CurStep = ssInstall then
+  begin
+    { modelos de alinhamento já baixados pela versão "Legendas" }
+    OldDir := ExpandConstant('{commonappdata}\Legendas');
+    NewDir := ExpandConstant('{commonappdata}\CNT Legendas');
+    if DirExists(OldDir) and not DirExists(NewDir) then
+      RenameFile(OldDir, NewDir);
+  end;
+end;
+
 function VCRedistNeeded: Boolean;
 var
   Installed: Cardinal;

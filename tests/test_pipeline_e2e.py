@@ -164,3 +164,77 @@ def test_audio_without_sound_track(tmp_path, monkeypatch):
     with pytest.raises(PipelineError, match="áudio"):
         run_job(JobRequest(inputs=[v], steps={TRANSCRIBE}), Settings(align="estimate"),
                 transcriber=FakeTranscriber())
+
+
+# ------------------------------------------------------------- sincronizar
+
+SPEECH = [(0.5, 3.0), (4.2, 6.0), (9.5, 13.0), (15.0, 16.5), (19.0, 22.5)]   # irregular
+
+
+def _irregular_video(path: Path) -> Path:
+    rng = np.random.default_rng(1)
+    audio = np.zeros(int(25 * SAMPLE_RATE))
+    for a, b in SPEECH:
+        n = int((b - a) * SAMPLE_RATE)
+        env = 0.5 + 0.5 * np.sin(np.linspace(0, 20 * np.pi, n)) ** 2
+        audio[int(a * SAMPLE_RATE):int(a * SAMPLE_RATE) + n] = rng.normal(0, 0.25, n) * env
+    wav = path.with_suffix(".src.wav")
+    write_wav(wav, audio.astype(np.float32))
+    subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "color=c=black:s=160x90:r=25", "-i", str(wav), "-shortest",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(path)], check=True)
+    wav.unlink()
+    return path
+
+
+def test_sync_subtitle_to_audio(env, tmp_path):
+    """Legenda 2,6 s adiantada → volta para os trechos de fala."""
+    from core.plan import SYNC
+    from core.subtitle import Cue, write_srt
+    _, _, settings = env
+    video = _irregular_video(tmp_path / "irregular.mp4")
+    wrong = [Cue(round(a - 2.6 + 3, 3), round(b - 2.6 + 3.4, 3), [f"Fala {k}"])
+             for k, (a, b) in enumerate(SPEECH)]          # 0,4 s adiantada no total
+    srt = write_srt(wrong, tmp_path / "fora.srt")
+    res = run_job(JobRequest(inputs=[video, srt], steps={SYNC}), settings)
+    out = read_srt(res.outputs["srt"])
+    assert res.outputs["srt"].name == "fora (sincronizada).srt"
+    for c, (a, _) in zip(out, SPEECH):
+        assert abs(c.start - a) < 0.15
+    assert abs(res.sync["offset"] + 0.4) < 0.15
+    assert read_srt(srt)[0].start == wrong[0].start          # original intacto
+    assert res.outputs["qc"].exists()
+
+
+def test_sync_text_without_times(env, tmp_path):
+    from core.plan import SYNC
+    video, _, settings = env
+    txt = tmp_path / "roteiro.txt"
+    txt.write_text("\n\n".join(SENTENCES), encoding="utf-8")
+    fake = FakeTranscriber()
+    res = run_job(JobRequest(inputs=[video, txt], steps={SYNC}, source_lang="pt-BR"), settings,
+                  transcriber=fake)
+    out = read_srt(res.outputs["srt"])
+    assert [c.text for c in out] == SENTENCES
+    for expected, c in zip([0, 5, 10, 15], out):
+        assert abs(c.start - expected) < 0.6
+    assert len(fake.calls) == 4 and res.outputs["srt"].name == "Episódio 01 – teste.pt-BR.srt"
+
+
+def test_sync_then_translate(env, tmp_path):
+    from core.plan import SYNC, TRANSLATE
+    from core.subtitle import Cue, write_srt
+    from tests.test_translate import FakeTranslator
+    from core.profiles import NETFLIX_ES_419
+    _, _, settings = env
+    video = _irregular_video(tmp_path / "irregular.mp4")
+    srt = write_srt([Cue(a + 1.5, b + 1.9, [t]) for (a, b), t in zip(SPEECH, SENTENCES)],
+                    tmp_path / "Ep.pt-BR.srt")
+    res = run_job(JobRequest(inputs=[video, srt], steps={SYNC, TRANSLATE}, source_lang="pt-BR",
+                             target_lang="es-419", profile=NETFLIX_ES_419), settings,
+                  translator=FakeTranslator())
+    assert res.outputs["srt"].name == "Ep.es-419.srt"
+    out = read_srt(res.outputs["srt"])
+    for c, (a, _) in zip(out, SPEECH):
+        assert abs(c.start - a) < 0.15
+    assert res.outputs["original"].name == "Ep.pt-BR (sincronizada).srt"

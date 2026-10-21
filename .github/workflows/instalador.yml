@@ -35,17 +35,34 @@ jobs:
         shell: pwsh
         run: .\packaging\build.ps1
 
+      - name: Instalar a versão antiga ("Legendas" 0.5.0), para testar a atualização
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.5.0 -p "Instalador_Legendas_*.exe" -D "$env:RUNNER_TEMP\antigo"
+          $old = Get-ChildItem "$env:RUNNER_TEMP\antigo\*.exe" | Select-Object -First 1
+          $p = Start-Process $old.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-","/TASKS=desktopicon" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "instalação da versão antiga falhou" }
+          New-Item -ItemType Directory -Force "$env:ProgramData\Legendas\modelos\teste" | Out-Null
+          "x" | Set-Content "$env:ProgramData\Legendas\modelos\teste\marca.txt"
+          if (-not (Test-Path "$env:PUBLIC\Desktop\Legendas.lnk")) { throw "versão antiga sem atalho" }
+
       - name: Instalar (silencioso), como faria no PC dela
         shell: pwsh
         run: |
-          $exe = Get-ChildItem build\Output\Instalador_Legendas_*.exe | Select-Object -First 1
+          $exe = Get-ChildItem build\Output\Instalador_CNT_Legendas_*.exe | Select-Object -First 1
           "Tamanho do instalador: {0:N0} MB" -f ($exe.Length / 1MB)
           $p = Start-Process $exe.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-","/TASKS=desktopicon","/LOG=$env:RUNNER_TEMP\setup.log" -Wait -PassThru
           if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\setup.log" -Tail 40; throw "instalação falhou ($($p.ExitCode))" }
-          if (-not (Test-Path "$env:ProgramFiles\Legendas\python\pythonw.exe")) { throw "programa não instalado" }
-          if (-not (Test-Path "$env:PUBLIC\Desktop\Legendas.lnk")) { throw "atalho da área de trabalho ausente" }
-          if (-not (Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Legendas.lnk")) { throw "atalho do menu Iniciar ausente" }
-          $mb = [math]::Round(((Get-ChildItem "$env:ProgramFiles\Legendas" -Recurse | Measure-Object Length -Sum).Sum / 1MB))
+          if (-not (Test-Path "$env:ProgramFiles\CNT Legendas\python\pythonw.exe")) { throw "programa não instalado" }
+          if (-not (Test-Path "$env:PUBLIC\Desktop\CNT Legendas.lnk")) { throw "atalho da área de trabalho ausente" }
+          if (-not (Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\CNT Legendas.lnk")) { throw "atalho do menu Iniciar ausente" }
+          # atualização: a versão antiga sai, os modelos baixados vêm junto
+          if (Test-Path "$env:ProgramFiles\Legendas\python") { throw "a versão antiga ficou instalada" }
+          if (Test-Path "$env:PUBLIC\Desktop\Legendas.lnk") { throw "o atalho antigo ficou" }
+          if (-not (Test-Path "$env:ProgramData\CNT Legendas\modelos\teste\marca.txt")) { throw "modelos antigos não foram migrados" }
+          $mb = [math]::Round(((Get-ChildItem "$env:ProgramFiles\CNT Legendas" -Recurse | Measure-Object Length -Sum).Sum / 1MB))
           "::notice title=Instalador::$($exe.Name) — {0:N0} MB; instalado ocupa $mb MB" -f ($exe.Length / 1MB)
 
       - name: Sintetizar fala de teste
@@ -63,19 +80,19 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: |
           $env:PATH = ($env:PATH -split ";" | Where-Object { $_ -notmatch "Python|hostedtoolcache|ffmpeg" }) -join ";"
-          $py = "$env:ProgramFiles\Legendas\python\python.exe"
+          $py = "$env:ProgramFiles\CNT Legendas\python\python.exe"
           & $py packaging\smoke_test.py "$env:RUNNER_TEMP\fala.wav" "The quick brown fox jumps over the lazy dog."
           if ($LASTEXITCODE) { throw "teste do programa instalado falhou" }
 
       - name: Desinstalar
         shell: pwsh
         run: |
-          $u = "$env:ProgramFiles\Legendas\unins000.exe"
+          $u = "$env:ProgramFiles\CNT Legendas\unins000.exe"
           Start-Process $u -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
           # o desinstalador se copia para a pasta temporária e continua em segundo plano
-          for ($i = 0; $i -lt 90 -and (Test-Path "$env:ProgramFiles\Legendas\python"); $i++) { Start-Sleep -Seconds 2 }
-          if (Test-Path "$env:ProgramFiles\Legendas\python") { throw "desinstalação deixou arquivos" }
-          if (Test-Path "$env:PUBLIC\Desktop\Legendas.lnk") { throw "desinstalação deixou o atalho" }
+          for ($i = 0; $i -lt 90 -and (Test-Path "$env:ProgramFiles\CNT Legendas\python"); $i++) { Start-Sleep -Seconds 2 }
+          if (Test-Path "$env:ProgramFiles\CNT Legendas\python") { throw "desinstalação deixou arquivos" }
+          if (Test-Path "$env:PUBLIC\Desktop\CNT Legendas.lnk") { throw "desinstalação deixou o atalho" }
           "::notice title=Desinstalação::programa e atalhos removidos"
 
       - name: Versão
@@ -92,8 +109,8 @@ jobs:
           files: build/Output/*.exe
           tag_name: v${{ steps.versao.outputs.v }}
           target_commitish: ${{ github.sha }}
-          name: Legendas ${{ steps.versao.outputs.v }}
+          name: CNT Legendas ${{ steps.versao.outputs.v }}
           make_latest: true
           body: |
-            Baixe o **Instalador_Legendas** abaixo e dê dois cliques. Ele instala tudo
+            Baixe o **Instalador_CNT_Legendas** abaixo e dê dois cliques. Ele instala tudo
             (não precisa de Python nem de mais nada) para todos os perfis do Windows.

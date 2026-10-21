@@ -1,4 +1,4 @@
-/* Legendas — página local. Sem dependências externas. */
+/* CNT Legendas — página local. Sem dependências externas. */
 "use strict";
 
 const TOKEN = document.querySelector('meta[name="token"]').content;
@@ -39,7 +39,7 @@ async function api(method, path, body) {
   try {
     res = await fetch(path, opts);
   } catch (e) {
-    throw new Error("O programa Legendas não está respondendo. Ele foi fechado? Abra de novo pelo atalho.");
+    throw new Error("O CNT Legendas não está respondendo. Ele foi fechado? Abra de novo pelo atalho.");
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);

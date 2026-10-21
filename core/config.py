@@ -1,6 +1,7 @@
 """Caminhos e configurações do aplicativo.
 
-No Windows os dados ficam em %APPDATA%\\Legendas. Em outros sistemas (dev/testes)
+No Windows os dados ficam em %APPDATA%\\CNT Legendas (até a 0.5 era %APPDATA%\\Legendas;
+a pasta antiga é trazida automaticamente na primeira abertura). Em outros sistemas (dev/testes)
 em ~/.legendas. A variável LEGENDAS_HOME sobrescreve os dois.
 """
 
@@ -12,7 +13,22 @@ import sys
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
-APP_NAME = "Legendas"
+APP_NAME = "CNT Legendas"
+OLD_APP_NAME = "Legendas"   # nome até a versão 0.5
+
+
+def _migrate(old: Path, new: Path) -> None:
+    """Traz a pasta da versão antiga (só dados do próprio programa)."""
+    if new.exists() or not old.is_dir():
+        return
+    try:
+        old.rename(new)
+    except OSError:
+        import shutil
+        try:
+            shutil.copytree(old, new)
+        except OSError:
+            pass
 
 
 def data_dir() -> Path:
@@ -20,7 +36,9 @@ def data_dir() -> Path:
     if override:
         p = Path(override)
     elif sys.platform == "win32":
-        p = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / APP_NAME
+        root = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        p = root / APP_NAME
+        _migrate(root / OLD_APP_NAME, p)
     else:
         p = Path.home() / ".legendas"
     p.mkdir(parents=True, exist_ok=True)
@@ -45,12 +63,14 @@ def _writable(p: Path) -> bool:
 
 
 def shared_dir() -> Path | None:
-    """Pasta comum a todos os perfis do Windows (C:\\ProgramData\\Legendas)."""
+    """Pasta comum a todos os perfis do Windows (C:\\ProgramData\\CNT Legendas)."""
     override = os.environ.get("LEGENDAS_SHARED")
     if override:
         return Path(override)
     if sys.platform == "win32" and not os.environ.get("LEGENDAS_HOME"):
-        return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / APP_NAME
+        root = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
+        _migrate(root / OLD_APP_NAME, root / APP_NAME)   # o instalador já tenta antes
+        return root / APP_NAME
     return None
 
 

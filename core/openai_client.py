@@ -12,7 +12,8 @@ from .errors import ApiError, ApiKeyError
 
 log = logging.getLogger(__name__)
 
-KEYRING_SERVICE = "Legendas"
+KEYRING_SERVICE = "CNT Legendas"
+OLD_KEYRING_SERVICE = "Legendas"   # até a versão 0.5
 KEYRING_USER = "openai_api_key"
 
 T = TypeVar("T")
@@ -28,6 +29,13 @@ def get_api_key() -> str:
     try:
         import keyring
         key = (keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or "").strip()
+        if not key:  # chave salva pela versão antiga: passa para o nome novo
+            key = (keyring.get_password(OLD_KEYRING_SERVICE, KEYRING_USER) or "").strip()
+            if key:
+                try:
+                    keyring.set_password(KEYRING_SERVICE, KEYRING_USER, key)
+                except Exception:  # noqa: BLE001
+                    pass
     except Exception as e:  # keyring sem backend (Linux de CI, por exemplo)
         log.debug("keyring indisponível: %s", e)
         key = ""
@@ -43,10 +51,11 @@ def set_api_key(key: str) -> None:
 
 def delete_api_key() -> None:
     import keyring
-    try:
-        keyring.delete_password(KEYRING_SERVICE, KEYRING_USER)
-    except Exception:
-        pass
+    for service in (KEYRING_SERVICE, OLD_KEYRING_SERVICE):
+        try:
+            keyring.delete_password(service, KEYRING_USER)
+        except Exception:
+            pass
 
 
 def make_client():

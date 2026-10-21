@@ -40,7 +40,7 @@ jobs:
       - name: Cache dos modelos de alinhamento
         uses: actions/cache@v4
         with:
-          path: ~\AppData\Roaming\Legendas\modelos
+          path: ~\AppData\Roaming\CNT Legendas\modelos
           key: modelos-wav2vec2-v1
       - name: Sintetizar fala de teste (voz do Windows)
         shell: pwsh

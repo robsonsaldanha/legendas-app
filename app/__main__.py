@@ -1,10 +1,10 @@
-"""Abre o Legendas: inicia o servidor local e a página no navegador.
+"""Abre o CNT Legendas: inicia o servidor local e a página no navegador.
 
     python -m app              (desenvolvimento)
-    Legendas.exe               (instalado)
+    CNT Legendas               (instalado)
 
 Cada perfil do Windows tem o seu servidor, a sua porta e a sua sessão. O atalho
-lê a sessão do próprio perfil (%APPDATA%\\Legendas\\sessao.json); se o programa já
+lê a sessão do próprio perfil (%APPDATA%\\CNT Legendas\\sessao.json); se o programa já
 estiver aberto, só abre a página de novo.
 """
 
@@ -79,9 +79,9 @@ def main(argv: list[str] | None = None) -> int:
     port = srv.server_address[1]
     app.write_session(port)
     url = f"http://127.0.0.1:{port}/open?k={app.token}"
-    logging.getLogger("legendas").info("Legendas aberto na porta %s", port)
+    logging.getLogger("legendas").info("CNT Legendas aberto na porta %s", port)
     if sys.stdout is not None:
-        print(f"Legendas rodando em http://127.0.0.1:{port}/  "
+        print(f"CNT Legendas rodando em http://127.0.0.1:{port}/  "
               "(feche esta janela ou use 'Fechar o programa' na página)")
     if not args.no_browser:
         webbrowser.open(url)
