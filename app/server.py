@@ -781,7 +781,25 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("GET", r"/api/editor/(\w+)/chat/(\d+)")
     def api_chat_prompt(self, sid, n):
-        return self.app.editor.chat_prompt(sid, int(n), self.query.get("faltam") == "1")
+        return self.app.editor.chat_prompt(sid, int(n), self.query.get("faltam") == "1",
+                                           self.query.get("regras") == "1")
+
+    @route("POST", r"/api/editor/(\w+)/chat/(\d+)/split")
+    def api_chat_split(self, sid, n):
+        return self.app.editor.chat_split(sid, int(n), int(self._body().get("size") or 20))
+
+    @route("POST", r"/api/editor/(\w+)/chat/(\d+)/api")
+    def api_chat_api(self, sid, n):
+        st = Settings.load()
+        factory = self.app.worker._translator_factory
+        if factory is not None:
+            translator = factory()
+        else:
+            get_api_key()   # sem chave: mensagem clara antes de tentar
+            from core.translate import OpenAITranslator
+            translator = OpenAITranslator(st.translate_model, st.translate_reasoning)
+        return self.app.editor.chat_api(sid, int(n), translator, st.translate_usd_per_mtok_in,
+                                        st.translate_usd_per_mtok_out)
 
     @route("POST", r"/api/editor/(\w+)/chat/(\d+)")
     def api_chat_answer(self, sid, n):

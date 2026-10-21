@@ -442,3 +442,41 @@ def test_script_job_from_editor(tmp_path, monkeypatch):
     from core.subtitle import read_srt
     assert [c.text for c in read_srt(j["outputs"]["srt"])] == SENTENCES
     srv.shutdown()
+
+
+def test_editor_chat_blocked_split_rules_and_api(tserver):
+    """ChatGPT bloqueou uma parte: dividir, copiar com instruções e mandar pela API."""
+    app, port, tmp = tserver
+    srt = tmp / "Ep 9.pt-BR.srt"
+    body = "".join(f"{i}\n00:00:{i:02d},000 --> 00:00:{i:02d},900\nFrase {i}.\n\n" for i in range(1, 11))
+    srt.write_text(body, encoding="utf-8")
+    d = open_editor(app, port, srt=str(srt))
+    sid = d["sid"]
+    st, chat = call(port, "POST", f"/api/editor/{sid}/chat/start",
+                    {"cues": d["cues"], "target_lang": "es-419", "batch_size": 6}, token=app.token)
+    assert [(l["first"], l["last"]) for l in chat["lots"]] == [(1, 6), (7, 10)]
+    # parte 1 voltou só com 2 itens; o resto foi bloqueado
+    call(port, "POST", f"/api/editor/{sid}/chat/1",
+         {"text": '{"itens":[{"id":1,"texto":"Uno."},{"id":2,"texto":"Dos."}]}'}, token=app.token)
+    st, r = call(port, "POST", f"/api/editor/{sid}/chat/1/split", {"size": 2}, token=app.token)
+    assert st == 200 and r["current"] == 1
+    assert [(l["first"], l["last"]) for l in r["lots"]] == [(3, 4), (5, 6), (7, 10)]
+    assert r["done"] == 2
+    # parte 2 (antes 1b) com as instruções completas, para conversa nova
+    st, p = call(port, "GET", f"/api/editor/{sid}/chat/2?regras=1", token=app.token)
+    assert "SOBRE O MATERIAL" in p["text"] and "LOTE 2 de 3" in p["text"] and "Antes deste trecho" in p["text"]
+    st, p = call(port, "GET", f"/api/editor/{sid}/chat/2", token=app.token)
+    assert "SOBRE O MATERIAL" not in p["text"] and "falas da obra" in p["text"]
+    # parte 1 pela API (tradutor simulado)
+    st, r = call(port, "POST", f"/api/editor/{sid}/chat/1/api", token=app.token)
+    assert st == 200, r
+    assert r["missing"] == [] and r["done"] == 4
+    st, r = call(port, "POST", f"/api/editor/{sid}/chat/1/split", {}, token=app.token)
+    assert st == 400 and "completa" in r["error"]
+
+
+def test_split_chat_lot_unit():
+    from core.translate import plan_chat_lots, split_chat_lot
+    lots = plan_chat_lots(250, 100)
+    out = split_chat_lot(lots, 2, list(range(130, 201)), 25)
+    assert [(l.n, l.first, l.last) for l in out] == [(1, 1, 100), (2, 130, 154), (3, 155, 179), (4, 180, 200), (5, 201, 250)]

@@ -542,3 +542,7 @@ textarea.paste { min-height: 96px; font-family: Consolas, "Cascadia Mono", monos
 .tp .field > .tnum { padding: 8px 0; }
 @media (max-width: 640px) { .tp { grid-template-columns: 1fr 1fr; } }
 .summary .btn { white-space: normal; text-align: center; line-height: 1.3; height: auto; }
+.blocked { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 12px; background: var(--panel-2); }
+.blocked summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.blocked[open] summary { margin-bottom: 8px; }
+.blocked .btn { margin-right: 8px; }

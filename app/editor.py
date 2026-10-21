@@ -33,7 +33,7 @@ from core.formatter import reflow_cues
 from core.qc import AVISO, Issue, check_rules, write_report
 from core.subtitle import Cue, read_srt, write_srt
 from core.translate import (ChatLot, chat_message, detect_language, opposite_language,
-                            output_name, parse_chat_answer, plan_chat_lots)
+                            output_name, parse_chat_answer, plan_chat_lots, split_chat_lot)
 
 log = logging.getLogger("legendas.editor")
 
@@ -430,7 +430,7 @@ class EditorManager:
             raise EditorError("A tradução pelo ChatGPT não foi iniciada. Clique em Traduzir de novo.", 409)
         return s.chat
 
-    def chat_prompt(self, sid: str, n: int, missing_only: bool = False) -> dict:
+    def chat_prompt(self, sid: str, n: int, missing_only: bool = False, with_rules: bool = False) -> dict:
         c = self._chat(sid)
         if not 1 <= n <= len(c.lots):
             raise EditorError("Lote inexistente.")
@@ -438,8 +438,43 @@ class EditorManager:
         if missing_only and not only:
             raise EditorError("Esse lote já está completo.")
         text = chat_message(c.cues, c.lots, n, c.source, c.target, c.profile, c.glossary,
-                            c.instructions, c.context, only_ids=only)
+                            c.instructions, c.context, only_ids=only, with_rules=with_rules)
         return {"n": n, "text": text, "ids": only or c.lots[n - 1].ids}
+
+    def chat_split(self, sid: str, n: int, size: int = 20) -> dict:
+        """O ChatGPT bloqueou a parte `n`: divide o que falta dela em pedaços menores."""
+        c = self._chat(sid)
+        if not 1 <= n <= len(c.lots):
+            raise EditorError("Lote inexistente.")
+        pending = c.lot_status(n)["missing"]
+        if not pending:
+            raise EditorError("Essa parte já está completa.")
+        if len(pending) <= 1:
+            raise EditorError("Essa parte já tem uma legenda só. Traduza-a pela API ou à mão no editor.")
+        size = max(1, min(int(size or 20), len(pending) // 2 or 1))
+        c.lots = split_chat_lot(c.lots, n, pending, size)
+        return {**c.summary(), "current": n}
+
+    def chat_api(self, sid: str, n: int, translator, usd_in: float = 0.0, usd_out: float = 0.0) -> dict:
+        """Traduz pela API só o que falta da parte `n` (quando o ChatGPT bloqueia)."""
+        from core.translate import Usage, _run_batch, build_system_prompt
+        c = self._chat(sid)
+        if not 1 <= n <= len(c.lots):
+            raise EditorError("Lote inexistente.")
+        pending = c.lot_status(n)["missing"]
+        if not pending:
+            raise EditorError("Essa parte já está completa.")
+        system = build_system_prompt(c.source, c.target, c.profile, c.glossary, c.instructions, c.context)
+        usage = Usage()
+        try:
+            for k in range(0, len(pending), 40):
+                ids = pending[k:k + 40]
+                got = _run_batch(translator, system, c.cues, ids, c.profile, dict(c.done), usage)
+                c.done.update(got)
+        except LegendasError as e:
+            raise EditorError(str(e)) from e
+        usd = (usage.input_tokens * usd_in + usage.output_tokens * usd_out) / 1e6
+        return {**c.lot_status(n), "done": len(c.done), "total": len(c.cues), "usd": round(usd, 4)}
 
     def chat_answer(self, sid: str, n: int, text: str) -> dict:
         c = self._chat(sid)

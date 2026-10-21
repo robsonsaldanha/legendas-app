@@ -839,6 +839,18 @@ async function openTranslate(opts = {}) {
         </ol>
         <p id="tr-note" class="small">${note}</p>
         <div class="lots">${chat.lots.map((l) => `<span class="lot ${l.missing.length === 0 ? "ok" : l.received ? "part" : ""} ${l.n === cur ? "cur" : ""}" title="Legendas ${l.first}–${l.last}">${l.n}</span>`).join("")}</div>
+        <details class="blocked" ${chat.blockedOpen ? "open" : ""}>
+          <summary>O ChatGPT não respondeu ou bloqueou (“não pode ser exibido por motivos de segurança”)?</summary>
+          <p class="small muted">Acontece com cenas fortes (violência, drogas, suicídio…), mesmo sendo só tradução. Escolha um caminho; o que já foi traduzido fica guardado.</p>
+          <div class="stack" style="gap:8px">
+            <div><button class="btn" data-tr="split">Dividir a parte ${cur} em pedaços menores</button>
+              <span class="muted small">O trecho que causa o bloqueio fica isolado num pedaço pequeno e o resto passa.</span></div>
+            <div><button class="btn" data-tr="rules">Copiar a parte ${cur} com as instruções</button>
+              <span class="muted small">Para colar numa <b>conversa nova</b> do ChatGPT, se a atual travou.</span></div>
+            <div><button class="btn" data-tr="viaapi">Traduzir a parte ${cur} pela API</button>
+              <span class="muted small">Automático, sem bloqueio de tela; custa centavos (precisa da chave da OpenAI).</span></div>
+          </div>
+        </details>
         <p class="muted small"><button class="btn link small" data-tr="openchat">Abrir o ChatGPT</button> · ${doneLots === chat.lots.length ? "" : `<button class="btn link small" data-tr="finish-now">Concluir assim mesmo (o que faltar fica no original)</button>`}</p>
       </div>`;
     const ta = $("#tr-ans");
@@ -915,6 +927,35 @@ async function openTranslate(opts = {}) {
         return;
       }
       if (a === "openchat") { openChatGPT(); chatOpened = true; return; }
+      if (a === "split") {
+        const r = await api("POST", `/api/editor/${ED.sid}/chat/${cur}/split`, { size: 20 });
+        const parts = r.lots.length - chat.lots.length + 1;
+        chat = { ...r, blockedOpen: false };
+        cur = r.current;
+        drawChat(`<span class="note info" style="display:block">A parte foi dividida em ${parts} pedaços. Copie a parte ${cur} e cole na mesma conversa. Se um pedaço for bloqueado de novo, divida de novo ou mande esse pela API.</span>`);
+        return;
+      }
+      if (a === "rules") {
+        const p = await api("GET", `/api/editor/${ED.sid}/chat/${cur}?regras=1`);
+        const ok = await copyText(p.text);
+        toast(ok ? `Parte ${cur} copiada com as instruções. No ChatGPT, abra uma conversa nova e cole.` : "Não consegui copiar. Tente de novo.", !ok);
+        return;
+      }
+      if (a === "viaapi") {
+        const lot = chat.lots[cur - 1];
+        if (!confirm(`Traduzir pela API as ${lot.missing.length} legenda(s) que faltam da parte ${cur}? Custa alguns centavos na OpenAI.`)) return;
+        b.disabled = true; b.textContent = "Traduzindo pela API…";
+        const r = await api("POST", `/api/editor/${ED.sid}/chat/${cur}/api`);
+        chat.lots[cur - 1] = { ...lot, received: r.received, missing: r.missing };
+        chat.done = r.done;
+        const cost = `(${fmtUSD(r.usd)})`;
+        if (r.missing.length) { drawChat(`<span class="note warn" style="display:block">A API traduziu ${r.received} de ${r.count} ${cost}. Faltaram ${r.missing.length}: tente de novo ou traduza à mão depois.</span>`); return; }
+        const next = chat.lots.find((l) => l.missing.length > 0);
+        if (!next) { await finishChat(); return; }
+        cur = next.n;
+        drawChat(`<span class="note ok" style="display:block">Parte traduzida pela API ${cost}. Agora copie a parte ${cur} e cole no ChatGPT.</span>`);
+        return;
+      }
       if (a === "finish-now") { if (confirm("Concluir com as partes recebidas? O que faltar fica no idioma original, marcado para revisão.")) await finishChat(); return; }
     } catch (err) {
       toast(err.message, true);

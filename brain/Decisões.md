@@ -96,3 +96,12 @@
 - **Entregar**: nome no padrão do cliente, assinatura "Traducción/Tradução: Nome" depois da última legenda (nome guardado em Configurações), verificação final; pede confirmação antes de substituir um arquivo que não é o aberto e guarda cópia.
 - **Renomear sem perder nada**: dados `%APPDATA%\Legendas` → `%APPDATA%\CNT Legendas` (movidos na primeira abertura), chave no Gerenciador de Credenciais lida do nome antigo e regravada no novo, modelos em `ProgramData` renomeados pelo instalador. O instalador mantém o mesmo AppId (atualiza por cima), instala na pasta nova (`UsePreviousAppDir=no`) e apaga programa e atalhos antigos. O CI instala a 0.5.0 e atualiza para conferir.
 - Corretor ortográfico: o do próprio navegador (Edge/Chrome), já ativo no campo de texto com o idioma da legenda.
+
+## 2026-10-21 — ChatGPT bloqueou uma parte ("não pode ser exibido por motivos de segurança")
+- Aconteceu na primeira tradução real pela 1.0. O filtro do site do ChatGPT bloqueia respostas com cenas fortes (violência, drogas, suicídio…), mesmo em tradução. Não dá para garantir que não aconteça pelo site; a API é o caminho sem esse bloqueio de tela.
+- Não tentamos "driblar" o filtro (palavras trocadas, códigos etc.). Em vez disso:
+  1. o pedido passa a dizer com clareza o que é: diálogo de uma obra audiovisual, traduzido por uma profissional para o cliente; as falas são dos personagens, não um pedido de ajuda (seção "SOBRE O MATERIAL", também na API). Cada lote seguinte repete que são "falas da obra, para legendar";
+  2. **Dividir a parte** em pedaços de 20: o trecho problemático fica isolado e o resto passa;
+  3. **Copiar com as instruções** a parte atual, para colar numa conversa nova se a atual travar (leva as 6 legendas anteriores como contexto);
+  4. **Traduzir só aquela parte pela API** (centavos), sem sair do fluxo do ChatGPT.
+- O que já foi recebido nunca se perde.

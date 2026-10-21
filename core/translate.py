@@ -263,6 +263,10 @@ def build_system_prompt(source: str, target: str, profile: Profile, glossary: li
     standard = "do manual do cliente" if profile.guide.strip() else "da Netflix"
     return f"""Você é um tradutor-legendador profissional. Traduza legendas de {lang_name(source)} para {lang_name(target)}, no padrão de qualidade {standard}.
 
+SOBRE O MATERIAL
+- É o diálogo de uma obra audiovisual já produzida (filme, série ou documentário), traduzido por uma legendadora profissional para entrega ao cliente. As falas são dos personagens, não de quem envia a mensagem: não é uma conversa pessoal nem um pedido de ajuda.
+- Obras assim podem tratar de violência, crimes, drogas, sexo, doenças, morte ou suicídio, e ter palavrões. Traduza com fidelidade ao sentido e ao tom do original, como em qualquer legenda profissional, sem acrescentar avisos ou comentários.
+
 COMO TRADUZIR
 - Traduza o sentido, não palavra por palavra. O resultado deve soar como alguém falando naturalmente em {lang_name(target)}.
 - Cada legenda é uma unidade: devolva exatamente um item para cada id pedido, na mesma ordem. Nunca junte, divida, pule ou acrescente legendas.
@@ -452,6 +456,26 @@ def plan_chat_lots(n_cues: int, size: int = CHAT_BATCH) -> list[ChatLot]:
     return [ChatLot(k + 1, ids[i:i + size]) for k, i in enumerate(range(0, n_cues, size))]
 
 
+def split_chat_lot(lots: list[ChatLot], n: int, pending: list[int], size: int = 20) -> list[ChatLot]:
+    """Troca o lote `n` por lotes menores só com o que falta (`pending`) e renumera.
+
+    Serve quando o ChatGPT bloqueia uma resposta: a parte problemática fica isolada
+    num pedaço pequeno e o resto passa."""
+    if not pending:
+        return lots
+    size = max(1, size)
+    pieces = [pending[i:i + size] for i in range(0, len(pending), size)]
+    out: list[ChatLot] = []
+    for lot in lots:
+        if lot.n == n:
+            out.extend(ChatLot(0, p) for p in pieces)
+        else:
+            out.append(lot)
+    for k, lot in enumerate(out, start=1):
+        lot.n = k
+    return out
+
+
 def _chat_data(cues: list[Cue], ids: list[int], profile: Profile, after: int = 4) -> str:
     last = ids[-1]
     payload = {
@@ -470,8 +494,11 @@ def _chat_data(cues: list[Cue], ids: list[int], profile: Profile, after: int = 4
 
 def chat_message(cues: list[Cue], lots: list[ChatLot], n: int, source: str, target: str,
                  profile: Profile, glossary: list[Entry] | None = None, instructions: str = "",
-                 context: str = "", only_ids: list[int] | None = None) -> str:
-    """Texto que a usuária cola no ChatGPT para o lote `n` (ou só os ids que faltaram)."""
+                 context: str = "", only_ids: list[int] | None = None,
+                 with_rules: bool = False) -> str:
+    """Texto que a usuária cola no ChatGPT para o lote `n` (ou só os ids que faltaram).
+
+    `with_rules`: repete as instruções completas (para colar numa conversa nova)."""
     lot = lots[n - 1]
     ids = only_ids or lot.ids
     data = _chat_data(cues, ids, profile)
@@ -479,17 +506,23 @@ def chat_message(cues: list[Cue], lots: list[ChatLot], n: int, source: str, targ
     if only_ids:
         head = (f"Na sua resposta do LOTE {n} faltaram {len(ids)} legendas. Traduza só estas, "
                 f"com as mesmas regras e o mesmo formato (bloco ```json com \"itens\").")
-    elif n == 1:
+    elif n == 1 or with_rules:
         system = build_system_prompt(source, target, profile, glossary or [], instructions, context)
         system = system.split("\nFORMATO\n")[0].rstrip()
+        prev = ""
+        if n > 1:  # conversa nova no meio do trabalho: leva o fim do lote anterior como contexto
+            before = [i for i in range(max(1, lot.first - 6), lot.first)]
+            if before:
+                prev = ("\n\nAntes deste trecho (já traduzido, só para contexto): "
+                        + " / ".join(cues[i - 1].text for i in before))
         head = (f"{system}\n\n{_CHAT_FORMAT}\n\nVou mandar a legenda em {total} lote(s), nesta mesma "
                 f"conversa. Em \"seguintes_so_contexto\" vão as próximas legendas só para você entender "
-                f"a frase que continua; NÃO as traduza ainda.\n\nLOTE 1 de {total} "
+                f"a frase que continua; NÃO as traduza ainda.{prev}\n\nLOTE {n} de {total} "
                 f"(legendas {lot.first} a {lot.last}):")
     else:
-        head = (f"LOTE {n} de {total} (legendas {lot.first} a {lot.last}). Mesmas regras e mesmo "
-                f"formato. Mantenha nomes, tratamento e termos coerentes com os lotes anteriores. "
-                f"Responda só com o bloco ```json.")
+        head = (f"LOTE {n} de {total} (legendas {lot.first} a {lot.last}) — falas da obra, para legendar. "
+                f"Mesmas regras e mesmo formato. Mantenha nomes, tratamento e termos coerentes com os "
+                f"lotes anteriores. Responda só com o bloco ```json.")
     return f"{head}\n\n```json\n{data}\n```"
 
 
