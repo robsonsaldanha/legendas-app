@@ -36,6 +36,18 @@ CREATE TABLE IF NOT EXISTS profiles (
     key TEXT PRIMARY KEY,
     data TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS recent (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    srt TEXT NOT NULL DEFAULT '',
+    video TEXT NOT NULL DEFAULT '',
+    client_id INTEGER,
+    opened_at TEXT NOT NULL,
+    UNIQUE (srt, video)
+);
+CREATE TABLE IF NOT EXISTS meta (
+    k TEXT PRIMARY KEY,
+    v TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL,
@@ -73,6 +85,43 @@ class Database:
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.executescript(SCHEMA)
         self.conn.commit()
+        self._seed_clients()
+
+    # ----------------------------------------------------------- clientes
+
+    # Clientes que já vêm cadastrados (a tabela é a de "projetos" das versões antigas).
+    DEFAULT_CLIENTS = [
+        {"name": "Encripta", "profile_key": "encripta-es-419", "source_lang": "pt-BR",
+         "target_lang": "es-419", "client": "Encripta"},
+        {"name": "Netflix", "profile_key": "netflix-es-419", "source_lang": "pt-BR",
+         "target_lang": "es-419", "client": "Netflix"},
+    ]
+
+    def _seed_clients(self) -> None:
+        if self._q("SELECT v FROM meta WHERE k = 'clientes_iniciais'"):
+            return
+        existing = {r["name"].strip().lower() for r in self._q("SELECT name FROM projects")}
+        for c in self.DEFAULT_CLIENTS:
+            if c["name"].lower() not in existing:
+                self.save_project(c)
+        self._exec("INSERT OR REPLACE INTO meta (k, v) VALUES ('clientes_iniciais', ?)", (_now(),))
+
+    # ------------------------------------------------------------ recentes
+
+    def add_recent(self, srt: str, video: str, client_id: int | None) -> None:
+        if not srt and not video:
+            return
+        self._exec("""INSERT INTO recent (srt, video, client_id, opened_at) VALUES (?, ?, ?, ?)
+                      ON CONFLICT(srt, video) DO UPDATE SET opened_at = excluded.opened_at,
+                      client_id = excluded.client_id""", (srt, video, client_id, _now()))
+        self._exec("DELETE FROM recent WHERE id NOT IN (SELECT id FROM recent ORDER BY opened_at DESC, id DESC LIMIT 30)")
+
+    def list_recent(self, limit: int = 12) -> list[dict]:
+        rows = self._q("SELECT * FROM recent ORDER BY opened_at DESC, id DESC LIMIT ?", (limit,))
+        return [dict(r) for r in rows]
+
+    def remove_recent(self, rid: int) -> None:
+        self._exec("DELETE FROM recent WHERE id = ?", (rid,))
 
     def _q(self, sql: str, args: tuple = ()) -> list[sqlite3.Row]:
         with self._lock:
@@ -107,7 +156,7 @@ class Database:
     def save_project(self, data: dict, pid: int | None = None) -> int:
         name = (data.get("name") or "").strip()
         if not name:
-            raise ValueError("Dê um nome ao projeto.")
+            raise ValueError("Dê um nome ao cliente.")
         fields = {k: (data.get(k) or "").strip() if isinstance(data.get(k), str) else data.get(k)
                   for k in ("name", "client", "instructions", "context", "profile_key",
                             "source_lang", "target_lang")}

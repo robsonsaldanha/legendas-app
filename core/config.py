@@ -142,6 +142,8 @@ class Settings:
     align: str = "auto"
     align_device: str = "cpu"
     keep_job_days: int = 30
+    # Nome para a assinatura no fim da legenda ("Traducción: Nome").
+    translator_name: str = ""
     extra: dict = field(default_factory=dict)
 
     @classmethod

@@ -1,4 +1,4 @@
-# Legendas — cérebro do projeto
+# CNT Legendas — cérebro do projeto
 
 Vault Obsidian com toda a documentação. **Quem for desenvolver (pessoa ou IA) lê isto primeiro e atualiza ao mudar algo.**
 
@@ -14,4 +14,4 @@ Aplicativo Windows com instalador para legendagem profissional (PT-BR → espanh
 - [[Especificação]] — documento original de requisitos
 
 ## Estado atual
-**Tradução PT ↔ ES pronta** (Novo trabalho e botão Traduzir no editor). **Fase 1 concluída** (Transcrever + Formatar), **interface no navegador** (`python -m app`) e **editor no layout do Subtitle Edit** com vídeo no quadro exato. Funciona em dois perfis do Windows no mesmo PC. Próximo: validar com vídeo real dela, depois Fase 2 (Traduzir). Veja [[Fases]].
+**Versão 1.0 — CNT Legendas.** Tudo começa pelo **Início** (abrir legenda/vídeo, recentes) e acontece no **editor**: Traduzir (um clique, pelo ChatGPT dela ou pela API), **Sincronizar** (automática pela fala, por legenda de referência, copiar tempos, deslocar, dois pontos, quadros por segundo, cortes de cena, texto sem tempo), **Verificar** (com correção automática) e **Entregar** (nome do cliente, assinatura, verificação final). **Clientes** (Encripta, Netflix) reúnem regras, glossário e instruções. Funciona em dois perfis do Windows no mesmo PC. Próximo: uso real dela e ajustes (ver [[Fases]]).

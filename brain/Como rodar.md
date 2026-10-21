@@ -1,9 +1,9 @@
 # Como rodar
 
 ## Para usar (sem programar)
-1. Na página do repositório no GitHub, abra **Releases** e baixe o `Instalador_Legendas_<versão>.exe` mais recente.
+1. Na página do repositório no GitHub, abra **Releases** e baixe o `Instalador_CNT_Legendas_<versão>.exe` mais recente.
 2. Dois cliques, avançar. Ele pede permissão de administrador porque instala para todos os perfis do Windows.
-3. Abra pelo atalho **Legendas** (menu Iniciar ou área de trabalho). Em cada perfil: Configurações → colar a chave da OpenAI; e, uma vez só no PC, baixar os modelos de alinhamento (PT e ES).
+3. Abra pelo atalho **CNT Legendas** (menu Iniciar ou área de trabalho). Em cada perfil: Configurações → colar a chave da OpenAI; e, uma vez só no PC, baixar os modelos de alinhamento (PT e ES).
 
 ## Gerar o instalador
 `packaging\build.ps1` (Windows, Python 3.12, Inno Setup 6). Normalmente quem gera é o GitHub Actions: criar a tag `vX.Y.Z` publica a versão.
@@ -23,16 +23,16 @@
    pip install torch --index-url https://download.pytorch.org/whl/cpu
    pip install -r requirements-align.txt
    ```
-   O modelo do idioma (~1,2 GB) baixa no primeiro uso para `%APPDATA%\Legendas\modelos`.
+   O modelo do idioma (~1,2 GB) baixa no primeiro uso para `%APPDATA%\CNT Legendas\modelos`.
 4. Chave da OpenAI só nesta janela do terminal: `set OPENAI_API_KEY=sk-...`
 
 ## Abrir a interface
 ```
 python -m app
 ```
-Ou dois cliques em `Abrir Legendas.bat` (usa o `.venv` se existir). A página abre no navegador; o programa fica rodando em segundo plano até "Fechar o programa" em Configurações. Abrir de novo pelo atalho só reabre a página. Opções: `--port N` (padrão: porta própria do perfil), `--no-browser`.
+Ou dois cliques em `Abrir CNT Legendas.bat` (usa o `.venv` se existir). A página abre no navegador; o programa fica rodando em segundo plano até "Fechar o programa" em Configurações. Abrir de novo pelo atalho só reabre a página. Opções: `--port N` (padrão: porta própria do perfil), `--no-browser`.
 
-A página só abre pelo atalho (ele passa a chave da sessão). Digitar o endereço direto mostra "Abra o Legendas pelo atalho".
+A página só abre pelo atalho (ele passa a chave da sessão). Digitar o endereço direto mostra "Abra o CNT Legendas pelo atalho".
 
 ## Usar pela linha de comando
 ```

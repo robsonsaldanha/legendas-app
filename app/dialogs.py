@@ -16,6 +16,7 @@ FILETYPES = {
                                  "*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.wma")],
     "subtitle": [("Legenda SRT", "*.srt")],
     "text": [("Texto", "*.txt *.docx")],
+    "script": [("Roteiro ou texto sem tempo", "*.txt *.docx *.srt")],
     "csv": [("Planilha CSV", "*.csv")],
     "profile": [("Perfil JSON", "*.json")],
     "any": [("Vídeo, áudio, legenda ou texto",

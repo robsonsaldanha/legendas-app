@@ -80,3 +80,19 @@
 - Reticências deixaram de ser convertidas na tradução: cada perfil decide (Netflix `…`, Encripta `...`) no Formatar.
 - Perfil em português da Encripta é uma adaptação nossa; confirmar com a Encripta.
 - Ao trocar o idioma, o perfil automático fica na mesma família (Encripta ES ↔ Encripta PT).
+
+## 2026-10-21 — Versão 1.0: "CNT Legendas", editor no centro, sincronização completa
+- Pedido: programa mais fácil ("burocracia grande até chegar na tradução"), completo, com sincronização, e com o nome **CNT Legendas**. A usuária deixou as escolhas comigo ("você que manda").
+- **Fluxo**: a tela inicial é só "abrir legenda e vídeo" + recentes + cliente. Tudo o mais é no editor: botão "Traduzir para X" de um clique (método, idiomas e cliente já lembrados; a seta ao lado abre as opções), menu Sincronizar, Verificar e Entregar. "Novo trabalho" virou "Trabalho em segundo plano" (para transcrever ou lotes), acessível pelo Início/Trabalhos.
+- **Clientes** = a antiga tabela de projetos (sem migração de dados). Encripta e Netflix vêm cadastrados (uma vez, marcado em `meta`). O perfil segue o idioma da legenda dentro da família do cliente (`same_family`).
+- **Sincronização** (`core/sync.py`, tudo local e sem custo, exceto texto sem tempo):
+  - automática: sinal de fala por energia (100/s) × legendas; correlação por FFT com proporções comuns (25 ↔ 23,976 ↔ 24) e depois programação dinâmica por legenda com custo de mudança (≈1,5 s de fala) para trechos deslocados (comerciais, cenas cortadas) — a mesma ideia do ffsubsync/alass, sem dependências;
+  - a "sobra" de 0,4 s no fim de cada legenda não conta no encaixe (senão o resultado escorrega para antes); fora do áudio conta como silêncio; empate fica com o menor deslocamento;
+  - se piorar a concordância com a fala, não mexe;
+  - legenda de referência usa o mesmo algoritmo, com o sinal vindo da outra legenda;
+  - texto sem tempo: transcreve (API) e casa o texto dela com a transcrição palavra a palavra (`difflib`); o texto final é o dela, a transcrição só dá os tempos. Blocos separados por linha em branco viram legendas; texto corrido passa pelo Formatar;
+  - cortes de cena: filtro `scene` do ffmpeg (vídeo reduzido a 256 px), guardados por vídeo; encaixe com as regras Netflix (12 quadros de janela, saída 2 quadros antes do corte).
+- **Correção automática** (Verificar): só mexe no fim das legendas (sobreposição, intervalo mínimo, duração mínima, CPS quando há espaço, duração máxima) + reticências/hífen do perfil; nunca muda a quebra de linhas dela. Intervalos curtos são fechados só quando ela marca (padrão ligado no Netflix: `chain_frames = 12`).
+- **Entregar**: nome no padrão do cliente, assinatura "Traducción/Tradução: Nome" depois da última legenda (nome guardado em Configurações), verificação final; pede confirmação antes de substituir um arquivo que não é o aberto e guarda cópia.
+- **Renomear sem perder nada**: dados `%APPDATA%\Legendas` → `%APPDATA%\CNT Legendas` (movidos na primeira abertura), chave no Gerenciador de Credenciais lida do nome antigo e regravada no novo, modelos em `ProgramData` renomeados pelo instalador. O instalador mantém o mesmo AppId (atualiza por cima), instala na pasta nova (`UsePreviousAppDir=no`) e apaga programa e atalhos antigos. O CI instala a 0.5.0 e atualiza para conferir.
+- Corretor ortográfico: o do próprio navegador (Edge/Chrome), já ativo no campo de texto com o idioma da legenda.

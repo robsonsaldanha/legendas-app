@@ -91,6 +91,24 @@ def main(wav: str, text: str) -> None:
     check("tradução", res2.outputs["srt"].exists() and "Hola" in res2.outputs["srt"].read_text(encoding="utf-8-sig"),
           res2.outputs["srt"].name)
 
+    # sincronização com fala de verdade (voz sintetizada do Windows) e cortes de cena
+    import numpy as np
+    from core.subtitle import Cue
+    from core.sync import auto_sync, detect_shot_changes, speech_activity
+    padded = np.concatenate([np.zeros(16000 * 3, dtype=np.float32), audio, np.zeros(16000 * 4, dtype=np.float32)])
+    speech = speech_activity(padded)
+    t0, t1 = words[0].start + 3, words[-1].end + 3
+    late = [Cue(round(t0 + 1.8, 3), round(t1 + 2.2, 3), [text])]
+    sr = auto_sync(late, speech)
+    check("sincronia pela fala", abs(sr.cues[0].start - t0) < 0.35,
+          f"esperado {t0:.2f}, veio {sr.cues[0].start:.2f} (deslocamento {sr.offset:+.2f})")
+    cuts = tmp / "cortes.mp4"
+    subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=160x90:r=24:d=2",
+                    "-f", "lavfi", "-i", "color=c=blue:s=160x90:r=24:d=2",
+                    "-filter_complex", "[0][1]concat=n=2:v=1:a=0", "-pix_fmt", "yuv420p", str(cuts)], check=True)
+    shots = detect_shot_changes(cuts, duration=4)
+    check("cortes de cena", any(abs(x - 2.0) < 0.05 for x in shots), str(shots))
+
     # servidor + sessão
     from app.server import App, make_server
     app = App()

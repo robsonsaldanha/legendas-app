@@ -129,12 +129,14 @@ def test_projects_crud(server):
     st, p2 = call(port, "PUT", f"/api/projects/{p['id']}", {"name": "Série X2", "glossary": []}, token=app.token)
     assert p2["name"] == "Série X2" and p2["glossary"] == []
     st, lst = call(port, "GET", "/api/projects", token=app.token)
-    assert [x["name"] for x in lst["projects"]] == ["Série X2"]
+    assert [x["name"] for x in lst["projects"]] == ["Encripta", "Netflix", "Série X2"]   # clientes de fábrica
     st, err = call(port, "POST", "/api/projects", {"name": ""}, token=app.token)
     assert st == 400 and "nome" in err["error"]
     call(port, "DELETE", f"/api/projects/{p['id']}", token=app.token)
     st, lst = call(port, "GET", "/api/projects", token=app.token)
-    assert lst["projects"] == []
+    assert [x["name"] for x in lst["projects"]] == ["Encripta", "Netflix"]
+    enc = next(x for x in lst["projects"] if x["name"] == "Encripta")
+    assert enc["profile_key"] == "encripta-es-419"
 
 
 def test_profiles(server):
@@ -224,4 +226,4 @@ def test_default_out_dir_for_uploads(tmp_path, monkeypatch):
     (up / "abc").mkdir(parents=True)
     assert default_out_dir(tmp_path / "videos" / "a.mp4", up) is None
     out = default_out_dir(up / "abc" / "a.mp4", up)
-    assert out is not None and out.name == "Legendas"
+    assert out is not None and out.name == "CNT Legendas"

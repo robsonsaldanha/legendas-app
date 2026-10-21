@@ -289,3 +289,156 @@ def test_editor_chat_requires_start(tserver):
     st, err = call(port, "POST", f"/api/editor/{d['sid']}/chat/start",
                    {"cues": d["cues"], "source_lang": "pt-BR", "target_lang": "pt-BR"}, token=app.token)
     assert st == 400 and "iguais" in err["error"]
+
+
+# ------------------------------------------------- clientes, sincronia, entrega
+
+def _wait_task(app, port, sid, tid, timeout=60):
+    for _ in range(int(timeout / 0.2)):
+        st, t = call(port, "GET", f"/api/editor/{sid}/task/{tid}", token=app.token)
+        if t["status"] != "rodando":
+            return t
+        time.sleep(0.2)
+    raise AssertionError("tarefa não terminou")
+
+
+def test_client_picks_profile_family_and_recent(files):
+    app, port, _, video, srt = files
+    st, lst = call(port, "GET", "/api/projects", token=app.token)
+    enc = next(x for x in lst["projects"] if x["name"] == "Encripta")
+    d = open_editor(app, port, srt=str(srt), video=str(video), client_id=enc["id"])
+    assert d["client_id"] == enc["id"] and d["profile"]["key"] == "encripta-pt-br"   # legenda em PT
+    net = next(x for x in lst["projects"] if x["name"] == "Netflix")
+    st, r = call(port, "PUT", f"/api/editor/{d['sid']}/client", {"client_id": net["id"]}, token=app.token)
+    assert r["profile"]["key"] == "netflix-pt-br"
+    st, state = call(port, "GET", "/api/state", token=app.token)
+    assert state["recent"][0]["srt"] == str(srt) and state["recent"][0]["video"] == str(video)
+    assert state["phase"]["sincronizar"] is True
+    st, r = call(port, "DELETE", f"/api/recent/{state['recent'][0]['id']}", token=app.token)
+    assert r["recent"] == []
+
+
+def test_sync_ops(files):
+    app, port, tmp, video, srt = files
+    d = open_editor(app, port, srt=str(srt), video=str(video), profile_key="netflix-pt-br")
+    sid, cues = d["sid"], d["cues"]
+    st, r = call(port, "POST", f"/api/editor/{sid}/sync", {"op": "shift", "ms": 250, "from": 1, "cues": cues}, token=app.token)
+    assert st == 200 and r["cues"][0]["start"] == 0.5 and r["cues"][1]["start"] == 2.75
+    assert "Atrasei 250 ms" in r["message"]
+    st, r = call(port, "POST", f"/api/editor/{sid}/sync", {"op": "fps", "from_fps": 25, "to_fps": 23.976, "cues": cues}, token=app.token)
+    assert abs(r["cues"][1]["start"] - 2.5 * 25 / 23.976) < 1e-3
+    st, r = call(port, "POST", f"/api/editor/{sid}/sync", {"op": "twopoint", "a_old": 0.5, "a_new": 1.0,
+                                                          "b_old": 2.5, "b_new": 3.5, "cues": cues}, token=app.token)
+    assert r["cues"][0]["start"] == 1.0 and r["cues"][1]["start"] == 3.5
+    bad = [{"start": 0, "end": 0.3, "text": "Oi..."}, {"start": 0.32, "end": 1, "text": "- a\n- b"}]
+    st, r = call(port, "POST", f"/api/editor/{sid}/sync", {"op": "fix", "cues": bad}, token=app.token)
+    assert r["cues"][0]["end"] < 0.32 and r["cues"][0]["text"] == "Oi…"
+    st, r = call(port, "POST", f"/api/editor/{sid}/sync", {"op": "snap", "cues": cues}, token=app.token)
+    assert st == 409 and "cortes" in r["error"]
+    ref = tmp / "ref.srt"
+    ref.write_text("1\n00:00:01,000 --> 00:00:02,000\nA\n\n2\n00:00:03,000 --> 00:00:04,500\nB\n", encoding="utf-8")
+    st, r = call(port, "POST", f"/api/editor/{sid}/sync", {"op": "copy", "path": str(ref), "cues": cues}, token=app.token)
+    assert [c["start"] for c in r["cues"]] == [1.0, 3.0] and r["cues"][0]["text"] == "Olá."
+    st, r = call(port, "POST", f"/api/editor/{sid}/sync", {"op": "copy", "path": str(ref), "cues": cues[:1]}, token=app.token)
+    assert st == 400 and "quantidades" in r["error"]
+
+
+def test_auto_sync_task_by_audio_and_reference(files):
+    app, port, tmp, video, srt = files
+    d = open_editor(app, port, srt=str(srt), video=str(video), profile_key="netflix-pt-br")
+    sid = d["sid"]
+    # vídeo de teste: fala em 0–3, 5–8, 10–13, 15–18 s; legenda 1,7 s atrasada
+    cues = [{"start": a + 1.7, "end": a + 4.9, "text": f"Fala {i}", "orig": f"O{i}"} for i, a in enumerate([0, 5, 10, 15])]
+    st, t = call(port, "POST", f"/api/editor/{sid}/task", {"kind": "audio", "cues": cues}, token=app.token)
+    assert st == 200
+    t = _wait_task(app, port, sid, t["id"])
+    assert t["status"] == "pronto", t
+    out = t["result"]["cues"]
+    assert [round(c["start"]) for c in out] == [0, 5, 10, 15] and out[0]["orig"] == "O0"
+    assert "Deslocamento" in t["message"]
+    ref = tmp / "ref.srt"
+    ref.write_text("".join(f"{i+1}\n00:00:{a:02d},000 --> 00:00:{a+2:02d},500\nR\n\n" for i, a in enumerate([0, 5, 10, 15])),
+                   encoding="utf-8")
+    st, t = call(port, "POST", f"/api/editor/{sid}/task", {"kind": "ref", "path": str(ref), "cues": cues}, token=app.token)
+    t = _wait_task(app, port, sid, t["id"])
+    assert [round(c["start"]) for c in t["result"]["cues"]] == [0, 5, 10, 15]
+
+
+def test_shots_task_and_snap(files):
+    app, port, tmp, video, srt = files
+    v = tmp / "cortes.mp4"
+    subprocess.run([ffmpeg(), "-y", "-loglevel", "error",
+                    "-f", "lavfi", "-i", "color=c=red:s=160x90:r=24:d=2",
+                    "-f", "lavfi", "-i", "color=c=blue:s=160x90:r=24:d=3",
+                    "-filter_complex", "[0][1]concat=n=2:v=1:a=0", "-pix_fmt", "yuv420p", str(v)], check=True)
+    d = open_editor(app, port, srt=str(srt), video=str(v), profile_key="netflix-pt-br")
+    sid = d["sid"]
+    st, t = call(port, "POST", f"/api/editor/{sid}/task", {"kind": "shots"}, token=app.token)
+    t = _wait_task(app, port, sid, t["id"])
+    assert t["status"] == "pronto" and any(abs(x - 2.0) < 0.05 for x in t["result"]["shots"])
+    cues = [{"start": 2.2, "end": 3.0, "text": "a"}]
+    st, r = call(port, "POST", f"/api/editor/{sid}/sync", {"op": "snap", "cues": cues}, token=app.token)
+    assert abs(r["cues"][0]["start"] - 2.0) < 0.05
+    d2 = open_editor(app, port, srt=str(srt), video=str(v))     # cortes ficam guardados
+    assert d2["shots"] and abs(d2["shots"][0] - 2.0) < 0.05
+
+
+def test_deliver_with_signature_and_naming(files):
+    app, port, tmp, video, srt = files
+    enc_srt = tmp / "Resgate_no_Oeste_sub_spa.srt"
+    enc_srt.write_text("1\n00:00:00,500 --> 00:00:02,000\nHola.\n", encoding="utf-8")
+    d = open_editor(app, port, srt=str(enc_srt), video=str(video), profile_key="encripta-es-419")
+    sid = d["sid"]
+    st, info = call(port, "GET", f"/api/editor/{sid}/deliver", token=app.token)
+    assert info["name"] == "Resgate_no_Oeste_sub_spa.srt" and info["signature_label"] == "Traducción"
+    body = {"cues": d["cues"], "name": info["name"], "folder": info["folder"],
+            "signature": "Traducción: Ana", "report": True}
+    st, r = call(port, "POST", f"/api/editor/{sid}/deliver", body, token=app.token)
+    assert st == 200 and r["signature_added"] and r["count"] == 2
+    from core.subtitle import read_srt
+    out = read_srt(enc_srt)
+    assert out[-1].text == "Traducción: Ana" and out[-1].start >= 2.0
+    assert Path(r["report"]).exists()
+    # segunda entrega não duplica a assinatura
+    body["cues"] = [{"start": c.start, "end": c.end, "text": c.text} for c in out]
+    st, r = call(port, "POST", f"/api/editor/{sid}/deliver", body, token=app.token)
+    assert r["count"] == 2 and not r["signature_added"]
+    # arquivo de outra pessoa com o mesmo nome: pede confirmação
+    other = tmp / "outro.srt"
+    other.write_text("1\n00:00:00,000 --> 00:00:01,000\nX\n", encoding="utf-8")
+    st, r = call(port, "POST", f"/api/editor/{sid}/deliver", {**body, "name": "outro.srt"}, token=app.token)
+    assert st == 409 and other.read_text(encoding="utf-8").endswith("X\n")
+
+
+def test_script_job_from_editor(tmp_path, monkeypatch):
+    import threading
+    from app.server import App, make_server
+    from core.config import Settings
+    from tests.test_pipeline_e2e import FakeTranscriber
+    monkeypatch.setenv("LEGENDAS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-0000000000000000abcd")
+    Settings(align="estimate", chunk_target=4.0, chunk_max=10.0, parallel_requests=2).save()
+    app = App(transcriber_factory=FakeTranscriber)
+    srv = make_server(app, 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    COOKIE[port] = f"{app.cookie_name}={app.token}"
+    tmp = tmp_path
+    video = _make_video(tmp / "Roteiro.mp4")
+    txt = tmp / "roteiro.txt"
+    from tests.test_pipeline_e2e import SENTENCES
+    txt.write_text("\n\n".join(SENTENCES), encoding="utf-8")
+    d = open_editor(app, port, video=str(video), profile_key="netflix-pt-br")
+    st, est = call(port, "POST", f"/api/editor/{d['sid']}/script", {"path": str(txt), "estimate": True}, token=app.token)
+    assert st == 200 and est["minutes"] > 0
+    st, job = call(port, "POST", f"/api/editor/{d['sid']}/script", {"path": str(txt)}, token=app.token)
+    assert st == 200, job
+    for _ in range(300):
+        st, j = call(port, "GET", f"/api/jobs/{job['id']}", token=app.token)
+        if j["status"] in ("pronto", "erro"):
+            break
+        time.sleep(0.2)
+    assert j["status"] == "pronto", j
+    from core.subtitle import read_srt
+    assert [c.text for c in read_srt(j["outputs"]["srt"])] == SENTENCES
+    srv.shutdown()

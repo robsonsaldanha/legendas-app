@@ -149,7 +149,10 @@ async function loadProjects() {
 /* ============================================================== router */
 
 const routes = [
+  [/^#\/inicio$/, renderHome],
   [/^#\/novo$/, renderNew],
+  [/^#\/clientes$/, renderProjects],
+  [/^#\/cliente\/(novo|\d+)$/, renderProject],
   [/^#\/trabalhos$/, renderJobs],
   [/^#\/trabalho\/(\d+)$/, renderJob],
   [/^#\/projetos$/, renderProjects],
@@ -174,10 +177,11 @@ async function router() {
   main.onclick = null;
   cancelAnimationFrame(ED.raf);
   document.querySelectorAll("video").forEach((v) => { v.pause(); v.removeAttribute("src"); v.load(); });
-  const hash = location.hash || "#/novo";
+  const hash = location.hash || "#/inicio";
   if (!hash.startsWith("#/editor/")) { document.body.classList.remove("editor-mode"); ED.sid = null; ED.dirty = false; }
-  const section = hash.split("/")[1] || "novo";
-  const navKey = { trabalho: "trabalhos", projeto: "projetos" }[section] || section;
+  ["ed-find", "ed-drawer", "ed-syncmenu-float"].forEach((id) => document.getElementById(id)?.remove());
+  const section = hash.split("/")[1] || "inicio";
+  const navKey = { trabalho: "trabalhos", projeto: "clientes", projetos: "clientes", cliente: "clientes", novo: "trabalhos" }[section] || section;
   document.querySelectorAll("[data-nav]").forEach((a) => {
     if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -194,7 +198,7 @@ async function router() {
       return;
     }
   }
-  location.hash = "#/novo";
+  location.hash = "#/inicio";
 }
 
 async function refreshRunningCount() {
@@ -219,21 +223,22 @@ async function renderNew() {
   main.innerHTML = `
     <div class="page-head">
       <div>
-        <h1>Novo trabalho</h1>
-        <p class="muted">Traduza uma legenda ou transcreva um vídeo. O arquivo .srt sai ao lado do original.</p>
+        <h1>Trabalho em segundo plano</h1>
+        <p class="muted">Para transcrever um vídeo, sincronizar ou traduzir sem abrir o editor. O .srt sai ao lado do original. Para o dia a dia, use o <a href="#/inicio">Início</a>.</p>
       </div>
     </div>
-    ${noKey ? `<p class="note warn" style="margin-bottom:16px">Falta a chave da OpenAI. <a href="#/configuracoes">Configure aqui</a> antes de começar.</p>` : ""}
+    ${noKey ? `<p class="note warn" style="margin-bottom:16px">Sem chave da OpenAI: dá para traduzir pelo seu ChatGPT e sincronizar legendas. Para transcrever ou usar a API, <a href="#/configuracoes">configure a chave</a>.</p>` : ""}
     <div class="split">
       <div>
         <section class="panel">
           <h2>Arquivos</h2>
           <div class="drop" id="drop">
-            <p><strong>Arraste a legenda ou o vídeo para cá</strong></p>
-            <p class="muted small">Para traduzir, basta a legenda (.srt). Junte o vídeo se quiser revisar com a imagem depois.</p>
+            <p><strong>Arraste a legenda, o vídeo ou o roteiro para cá</strong></p>
+            <p class="muted small">Traduzir: basta a legenda (.srt). Transcrever: o vídeo. Sincronizar: o vídeo + a legenda fora do tempo, ou + o texto sem tempo (.txt/.docx).</p>
             <div class="row">
               <button class="btn primary" data-action="pick-sub">Escolher legenda (.srt)</button>
               <button class="btn" data-action="pick-media">Escolher vídeo ou áudio</button>
+              <button class="btn" data-action="pick-text">Escolher texto sem tempo</button>
             </div>
           </div>
           <ul class="files" id="files"></ul>
@@ -249,9 +254,9 @@ async function renderNew() {
         <section class="panel">
           <h2>O que fazer</h2>
           <div class="steps">
-            ${stepTile("traduzir", "Traduzir", "Traduz a legenda inteira mantendo os tempos, no padrão Netflix.")}
+            ${stepTile("traduzir", "Traduzir", "Traduz a legenda inteira mantendo os tempos, nas regras do cliente.")}
             ${stepTile("transcrever", "Transcrever", "Gera a legenda a partir do áudio do vídeo.")}
-            ${stepTile("sincronizar", "Sincronizar", "Ajusta os tempos de uma legenda ou texto ao áudio.")}
+            ${stepTile("sincronizar", "Sincronizar", "Encaixa uma legenda fora do tempo, ou um texto sem tempo, na fala do vídeo.")}
           </div>
           <p class="muted small" style="margin-top:10px">A formatação (linhas, velocidade de leitura e duração) é feita sempre, no final.</p>
           <div class="methods" id="f-method" style="margin-top:14px" ${d.steps.traduzir ? "" : "hidden"} role="radiogroup" aria-label="Como traduzir">
@@ -265,12 +270,12 @@ async function renderNew() {
         <section class="panel">
           <h2>Detalhes</h2>
           <div class="grid-2">
-            <label class="field"><span>Projeto</span>
+            <label class="field"><span>Cliente</span>
               <select id="f-project">
-                <option value="">Sem projeto</option>
+                <option value="">Sem cliente</option>
                 ${S.projects.map((p) => `<option value="${p.id}" ${String(p.id) === String(d.project_id) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}
               </select>
-              ${S.projects.length ? "" : `<a href="#/projeto/novo" class="small">Criar projeto com glossário</a>`}
+              ${S.projects.length ? "" : `<a href="#/cliente/novo" class="small">Cadastrar cliente</a>`}
             </label>
             <label class="field"><span>Perfil de regras</span>
               <select id="f-profile">${st.profiles.map((p) => `<option value="${esc(p.key)}" ${p.key === d.profile_key ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
@@ -311,7 +316,7 @@ async function renderNew() {
 function stepTile(key, title, desc) {
   const enabled = S.state.phase[key];
   const checked = S.draft.steps[key] && enabled;
-  const soon = { sincronizar: "Chega na próxima etapa do projeto (fase 3).", traduzir: "Chega na próxima etapa do projeto (fase 2)." }[key];
+  const soon = "";
   return `<label class="step ${enabled ? "" : "off"}">
       <input type="checkbox" data-step="${key}" ${checked ? "checked" : ""} ${enabled ? "" : "disabled"}>
       <strong>${title}</strong>
@@ -357,12 +362,17 @@ function validateDraft() {
     return "Para traduzir, escolha a legenda (.srt). Ou marque Transcrever para começar pelo vídeo.";
   if (steps.includes("traduzir") && d.source_lang === d.target_lang) return "O idioma de origem e o de destino são iguais.";
   if (ready.filter((f) => f.kind === "subtitle").length > 1) return "Uma legenda por trabalho. Remova as outras.";
-  if ((steps.includes("transcrever") || steps.includes("sincronizar")) && !has("media")) return "Para transcrever é preciso o vídeo ou o áudio.";
+  if ((steps.includes("transcrever") || steps.includes("sincronizar")) && !has("media")) return "Para transcrever ou sincronizar é preciso o vídeo ou o áudio.";
   if (ready.some((f) => f.kind === "media" && f.has_audio === false)) return "O vídeo escolhido não tem áudio.";
   if (steps.includes("transcrever") && !steps.includes("sincronizar") && (has("subtitle") || has("text")))
     return "Você adicionou uma legenda ou texto. Para transcrever do zero, remova esse arquivo.";
   if (ready.filter((f) => f.kind === "media").length > 1) return "Um vídeo por trabalho. Remova os outros.";
-  if (!S.state.api_key) return "Configure a chave da OpenAI primeiro.";
+  if (steps.includes("sincronizar") && has("subtitle") && has("text")) return "Para sincronizar use a legenda OU o texto, não os dois.";
+  if (steps.includes("sincronizar") && !has("subtitle") && !has("text") && !steps.includes("transcrever"))
+    return "Para sincronizar, junte ao vídeo a legenda fora do tempo (.srt) ou o texto sem tempo (.txt/.docx).";
+  const needsKey = steps.includes("transcrever") || (steps.includes("sincronizar") && has("text"))
+    || (steps.includes("traduzir") && curMethod() === "api");
+  if (needsKey && !S.state.api_key) return "Configure a chave da OpenAI primeiro.";
   return "";
 }
 
@@ -471,7 +481,11 @@ async function addPaths(paths) {
         d.detected = f.language; d.source_lang = f.language; d.target_lang = oppositeLang(f.language);
         toast(`Legenda em ${shortLang(f.language)}: vai ser traduzida para ${shortLang(d.target_lang)}. Dá para trocar em Detalhes.`);
       }
-    } else if (f.kind === "media" && !d.files.some((x) => x.kind === "subtitle")) {
+    } else if (f.kind === "text") {
+      S.draft.files = S.draft.files.filter((x) => x === f || x.kind !== "subtitle");
+      d.steps.sincronizar = true; d.steps.transcrever = false; d.steps.traduzir = false;
+      toast("Texto sem tempo: vai ser encaixado na fala do vídeo (usa a transcrição pela API).");
+    } else if (f.kind === "media" && !d.files.some((x) => x.kind === "subtitle" || x.kind === "text")) {
       d.steps.transcrever = true;
     }
   }
@@ -533,6 +547,7 @@ function bindNew() {
     const a = b.dataset.action;
     if (a === "pick-media") await addPaths(await pickFiles("media", false));
     if (a === "pick-sub") await addPaths(await pickFiles("subtitle", false));
+    if (a === "pick-text") await addPaths(await pickFiles("text", false));
     if (a === "swap") {
       [d.source_lang, d.target_lang] = [d.target_lang, d.source_lang];
       d.detected = null; syncNewForm(); invalidateEstimate(); renderSummary();
@@ -627,7 +642,7 @@ async function renderJobs() {
     const rows = jobs.map((j) => {
       const prog = j.live ? progressOf(j.live.steps) : null;
       return `<tr class="click" data-href="#/trabalho/${j.id}">
-        <td><strong>${esc(j.name)}</strong><div class="muted small">${esc(j.project_name || "Sem projeto")} · ${j.steps.filter((s) => s !== "formatar").map((s) => STEP_NAMES[s]).join(", ")}</div></td>
+        <td><strong>${esc(j.name)}</strong><div class="muted small">${esc(j.project_name || "Sem cliente")} · ${j.steps.filter((s) => s !== "formatar").map((s) => STEP_NAMES[s]).join(", ")}</div></td>
         <td><span class="pill ${j.status}">${STATUS[j.status]}</span>
           ${j.status === "rodando" && j.live ? `<div class="muted small" style="margin-top:4px">${esc(j.live.message)}</div>${prog != null ? `<div class="bar" style="margin-top:6px;max-width:220px"><i style="width:${prog}%"></i></div>` : ""}` : ""}
           ${j.status === "pronto" && j.issues ? `<div class="muted small" style="margin-top:4px">${j.issues} apontamentos</div>` : ""}
@@ -693,7 +708,7 @@ function jobLangs(job) {
 function jobHead(job, actions = "") {
   return `<div class="page-head">
       <div>
-        <p class="muted small"><a href="#/trabalhos">Trabalhos</a> / ${esc(job.project_name || "Sem projeto")}</p>
+        <p class="muted small"><a href="#/trabalhos">Trabalhos</a> / ${esc(job.project_name || "Sem cliente")}</p>
         <h1 style="margin-top:6px">${esc(job.name)}</h1>
         <p class="muted"><span class="pill ${job.status}">${STATUS[job.status]}</span>
           &nbsp;${job.steps.map((s) => STEP_NAMES[s]).join(" › ")} · ${esc(jobLangs(job))} · ${esc(profileName(job.params.profile_key))}</p>
@@ -873,19 +888,19 @@ async function renderResult(job) {
 async function renderProjects() {
   await Promise.all([loadState(), loadProjects()]);
   if (!S.projects.length) {
-    main.innerHTML = `<div class="page-head"><div><h1>Projetos</h1><p class="muted">Um projeto guarda o glossário, as instruções do cliente e as preferências de uma série ou cliente.</p></div></div>
-      <div class="panel empty"><p>Nenhum projeto ainda.</p><a class="btn primary" href="#/projeto/novo">Criar projeto</a></div>`;
+    main.innerHTML = `<div class="page-head"><div><h1>Clientes</h1><p class="muted">Cada cliente guarda as regras (perfil), o glossário e as instruções. Escolha o cliente ao abrir a legenda e o resto vem junto.</p></div></div>
+      <div class="panel empty"><p>Nenhum cliente ainda.</p><a class="btn primary" href="#/cliente/novo">Cadastrar cliente</a></div>`;
     return;
   }
   main.innerHTML = `
     <div class="page-head">
-      <div><h1>Projetos</h1><p class="muted">Glossário, instruções e preferências por série ou cliente.</p></div>
-      <a class="btn primary" href="#/projeto/novo">Novo projeto</a>
+      <div><h1>Clientes</h1><p class="muted">Regras, glossário e instruções de cada cliente (ou de uma série específica).</p></div>
+      <a class="btn primary" href="#/cliente/novo">Novo cliente</a>
     </div>
     <div class="panel" style="padding:6px 10px">
       <table class="table">
-        <thead><tr><th>Projeto</th><th>Idiomas</th><th>Perfil</th><th class="num">Glossário</th></tr></thead>
-        <tbody>${S.projects.map((p) => `<tr class="click" data-href="#/projeto/${p.id}">
+        <thead><tr><th>Cliente</th><th>Idiomas</th><th>Regras</th><th class="num">Glossário</th></tr></thead>
+        <tbody>${S.projects.map((p) => `<tr class="click" data-href="#/cliente/${p.id}">
           <td><strong>${esc(p.name)}</strong>${p.client ? `<div class="muted small">${esc(p.client)}</div>` : ""}</td>
           <td class="small">${esc(langName(p.source_lang))} › ${esc(langName(p.target_lang))}</td>
           <td class="small">${esc(profileName(p.profile_key))}</td>
@@ -904,21 +919,21 @@ async function renderProject(id) {
 
   main.innerHTML = `
     <div class="page-head">
-      <div><p class="muted small"><a href="#/projetos">Projetos</a></p><h1 style="margin-top:6px">${isNew ? "Novo projeto" : esc(p.name)}</h1></div>
+      <div><p class="muted small"><a href="#/clientes">Clientes</a></p><h1 style="margin-top:6px">${isNew ? "Novo cliente" : esc(p.name)}</h1></div>
       <div class="row">
-        ${isNew ? "" : `<button class="btn danger" data-action="delete">Apagar projeto</button>`}
+        ${isNew ? "" : `<button class="btn danger" data-action="delete">Apagar cliente</button>`}
         <button class="btn primary" data-action="save">Salvar</button>
       </div>
     </div>
     <section class="panel">
       <div class="grid-2">
-        <label class="field"><span>Nome</span><input type="text" id="p-name" value="${esc(p.name)}" placeholder="Ex.: Série O Sítio — 2ª temporada"></label>
-        <label class="field"><span>Cliente</span><input type="text" id="p-client" value="${esc(p.client)}"></label>
+        <label class="field"><span>Nome</span><input type="text" id="p-name" value="${esc(p.name)}" placeholder="Ex.: Encripta, ou Encripta — Série X"></label>
+        <label class="field"><span>Empresa (opcional)</span><input type="text" id="p-client" value="${esc(p.client)}"></label>
         <label class="field"><span>Idioma de origem</span><select id="p-src">${langOptions(p.source_lang)}</select></label>
         <label class="field"><span>Idioma da tradução</span><select id="p-dst">${langOptions(p.target_lang)}</select></label>
-        <label class="field"><span>Perfil de regras</span><select id="p-profile">${S.state.profiles.map((x) => `<option value="${esc(x.key)}" ${x.key === p.profile_key ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>
-        <span></span>
-        <label class="field" style="grid-column:1/-1"><span>Sobre a série</span>
+        <label class="field"><span>Regras (perfil)</span><select id="p-profile">${S.state.profiles.map((x) => `<option value="${esc(x.key)}" ${x.key === p.profile_key ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>
+        <p class="muted small" style="align-self:end">As regras acompanham o idioma da legenda: Encripta Español ↔ Encripta Português, Netflix ES ↔ PT.</p>
+        <label class="field" style="grid-column:1/-1"><span>Sobre o material</span>
           <textarea id="p-context" placeholder="Assunto, época, personagens principais. Vai como contexto para a transcrição.">${esc(p.context)}</textarea></label>
         <label class="field" style="grid-column:1/-1"><span>Instruções do cliente</span>
           <textarea id="p-instr" placeholder="Ex.: tratar por “usted”; manter palavrões; nomes de marcas sem tradução.">${esc(p.instructions)}</textarea></label>
@@ -926,7 +941,7 @@ async function renderProject(id) {
     </section>
     <section class="panel">
       <div class="row" style="justify-content:space-between;margin-bottom:12px">
-        <div><h2>Glossário</h2><p class="muted small">Nomes e termos que a transcrição deve acertar. A coluna de tradução será usada quando a tradução chegar.</p></div>
+        <div><h2>Glossário</h2><p class="muted small">Nomes e termos com a tradução certa. Valem na tradução (API e ChatGPT) e ajudam a transcrição.</p></div>
         <div class="row">
           <button class="btn" data-action="import">Importar CSV</button>
           <button class="btn" data-action="export" ${gloss.length ? "" : "disabled"}>Exportar CSV</button>
@@ -983,12 +998,12 @@ async function renderProject(id) {
       }
       if (a === "save") {
         const saved = isNew ? await api("POST", "/api/projects", collect()) : await api("PUT", `/api/projects/${id}`, collect());
-        toast("Projeto salvo.");
-        if (isNew) location.hash = `#/projeto/${saved.id}`; else router();
+        toast("Cliente salvo.");
+        if (isNew) location.hash = `#/cliente/${saved.id}`; else router();
       }
       if (a === "delete") {
-        if (!confirm(`Apagar o projeto “${p.name}” e o glossário dele? Os trabalhos já feitos continuam no histórico.`)) return;
-        await api("DELETE", `/api/projects/${id}`); toast("Projeto apagado."); location.hash = "#/projetos";
+        if (!confirm(`Apagar o cliente “${p.name}” e o glossário dele? Os trabalhos já feitos continuam no histórico.`)) return;
+        await api("DELETE", `/api/projects/${id}`); toast("Cliente apagado."); location.hash = "#/clientes";
       }
     } catch (err) { toast(err.message, true); }
   };
@@ -1013,7 +1028,17 @@ async function renderSettings() {
     <div class="page-head"><div><h1>Configurações</h1></div></div>
 
     <section class="panel stack">
+      <h2>Você</h2>
+      <div class="row" style="flex-wrap:nowrap;align-items:end">
+        <label class="field" style="flex:1"><span>Nome para a assinatura (“Traducción: Nome”, no fim da legenda)</span>
+          <input type="text" id="s-who" value="${esc(s.translator_name || "")}" placeholder="Como você assina as legendas"></label>
+        <button class="btn" data-action="save-who">Salvar</button>
+      </div>
+    </section>
+
+    <section class="panel stack">
       <h2>Chave da OpenAI</h2>
+      <p class="muted small">Só para transcrever, traduzir pela API e sincronizar texto sem tempo. Traduzir pelo seu ChatGPT e sincronizar legendas não precisam dela.</p>
       ${st.api_key
         ? `<p>Chave configurada, terminando em <strong class="tnum">${esc(st.api_key)}</strong>. Fica guardada no Gerenciador de Credenciais do Windows.</p>
            <div class="row"><button class="btn" data-action="test-key">Testar chave</button><button class="btn danger" data-action="remove-key">Remover chave</button></div>`
@@ -1097,6 +1122,10 @@ async function renderSettings() {
           const s2 = await api("GET", "/api/state");
           if (s2.align.models[b.dataset.lang] !== "baixando") { clearInterval(tid); renderSettings(); }
         });
+      }
+      if (a === "save-who") {
+        S.state.settings = await api("PUT", "/api/settings", { translator_name: document.getElementById("s-who").value.trim() });
+        toast("Nome salvo.");
       }
       if (a === "save-settings") {
         await api("PUT", "/api/settings", {
@@ -1197,7 +1226,7 @@ document.addEventListener("drop", (e) => e.preventDefault());
 (async () => {
   try {
     await loadState();
-    if (!location.hash) { location.hash = S.state.api_key ? "#/novo" : "#/configuracoes"; }
+    if (!location.hash) { location.hash = "#/inicio"; }
     else router();
   } catch (e) { router(); }
   refreshRunningCount();

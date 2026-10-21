@@ -39,8 +39,21 @@
 - [x] Tela de perfis: CPS ideal, intervalo em ms, hífen, reticências, manual do cliente
 - [ ] Confirmar com a Encripta as regras do perfil em português
 
-## Fase 3 — Sincronizar
-(a) texto sem tempo → alinhamento; (b) SRT desalinhado → ffsubsync; (c) texto em outro idioma → transcrever, alinhar e casar frases via LLM.
+## ✅ Fase 3 — Sincronizar (versão 1.0)
+- [x] Automática pela fala do vídeo (deslocamento, proporção de quadros, trechos), sem custo
+- [x] Pela legenda de referência (qualquer idioma) e copiando os tempos (mesma quantidade)
+- [x] Atrasar/adiantar (tudo ou a partir da legenda), dois pontos, converter quadros por segundo
+- [x] Cortes de cena: detectar, mostrar na forma de onda e encaixar (regras Netflix)
+- [x] Texto sem tempo (.txt/.docx/.srt sem tempos) → legenda sincronizada (transcrição + casamento do texto)
+- [x] Também no trabalho em segundo plano e na linha de comando (`--steps sincronizar`)
+- [ ] Validar com material real dela (filme com intervalo, legenda de outra versão)
+
+## ✅ Versão 1.0 — CNT Legendas, fluxo simples
+- [x] Nome novo com migração (dados, chave, modelos, instalador por cima da versão antiga)
+- [x] Início: abrir legenda + vídeo (acha a legenda do vídeo), cliente, recentes
+- [x] Clientes no lugar de projetos (Encripta e Netflix prontos)
+- [x] Editor: Traduzir com um clique, menu Sincronizar, Verificar (com correção automática), Entregar (nome, assinatura, verificação), Localizar e substituir (Ctrl+F)
+- [ ] Confirmar com ela: assinatura (texto e posição), atalhos que faltam do Subtitle Edit
 
 ## ✅ Fase 5 — Instalador (adiantada)
 - [x] Python embutido + bibliotecas + tkinter + ffmpeg + VC++ — nada para instalar à parte

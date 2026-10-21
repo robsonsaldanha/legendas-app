@@ -43,7 +43,7 @@ def default_out_dir(media: Path, uploads_dir: Path) -> Path | None:
     except ValueError:
         return None  # ao lado do vídeo
     docs = Path.home() / "Documents"
-    out = (docs if docs.exists() else Path.home()) / "Legendas"
+    out = (docs if docs.exists() else Path.home()) / "CNT Legendas"
     out.mkdir(parents=True, exist_ok=True)
     return out
 

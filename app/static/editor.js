@@ -142,33 +142,57 @@ async function renderEditor(sid) {
     sel: 0, dirty: false, undo: [], redo: [], peaks: null, savedAt: "", playUntil: null,
     hasVideo: data.has_video, hasAudio: data.has_audio,
     detected: data.detected, suggested: data.suggested_target,
+    clientId: data.client_id || null, shots: data.shots || null,
   });
   ED.hasOrig = ED.cues.some((c) => c.orig != null);
   ED.wave.start = 0;
   if (!ED.duration && ED.cues.length) ED.duration = ED.cues[ED.cues.length - 1].end + 5;
   recheckAll();
   await loadState();
+  if (!S.projects?.length) { try { await loadProjects(); } catch {} }
+  const clients = S.projects || [];
 
   main.innerHTML = `
   <div class="ed">
     <header class="ed-tool">
-      <a class="btn ghost" href="#/trabalhos" title="Voltar">‹ Voltar</a>
+      <a class="btn ghost" href="#/inicio" title="Voltar ao início">‹ Início</a>
       <span class="ed-title" id="ed-name" title="${esc(ED.srt || ED.video)}">${esc(ED.name)}</span>
       <span class="sep"></span>
-      <button class="btn ghost" data-ed="open">Abrir</button>
+      <button class="btn ghost opt" data-ed="open">Abrir</button>
       <button class="btn ghost" data-ed="save" title="Ctrl+S">Salvar</button>
-      <button class="btn ghost" data-ed="saveas">Salvar como</button>
+      <button class="btn ghost opt" data-ed="saveas" title="Ctrl+Shift+S">Salvar como</button>
       <span class="sep"></span>
-      <button class="btn primary" data-ed="translate" title="Traduzir a legenda inteira">Traduzir…</button>
+      <span class="splitbtn">
+        <button class="btn primary" data-ed="translate-quick" id="ed-trq" title="Traduzir a legenda inteira">Traduzir para ${esc(shortLang(ED.suggested || "es-419"))}</button><button class="btn primary caret" data-ed="translate" title="Opções da tradução (idiomas, método)" aria-label="Opções da tradução">▾</button>
+      </span>
+      <span class="menuwrap">
+        <button class="btn" data-ed="syncmenu" aria-haspopup="true" aria-expanded="false">Sincronizar ▾</button>
+        <div class="menu" id="ed-syncmenu" role="menu" hidden>
+          <button role="menuitem" data-sy="audio"><b>Automática pela fala do vídeo</b><span>Encaixa a legenda inteira no áudio. Sem custo.</span></button>
+          <button role="menuitem" data-sy="ref"><b>Pela legenda de referência…</b><span>Usa outra legenda com o tempo certo (outro idioma serve).</span></button>
+          <button role="menuitem" data-sy="copy"><b>Copiar os tempos de outra legenda…</b><span>Mesma quantidade de legendas, tempo a tempo.</span></button>
+          <hr>
+          <button role="menuitem" data-sy="shift"><b>Atrasar ou adiantar…</b><span>Tudo, ou a partir da legenda selecionada.</span></button>
+          <button role="menuitem" data-sy="twopoint"><b>Por dois pontos…</b><span>Acerte a primeira e a última fala; o resto acompanha.</span></button>
+          <button role="menuitem" data-sy="fps"><b>Converter quadros por segundo…</b><span>Legenda feita para 25, vídeo em 23,976 etc.</span></button>
+          <hr>
+          <button role="menuitem" data-sy="shots"><b>Encaixar nos cortes de cena</b><span>${ED.shots ? `${ED.shots.length} cortes já encontrados.` : "Procura os cortes no vídeo e ajusta entradas e saídas."}</span></button>
+          <button role="menuitem" data-sy="script"><b>Texto sem tempo (roteiro)…</b><span>Transforma um .txt/.docx em legenda sincronizada (transcrição pela API).</span></button>
+        </div>
+      </span>
+      <button class="btn" data-ed="verify" title="Problemas e correção automática">Verificar <span class="count" id="ed-issn" hidden></span></button>
+      <button class="btn" data-ed="deliver" title="Salvar com o nome do cliente, assinatura e verificação final">Entregar</button>
       <span class="sep"></span>
-      <button class="btn ghost" data-ed="undo" title="Ctrl+Z">Desfazer</button>
-      <button class="btn ghost" data-ed="redo" title="Ctrl+Y">Refazer</button>
+      <button class="btn ghost icon" data-ed="undo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer">↶</button>
+      <button class="btn ghost icon" data-ed="redo" title="Refazer (Ctrl+Y)" aria-label="Refazer">↷</button>
+      <button class="btn ghost icon" data-ed="find" title="Localizar e substituir (Ctrl+F)" aria-label="Localizar e substituir">🔍︎</button>
       <span class="sep"></span>
-      <label class="ed-inline">Perfil
+      <label class="ed-inline">Cliente
+        <select id="ed-client"><option value="">Nenhum</option>${clients.map((p) => `<option value="${p.id}" ${String(p.id) === String(ED.clientId) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
+      </label>
+      <label class="ed-inline muted">Regras
         <select id="ed-profile">${S.state.profiles.map((p) => `<option value="${esc(p.key)}" ${p.key === ED.profile.key ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
       </label>
-      <span class="ed-inline muted">Formato <b>SubRip (.srt)</b></span>
-      <span class="ed-inline muted">Codificação <b>UTF-8 com BOM</b></span>
       <button class="btn ghost ed-help" data-ed="help" title="Atalhos">?</button>
     </header>
 
@@ -275,7 +299,11 @@ async function renderEditor(sid) {
   selectCue(0, { seek: false });
   if (typeof PENDING_TRANSLATE !== "undefined" && PENDING_TRANSLATE) {
     const o = PENDING_TRANSLATE; PENDING_TRANSLATE = null;
-    setTimeout(() => openTranslate(o), 50);
+    setTimeout(() => openTranslate({ project_id: ED.clientId, ...o }), 50);
+  }
+  if (typeof PENDING_SCRIPT !== "undefined" && PENDING_SCRIPT) {
+    const p = PENDING_SCRIPT; PENDING_SCRIPT = "";
+    setTimeout(() => openScript(p), 50);
   }
 }
 
@@ -557,7 +585,7 @@ function act(name) {
     case "saveas": save(true); break;
     case "open":
       if (ED.dirty && !confirm("Há alterações não salvas. Abrir outro arquivo mesmo assim?")) return;
-      ED.dirty = false; location.hash = "#/editor"; break;
+      ED.dirty = false; location.hash = "#/inicio"; break;
     case "tcmode": ED.tcMode = ED.tcMode === "frames" ? "ms" : "frames"; tick(); break;
     case "insert": {
       snapshot(true);
@@ -653,7 +681,12 @@ function act(name) {
     case "zin": setZoom(Math.min(400, zoomPct() * 1.5)); break;
     case "zout": setZoom(Math.max(25, zoomPct() / 1.5)); break;
     case "help": showHelp(); break;
-    case "translate": openTranslate(); break;
+    case "translate": openTranslate({ project_id: ED.clientId }); break;
+    case "translate-quick": openTranslate({ quick: true, project_id: ED.clientId }); break;
+    case "syncmenu": toggleSyncMenu(); break;
+    case "verify": openVerify(); break;
+    case "deliver": openDeliver(); break;
+    case "find": openFind(); break;
   }
 }
 
@@ -717,8 +750,8 @@ async function openTranslate(opts = {}) {
         </div>
         <p class="muted small">${ED.detected ? `Idioma detectado na legenda: ${esc(shortLang(ED.detected))}.` : ""}</p>
         <div class="grid-2">
-          <label class="field"><span>Projeto (glossário e instruções)</span>
-            <select id="tr-project"><option value="">Sem projeto</option>${(S.projects || []).map((p) => `<option value="${p.id}" ${String(p.id) === String(opts.project_id || "") ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
+          <label class="field"><span>Cliente (regras, glossário e instruções)</span>
+            <select id="tr-project"><option value="">Sem cliente</option>${(S.projects || []).map((p) => `<option value="${p.id}" ${String(p.id) === String(opts.project_id || "") ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
           <label class="field"><span>Perfil de regras</span>
             <select id="tr-profile">${S.state.profiles.map((p) => `<option value="${esc(p.key)}" ${p.key === profFor(dst) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
         </div>
@@ -754,7 +787,7 @@ async function openTranslate(opts = {}) {
   estimate();
 
   const openResult = async (r) => {
-    const o = await api("POST", "/api/editor/open", { srt: r.srt, video: ED.video, original: r.original, profile_key: r.profile_key });
+    const o = await api("POST", "/api/editor/open", { srt: r.srt, video: ED.video, original: r.original, profile_key: r.profile_key, client_id: ED.clientId });
     ED.dirty = false;
     close();
     toast(r.missing?.length ? `Tradução aberta. ${r.missing.length} legenda(s) ficaram no original: revise as marcadas.` : "Tradução aberta no editor. A coluna Original mostra o texto de partida.");
@@ -849,6 +882,11 @@ async function openTranslate(opts = {}) {
     drawChat(chat.lots.length > 1 ? `São ${chat.lots.length} partes. Mande todas na mesma conversa do ChatGPT.` : "");
   };
 
+  if (opts.quick) {   // um clique: idiomas, cliente e método já escolhidos
+    $("#tr-setup").hidden = true;
+    $("#tr-title").textContent = `Traduzir para ${shortLang(dst)}`;
+    setTimeout(() => $('[data-tr="go"]').click(), 0);
+  }
   ov.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-tr]");
     if (e.target === ov && !busy) return close();
@@ -886,7 +924,7 @@ async function openTranslate(opts = {}) {
 }
 
 function showHelp() {
-  toast("Espaço: tocar/pausar · ←/→: quadro · Shift+←/→: 1 s · Alt+↑/↓: legenda anterior/próxima · F11 ou [: início · F12 ou ]: fim · Insert: nova · Ctrl+S: salvar · Ctrl+Z/Y: desfazer/refazer · F8: próximo problema");
+  toast("Espaço: tocar/pausar · ←/→: quadro · Shift+←/→: 1 s · Alt+↑/↓: legenda anterior/próxima · F11 ou [: início · F12 ou ]: fim · Insert: nova · Ctrl+S: salvar · Ctrl+Z/Y: desfazer/refazer · F8: próximo problema · Ctrl+F: localizar e substituir");
 }
 
 /* ========================================================== forma de onda */
@@ -955,6 +993,16 @@ function drawWave() {
     g.fillStyle = i === ED.sel ? C.cueSel : C.cue;
     g.fillRect(x0, top, x1 - x0, bot - top);
   });
+
+  // cortes de cena
+  if (ED.shots) {
+    g.strokeStyle = cssVar("--wave-shot") || "#d97706"; g.lineWidth = 1;
+    for (const sc of ED.shots) {
+      if (sc < t0 || sc > t1) continue;
+      const x = Math.round(xOf(sc)) + 0.5;
+      g.beginPath(); g.moveTo(x, top); g.lineTo(x, bot); g.stroke();
+    }
+  }
 
   // onda
   if (ED.peaks) {
@@ -1081,6 +1129,8 @@ function drawStatus() {
   const el = document.getElementById("ed-status");
   if (!el) return;
   const n = Object.keys(ED.issues).length;
+  const badge = document.getElementById("ed-issn");
+  if (badge) { badge.textContent = n; badge.hidden = n === 0; }
   el.innerHTML = `
     <span>${ED.cues.length ? `${ED.sel + 1}/${ED.cues.length}` : "0/0"}</span>
     <button class="btn link small ${n ? "warn" : ""}" data-ed="nextissue">${n ? `${n} ${n === 1 ? "legenda precisa" : "legendas precisam"} de revisão` : "Nenhum problema"}</button>
@@ -1134,6 +1184,20 @@ function bindEditor() {
     try { ED.profile = await api("PUT", `/api/editor/${ED.sid}/profile`, { key: e.target.value }); recheckAll(); drawAll(); }
     catch (err) { toast(err.message, true); }
   });
+  document.getElementById("ed-client").addEventListener("change", async (e) => {
+    try {
+      const r = await api("PUT", `/api/editor/${ED.sid}/client`, { client_id: e.target.value ? Number(e.target.value) : null });
+      ED.clientId = r.client_id; ED.profile = r.profile;
+      setPref("cnt.cliente", ED.clientId ? String(ED.clientId) : "");
+      document.getElementById("ed-profile").value = ED.profile.key;
+      recheckAll(); drawAll();
+      toast(`Regras: ${ED.profile.name}.`);
+    } catch (err) { toast(err.message, true); }
+  });
+  document.getElementById("ed-syncmenu").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-sy]");
+    if (b) { toggleSyncMenu(false); runSync(b.dataset.sy); }
+  });
   document.getElementById("ed-follow").addEventListener("change", (e) => (ED.follow = e.target.checked));
   document.getElementById("ed-zoom").addEventListener("change", (e) => setZoom(Number(e.target.value)));
   document.getElementById("ed-rate").addEventListener("change", (e) => { const v = vid(); if (v) v.playbackRate = Number(e.target.value); });
@@ -1156,6 +1220,7 @@ function editorKeys(e) {
   if (ctrl && !e.shiftKey && k.toLowerCase() === "z" && !typing) return go("undo");
   if (ctrl && (k.toLowerCase() === "y" || (e.shiftKey && k.toLowerCase() === "z")) && !typing) return go("redo");
   if (ctrl && k === " ") return go("play");
+  if (ctrl && (k.toLowerCase() === "f" || k.toLowerCase() === "h")) return go("find");
   if (k === "F11") return go("setstart");
   if (k === "F12") return go("setend");
   if (k === "F8") return go("nextissue");

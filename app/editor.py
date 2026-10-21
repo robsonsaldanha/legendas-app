@@ -96,6 +96,9 @@ class Session:
     detected: str | None = None         # idioma detectado na legenda
     chat: "ChatTranslation | None" = None
     profile: dict = field(default_factory=dict)
+    client_id: int | None = None
+    tasks: dict = field(default_factory=dict)       # tarefas em segundo plano (sincronia, cortes)
+    shots: list | None = None                       # cortes de cena (s), quando já analisados
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -151,7 +154,8 @@ class EditorManager:
     # ------------------------------------------------------------- abrir
 
     def open(self, srt: str | None, video: str | None, profile_key: str | None = None,
-             job_id: int | None = None, original: str | None = None) -> dict:
+             job_id: int | None = None, original: str | None = None,
+             client_id: int | None = None) -> dict:
         language = None
         if job_id is not None and self.db is not None:
             job = self.db.get_job(int(job_id))
@@ -162,6 +166,7 @@ class EditorManager:
             media = [p for p in job["inputs"] if Path(p).suffix.lower() not in (".srt", ".txt", ".docx")]
             video = video or (media[0] if media else None)
             profile_key = profile_key or job["params"].get("profile_key")
+            client_id = client_id or job["params"].get("project_id") or job.get("project_id")
             translated = "traduzir" in job.get("steps", [])
             language = (job["params"].get("target_lang") if translated
                         else job["params"].get("source_lang_detected") or job["params"].get("source_lang"))
@@ -179,6 +184,10 @@ class EditorManager:
         cues = read_srt(srt_path) if srt_path else []
         detected = detect_language([c.text for c in cues]) if cues else None
         language = language if language and language != "auto" else detected
+        client = self._client(client_id)
+        if not profile_key and client:  # perfil do cliente, no idioma da legenda
+            ck = client.get("profile_key") or ""
+            profile_key = same_family(ck, language or "pt-BR") or ck
         if not profile_key:  # automático: perfil Netflix do idioma da legenda
             profile_key = "netflix-pt-br" if (language or "").startswith("pt") else "netflix-es-419"
         profile = self._profile(profile_key, language)
@@ -199,7 +208,16 @@ class EditorManager:
                     **({"orig": orig_texts[i]} if orig_texts else {})} for i, c in enumerate(cues)]
         s.detected = detected
         s.profile = {"key": profile_key or "", **profile.to_dict()}
+        s.client_id = int(client["id"]) if client else None
+        if s.cache is not None and (s.cache / "cortes.json").exists():
+            try:
+                s.shots = json.loads((s.cache / "cortes.json").read_text(encoding="utf-8"))
+            except ValueError:
+                s.shots = None
         self.sessions[sid] = s
+        if self.db is not None and hasattr(self.db, "add_recent"):
+            self.db.add_recent(str(srt_path) if srt_path else "", str(video_path) if video_path else "",
+                               s.client_id)
         return self.info(sid, full=True)
 
     def info(self, sid: str, full: bool = False) -> dict:
@@ -212,6 +230,7 @@ class EditorManager:
             "fps": s.info.get("fps"), "duration": s.info.get("duration"),
             "has_video": bool(s.info.get("vcodec")), "has_audio": bool(s.info.get("acodec")),
             "language": s.language, "detected": s.detected,
+            "client_id": s.client_id, "shots": s.shots,
             "suggested_target": opposite_language(s.detected or s.language),
             "media": {"status": s.media_status, "progress": round(s.media_progress, 3),
                       "error": s.media_error, "url": f"/media/{s.sid}/{int(time.time())}"
@@ -288,7 +307,12 @@ class EditorManager:
                 wav = s.cache / "audio.wav"
                 if not wav.exists():
                     extract_audio(s.video, wav)
-                f.write_bytes(compute_peaks(load_wav(wav)))
+                audio = load_wav(wav)
+                f.write_bytes(compute_peaks(audio))
+                fala = s.cache / "fala.u8"
+                if not fala.exists():   # já deixa pronto para a sincronização automática
+                    from core.sync import speech_activity
+                    fala.write_bytes(speech_activity(audio).tobytes())
                 wav.unlink(missing_ok=True)
         return f.read_bytes(), PEAKS_PER_SECOND
 
@@ -334,7 +358,7 @@ class EditorManager:
         s = self._get(sid)
         profile = self._profile(profile_key or s.profile_key, s.language)
         cues = self._cues(raw)
-        issues = check_rules(cues, profile, s.info.get("fps"))
+        issues = check_rules(cues, profile, s.info.get("fps"), language=s.language)
         return {"issues": [i.to_dict() for i in issues]}
 
     def rewrap(self, text: str, profile_key: str | None, language: str | None) -> dict:
@@ -475,6 +499,283 @@ class EditorManager:
         s.profile_key = key
         s.profile = {"key": key, **profile.to_dict()}
         return s.profile
+
+    # ------------------------------------------------------------ cliente
+
+    def _client(self, client_id) -> dict | None:
+        if not client_id or self.db is None:
+            return None
+        try:
+            return self.db.get_project(int(client_id))
+        except (TypeError, ValueError):
+            return None
+
+    def set_client(self, sid: str, client_id) -> dict:
+        s = self._get(sid)
+        client = self._client(client_id)
+        s.client_id = int(client["id"]) if client else None
+        if client and client.get("profile_key"):
+            ck = client["profile_key"]
+            self.set_profile(sid, same_family(ck, s.language) or ck)
+        return {"client_id": s.client_id, "profile": s.profile}
+
+    # ------------------------------------------------------- sincronização
+
+    def _profile_obj(self, s: Session) -> Profile:
+        return self._profile(s.profile_key, s.language)
+
+    @staticmethod
+    def _apply_times(raw: list[dict], cues: list[Cue], texts: bool = False) -> list[dict]:
+        """Devolve as legendas da tela com os tempos novos (mantém o original ao lado)."""
+        out = []
+        for r, c in zip(raw, cues):
+            d = dict(r)
+            d["start"], d["end"] = c.start, c.end
+            if texts:
+                d["text"] = "\n".join(c.lines)
+            out.append(d)
+        return out
+
+    def _sorted_raw(self, raw: list[dict]) -> tuple[list[dict], list[Cue]]:
+        cues = self._cues(raw)
+        order = sorted(range(len(cues)), key=lambda i: cues[i].start)
+        return [raw[i] for i in order], [cues[i] for i in order]
+
+    def sync_op(self, sid: str, raw: list[dict], op: str, p: dict) -> dict:
+        """Operações rápidas de tempo; a tela aplica o resultado (com desfazer)."""
+        from core import sync
+        from core.style import normalize_lines
+        s = self._get(sid)
+        if not raw:
+            raise EditorError("Não há legendas.")
+        raw, cues = self._sorted_raw(raw)
+        prof = self._profile_obj(s)
+        fps = s.info.get("fps") or prof.default_fps
+        texts = False
+        try:
+            if op == "shift":
+                ms = float(p.get("ms", 0))
+                frm = int(p.get("from", 0))
+                new = sync.shift(cues, ms / 1000, max(0, frm))
+                where = "todas as legendas" if frm <= 0 else f"a partir da legenda {frm + 1}"
+                msg = f"{'Atrasei' if ms > 0 else 'Adiantei'} {abs(ms):g} ms {where}."
+            elif op == "twopoint":
+                new = sync.two_point(cues, float(p["a_old"]), float(p["a_new"]),
+                                     float(p["b_old"]), float(p["b_new"]))
+                msg = "Sincronizado pelos dois pontos."
+            elif op == "fps":
+                new = sync.change_fps(cues, float(p["from_fps"]), float(p["to_fps"]))
+                msg = f"Convertido de {float(p['from_fps']):g} para {float(p['to_fps']):g} quadros por segundo."
+            elif op == "copy":
+                ref = read_srt(p["path"])
+                new = sync.copy_times(cues, ref)
+                msg = f"Tempos copiados de {Path(p['path']).name}."
+            elif op == "fix":
+                new, rep_ = sync.fix_timing(cues, prof, fps, None if p.get("chain") is None
+                                            else (prof.chain_frames or 12) if p.get("chain") else 0)
+                changed_txt = 0
+                for c in new:
+                    lines = normalize_lines(c.lines, prof)
+                    if lines != c.lines:
+                        c.lines = lines
+                        changed_txt += 1
+                texts = True
+                msg = rep_.summary()
+                if changed_txt:
+                    msg += f" Estilo ajustado em {changed_txt} legenda(s) (reticências/hífen)."
+            elif op == "snap":
+                if not s.shots:
+                    raise EditorError("Primeiro analise os cortes de cena do vídeo.", 409)
+                new, n = sync.snap_to_shots(cues, s.shots, fps, prof.shot_window_frames,
+                                            prof.shot_gap_frames, prof.min_duration)
+                msg = f"{n} entrada(s)/saída(s) encaixada(s) nos cortes de cena." if n else \
+                    "Nenhuma legenda perto de corte de cena precisou de ajuste."
+            else:
+                raise EditorError("Operação desconhecida.")
+        except sync.SyncError as e:
+            raise EditorError(str(e)) from e
+        except (KeyError, ValueError, TypeError) as e:
+            raise EditorError("Confira os valores informados.") from e
+        return {"cues": self._apply_times(raw, new, texts), "message": msg}
+
+    # tarefas demoradas (sincronia automática, cortes de cena)
+
+    def _speech(self, s: Session):
+        from core.sync import speech_activity
+        if s.video is None or not s.info.get("acodec"):
+            raise EditorError("Abra o vídeo (com áudio) junto da legenda para sincronizar pela fala.", 409)
+        f = s.cache / "fala.u8"
+        with s.lock:
+            if not f.exists():
+                wav = s.cache / "audio.wav"
+                if not wav.exists():
+                    extract_audio(s.video, wav)
+                audio = load_wav(wav)
+                f.write_bytes(speech_activity(audio).tobytes())
+                pk = s.cache / "picos.u8"
+                if not pk.exists():
+                    pk.write_bytes(compute_peaks(audio))
+                wav.unlink(missing_ok=True)
+        return np.frombuffer(f.read_bytes(), dtype=np.uint8)
+
+    def task_start(self, sid: str, kind: str, raw: list[dict], p: dict) -> dict:
+        from core import sync
+        s = self._get(sid)
+        prof = self._profile_obj(s)
+        if kind in ("audio", "ref"):
+            if not raw:
+                raise EditorError("Não há legendas para sincronizar.")
+            raw, cues = self._sorted_raw(raw)
+            if kind == "ref":
+                if not p.get("path"):
+                    raise EditorError("Escolha a legenda de referência.")
+                ref = read_srt(p["path"])
+                if not ref:
+                    raise EditorError("A legenda de referência está vazia.")
+        elif kind == "shots":
+            if s.video is None or not s.info.get("vcodec"):
+                raise EditorError("Abra o vídeo para analisar os cortes de cena.", 409)
+        else:
+            raise EditorError("Tarefa desconhecida.")
+        tid = uuid.uuid4().hex[:8]
+        task = {"id": tid, "kind": kind, "status": "rodando", "progress": 0.0, "message": "",
+                "result": None, "cancel": False}
+        s.tasks[tid] = task
+
+        def prog(f):
+            task["progress"] = round(float(f), 3)
+
+        def work():
+            try:
+                if kind == "shots":
+                    task["message"] = "Procurando os cortes de cena no vídeo…"
+                    shots = sync.detect_shot_changes(s.video, duration=s.info.get("duration"),
+                                                     progress=prog, cancelled=lambda: task["cancel"])
+                    if task["cancel"]:
+                        task["status"] = "cancelado"
+                        return
+                    s.shots = shots
+                    (s.cache / "cortes.json").write_text(json.dumps(shots), encoding="utf-8")
+                    task["result"] = {"shots": shots}
+                    task["message"] = f"{len(shots)} cortes de cena encontrados."
+                else:
+                    if kind == "audio":
+                        task["message"] = "Lendo a fala do vídeo…"
+                        speech = self._speech(s)
+                    else:
+                        speech = sync.subtitle_activity(ref)
+                    task["message"] = "Encaixando as legendas…"
+                    res = sync.auto_sync(cues, speech, min_gap=prof.min_gap(s.info.get("fps")),
+                                         progress=prog)
+                    parts = []
+                    if res.changed:
+                        parts.append(f"Deslocamento de {res.offset:+.2f} s".replace(".", ","))
+                        if res.ratio != 1.0:
+                            parts.append(f"velocidade ajustada ({res.ratio:.4f})".replace(".", ","))
+                        if res.parts > 1:
+                            parts.append(f"{res.parts} trechos com ajustes diferentes")
+                        parts.append(f"concordância com a fala {res.before:.0%} → {res.after:.0%}")
+                    msg = (", ".join(parts) + ".") if parts else " ".join(res.notes)
+                    task["result"] = {"cues": self._apply_times(raw, res.cues), "changed": res.changed,
+                                      "offset": res.offset, "ratio": res.ratio, "parts": res.parts,
+                                      "before": res.before, "after": res.after}
+                    task["message"] = msg
+                task["progress"], task["status"] = 1.0, "pronto"
+            except LegendasError as e:
+                task["status"], task["message"] = "erro", str(e)
+            except Exception as e:  # noqa: BLE001
+                log.exception("Falha na tarefa %s", kind)
+                task["status"], task["message"] = "erro", f"Não deu certo: {e}"
+
+        threading.Thread(target=work, daemon=True).start()
+        return self.task_get(sid, tid)
+
+    def task_get(self, sid: str, tid: str) -> dict:
+        s = self._get(sid)
+        t = s.tasks.get(tid)
+        if not t:
+            raise EditorError("Tarefa não encontrada.", 404)
+        return {k: v for k, v in t.items() if k != "cancel"}
+
+    def task_cancel(self, sid: str, tid: str) -> dict:
+        s = self._get(sid)
+        if tid in s.tasks:
+            s.tasks[tid]["cancel"] = True
+        return {"ok": True}
+
+    def script_job(self, sid: str, text_path: str, opts: dict) -> tuple[list[str], dict]:
+        """Roteiro/texto sem tempo + vídeo aberto → trabalho de sincronia (usa a transcrição)."""
+        s = self._get(sid)
+        if s.video is None:
+            raise EditorError("Abra o vídeo para sincronizar o texto pela fala.", 409)
+        tp = Path(text_path)
+        if not tp.exists():
+            raise EditorError(f"Arquivo não encontrado: {tp}", 404)
+        if tp.suffix.lower() not in (".txt", ".docx", ".srt"):
+            raise EditorError("Escolha um texto .txt, .docx ou uma legenda .srt sem tempos.")
+        if tp.suffix.lower() == ".srt":   # SRT sem tempo → trata como texto
+            folder = editor_dir() / "roteiros" / s.sid
+            folder.mkdir(parents=True, exist_ok=True)
+            dst = folder / (tp.stem + ".txt")
+            from core.subtitle import read_text_file
+            dst.write_text(read_text_file(tp), encoding="utf-8")
+            tp = dst
+        params = {"steps": ["sincronizar"], "source_lang": opts.get("source_lang") or s.language or "auto",
+                  "target_lang": "", "profile_key": s.profile_key,
+                  "project_id": s.client_id, "out_dir": str(s.video.parent), "name": s.video.stem}
+        return [str(s.video), str(tp)], params
+
+    # ------------------------------------------------------------ entregar
+
+    def delivery_info(self, sid: str) -> dict:
+        s = self._get(sid)
+        prof = self._profile_obj(s)
+        base = s.srt or s.video
+        name = output_name(base, s.language, prof) if prof.naming else base.with_suffix(".srt").name
+        if not prof.naming and s.srt is not None:
+            name = s.srt.name
+        lang = (s.language or prof.language).lower()
+        label = "Traducción" if lang.startswith("es") else "Tradução" if lang.startswith("pt") else "Translation"
+        return {"folder": str(base.parent), "name": name, "signature_label": label,
+                "profile": prof.name, "naming": prof.naming}
+
+    def deliver(self, sid: str, raw: list[dict], opts: dict) -> dict:
+        s = self._get(sid)
+        prof = self._profile_obj(s)
+        folder = Path(opts.get("folder") or (s.srt or s.video).parent)
+        name = _SAFE.sub("_", str(opts.get("name") or "").strip()) or self.delivery_info(sid)["name"]
+        if not name.lower().endswith(".srt"):
+            name += ".srt"
+        target = folder / name
+        cues = sorted(self._cues(raw), key=lambda c: c.start)
+        empty = [i for i, c in enumerate(cues, start=1) if not c.lines]
+        if empty:
+            raise EditorError(f"A legenda {empty[0]} está sem texto. Escreva algo ou apague-a.")
+        sig = str(opts.get("signature") or "").strip()
+        if sig and cues and not any(re.match(r"^(Traducción|Tradução|Translation|Legendas?|Subtítulos?)\s*:",
+                                             c.text, re.I) for c in cues[-3:]):
+            at = opts.get("signature_at")
+            start = float(at) if at not in (None, "") else cues[-1].end + 0.5
+            start = max(start, cues[-1].end + prof.min_gap(s.info.get("fps")))
+            cues.append(Cue(start=round(start, 3), end=round(start + max(prof.min_duration, 2.0), 3),
+                            lines=[sig]))
+        if target.exists() and not opts.get("overwrite"):
+            if s.srt is None or target.resolve() != s.srt.resolve():
+                raise EditorError(f"Já existe um arquivo {target.name} nesta pasta. Confirme para substituir.", 409)
+        if target.exists():
+            bdir = data_dir() / "editor" / "copias"
+            bdir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(target, bdir / f"{target.stem}.{time.strftime('%Y%m%d-%H%M%S')}.srt")
+        write_srt(cues, target)
+        issues = check_rules(cues, prof, s.info.get("fps"), language=s.language)
+        errs = sum(1 for i in issues if i.severity == "erro")
+        report = None
+        if opts.get("report"):
+            report = target.with_name(target.name[:-4] + ".qc.txt")
+            write_report(issues, cues, prof, report, title=target.name)
+        return {"path": str(target), "name": target.name, "count": len(cues), "errors": errs,
+                "warnings": len(issues) - errs, "report": str(report) if report else "",
+                "signature_added": bool(sig) and len(cues) > len(raw)}
 
     def close(self, sid: str) -> None:
         self.sessions.pop(sid, None)

@@ -153,8 +153,19 @@ class App:
             "profiles": self.db.list_profiles(),
             "languages": LANGUAGES,
             "data_dir": str(data_dir()),
-            "phase": {"transcrever": True, "sincronizar": False, "traduzir": True},
+            "phase": {"transcrever": True, "sincronizar": True, "traduzir": True},
+            "recent": self.recent(),
         }
+
+    def recent(self) -> list[dict]:
+        out = []
+        for r in self.db.list_recent():
+            srt, video = Path(r["srt"]) if r["srt"] else None, Path(r["video"]) if r["video"] else None
+            if (srt and not srt.exists()) or (video and not video.exists()):
+                continue
+            out.append({**r, "name": (srt or video).name,
+                        "folder": str((srt or video).parent)})
+        return out
 
     def test_key(self) -> dict:
         client = make_client()
@@ -416,9 +427,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, target.read_bytes(), ctype)
 
     def _locked_page(self) -> None:
-        html = ("<!doctype html><meta charset='utf-8'><title>Legendas</title>"
+        html = ("<!doctype html><meta charset='utf-8'><title>CNT Legendas</title>"
                 "<link rel='stylesheet' href='/app.css'><div class='locked'>"
-                "<h1>Abra o Legendas pelo atalho</h1><p class='muted'>Por segurança, esta página "
+                "<h1>Abra o CNT Legendas pelo atalho</h1><p class='muted'>Por segurança, esta página "
                 "só abre pelo atalho do programa (cada perfil do Windows tem a sua).</p></div>")
         self._send(403, html.encode("utf-8"), "text/html; charset=utf-8")
 
@@ -511,7 +522,8 @@ class Handler(BaseHTTPRequestHandler):
         allowed = {"transcribe_model": str, "transcribe_usd_per_min": float,
                    "translate_model": str, "translate_usd_per_mtok_in": float,
                    "translate_usd_per_mtok_out": float, "translate_method": str,
-                   "parallel_requests": int, "align": str, "keep_job_days": int}
+                   "parallel_requests": int, "align": str, "keep_job_days": int,
+                   "translator_name": str}
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))
@@ -676,7 +688,52 @@ class Handler(BaseHTTPRequestHandler):
         b = self._body()
         return self.app.editor.open(b.get("srt") or None, b.get("video") or None,
                                     b.get("profile_key") or None, b.get("job_id"),
-                                    b.get("original") or None)
+                                    b.get("original") or None, b.get("client_id") or None)
+
+    @route("DELETE", r"/api/recent/(\d+)")
+    def api_recent_delete(self, rid):
+        self.app.db.remove_recent(int(rid))
+        return {"recent": self.app.recent()}
+
+    @route("PUT", r"/api/editor/(\w+)/client")
+    def api_editor_client(self, sid):
+        return self.app.editor.set_client(sid, self._body().get("client_id"))
+
+    @route("POST", r"/api/editor/(\w+)/sync")
+    def api_editor_sync(self, sid):
+        b = self._body()
+        return self.app.editor.sync_op(sid, b.get("cues", []), b.get("op", ""), b)
+
+    @route("POST", r"/api/editor/(\w+)/task")
+    def api_editor_task(self, sid):
+        b = self._body()
+        return self.app.editor.task_start(sid, b.get("kind", ""), b.get("cues", []), b)
+
+    @route("GET", r"/api/editor/(\w+)/task/(\w+)")
+    def api_editor_task_get(self, sid, tid):
+        return self.app.editor.task_get(sid, tid)
+
+    @route("POST", r"/api/editor/(\w+)/task/(\w+)/cancel")
+    def api_editor_task_cancel(self, sid, tid):
+        return self.app.editor.task_cancel(sid, tid)
+
+    @route("POST", r"/api/editor/(\w+)/script")
+    def api_editor_script(self, sid):
+        b = self._body()
+        inputs, params = self.app.editor.script_job(sid, b.get("path", ""), b)
+        if b.get("estimate"):
+            return self.app.worker.estimate(params, inputs)
+        jid = self.app.worker.submit(params, inputs)
+        return self.app.job_detail(jid)
+
+    @route("GET", r"/api/editor/(\w+)/deliver")
+    def api_editor_deliver_info(self, sid):
+        return self.app.editor.delivery_info(sid)
+
+    @route("POST", r"/api/editor/(\w+)/deliver")
+    def api_editor_deliver(self, sid):
+        b = self._body()
+        return self.app.editor.deliver(sid, b.get("cues", []), b)
 
     @route("GET", r"/api/editor/(\w+)")
     def api_editor_get(self, sid):
