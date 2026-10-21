@@ -61,4 +61,13 @@
 - [x] GitHub Actions: monta, instala, testa o programa instalado, desinstala; publica nas tags
 - [ ] Instalar no PC deles e testar nos dois perfis
 
+## ✅ Versão 2.0 — projetos, métricas e visual CNT
+- [x] Logo e ícone CNT; tema escuro/claro; menu de ferramentas recolhível
+- [x] Primeira abertura pergunta a pasta dos projetos
+- [x] Tela inicial: Novo, Abrir, Continuar + lista de projetos (filtros por status e busca)
+- [x] Novo projeto: filme ou série, nome validado (Windows), temporada/episódios em qualquer ordem, arquivos copiados para a pasta
+- [x] Projeto: status (novo/em andamento/finalizado, reabrir), episódios, títulos, arquivos, abrir no editor
+- [x] Métricas guardadas com data; tempo trabalhado; relatórios geral, do projeto e do episódio; exportar CSV
+- [ ] Usar com projetos reais dela e ajustar o relatório
+
 ## Fase 6 — Refinamentos com uso real

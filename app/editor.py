@@ -97,6 +97,7 @@ class Session:
     chat: "ChatTranslation | None" = None
     profile: dict = field(default_factory=dict)
     client_id: int | None = None
+    item_id: int | None = None                      # episódio/filme do projeto, se aberto por ele
     tasks: dict = field(default_factory=dict)       # tarefas em segundo plano (sincronia, cortes)
     shots: list | None = None                       # cortes de cena (s), quando já analisados
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -133,6 +134,7 @@ class ChatTranslation:
 class EditorManager:
     def __init__(self, db=None):
         self.db = db
+        self.projects = None   # ProjectManager (métricas e tempo dos projetos)
         self.sessions: dict[str, Session] = {}
 
     # ------------------------------------------------------------- perfil
@@ -155,7 +157,7 @@ class EditorManager:
 
     def open(self, srt: str | None, video: str | None, profile_key: str | None = None,
              job_id: int | None = None, original: str | None = None,
-             client_id: int | None = None) -> dict:
+             client_id: int | None = None, item_id: int | None = None) -> dict:
         language = None
         if job_id is not None and self.db is not None:
             job = self.db.get_job(int(job_id))
@@ -214,7 +216,16 @@ class EditorManager:
                 s.shots = json.loads((s.cache / "cortes.json").read_text(encoding="utf-8"))
             except ValueError:
                 s.shots = None
+        s.item_id = int(item_id) if item_id else None
         self.sessions[sid] = s
+        if s.item_id and self.projects is not None:
+            try:
+                if srt_path is not None:
+                    self.projects.set_item_srt(s.item_id, str(srt_path))
+                if cues and self.projects._latest(s.item_id) is None:
+                    self._record(s, cues, "abrir", srt_path)
+            except LegendasError as e:
+                log.warning("Projeto: %s", e)
         if self.db is not None and hasattr(self.db, "add_recent"):
             self.db.add_recent(str(srt_path) if srt_path else "", str(video_path) if video_path else "",
                                s.client_id)
@@ -230,7 +241,7 @@ class EditorManager:
             "fps": s.info.get("fps"), "duration": s.info.get("duration"),
             "has_video": bool(s.info.get("vcodec")), "has_audio": bool(s.info.get("acodec")),
             "language": s.language, "detected": s.detected,
-            "client_id": s.client_id, "shots": s.shots,
+            "client_id": s.client_id, "shots": s.shots, "item_id": s.item_id, "obra_id": self._obra_of(s),
             "suggested_target": opposite_language(s.detected or s.language),
             "media": {"status": s.media_status, "progress": round(s.media_progress, 3),
                       "error": s.media_error, "url": f"/media/{s.sid}/{int(time.time())}"
@@ -351,6 +362,7 @@ class EditorManager:
             s.backed_up = True
         write_srt(cues, target)
         s.srt = target
+        self._record(s, cues, "salvar", target, raw)
         return {"path": str(target), "name": target.name, "count": len(cues),
                 "saved_at": time.strftime("%H:%M:%S")}
 
@@ -513,6 +525,12 @@ class EditorManager:
             c.out_path = cand
         write_srt(cues, c.out_path)
         issues = check_rules(cues, c.profile, s.info.get("fps"), language=c.target)
+        if s.item_id and self.projects is not None:
+            try:
+                self.projects.record_metrics(s.item_id, cues, c.profile, s.info.get("duration"),
+                                             [cu.text for cu in c.cues], issues, "traducao", str(c.out_path))
+            except LegendasError as e:
+                log.warning("Projeto: %s", e)
         for i in missing:
             issues.append(Issue(i, cues[i - 1].start, AVISO, "sem_traducao",
                                 "Ficou no idioma original (não veio na resposta do ChatGPT)."))
@@ -534,6 +552,39 @@ class EditorManager:
         s.profile_key = key
         s.profile = {"key": key, **profile.to_dict()}
         return s.profile
+
+    # ------------------------------------------------------------ projeto
+
+    def _record(self, s: Session, cues: list[Cue], origem: str, path: Path | None,
+                raw: list[dict] | None = None, issues=None) -> None:
+        """Guarda as métricas do episódio (quando a legenda é de um projeto)."""
+        if not s.item_id or self.projects is None:
+            return
+        try:
+            prof = self._profile_obj(s)
+            if issues is None:
+                issues = check_rules(cues, prof, s.info.get("fps"), language=s.language)
+            originals = None
+            if raw and any("orig" in r for r in raw):
+                originals = [str(r.get("orig") or "") for r in raw]
+            self.projects.record_metrics(s.item_id, cues, prof, s.info.get("duration"), originals, issues,
+                                         origem, str(path) if path else "")
+        except Exception as e:  # noqa: BLE001  (métrica nunca impede salvar)
+            log.warning("Não consegui guardar as métricas: %s", e)
+
+    def _obra_of(self, s: Session) -> int | None:
+        if not s.item_id or self.projects is None:
+            return None
+        try:
+            return int(self.projects._item(s.item_id)["obra_id"])
+        except LegendasError:
+            return None
+
+    def beat(self, sid: str, seconds: float) -> dict:
+        s = self._get(sid)
+        if s.item_id and self.projects is not None:
+            self.projects.add_time(s.item_id, seconds)
+        return {"ok": True}
 
     # ------------------------------------------------------------ cliente
 
@@ -803,6 +854,7 @@ class EditorManager:
             shutil.copy2(target, bdir / f"{target.stem}.{time.strftime('%Y%m%d-%H%M%S')}.srt")
         write_srt(cues, target)
         issues = check_rules(cues, prof, s.info.get("fps"), language=s.language)
+        self._record(s, cues, "entrega", target, raw, issues)
         errs = sum(1 for i in issues if i.severity == "erro")
         report = None
         if opts.get("report"):

@@ -23,7 +23,7 @@ async function renderProfile(key) {
 
   main.innerHTML = `
     <div class="page-head">
-      <div><p class="muted small"><a href="#/configuracoes">Configurações</a> · Perfis de regras</p>
+      <div><p class="label"><a href="#/perfis">Perfis de regras</a></p>
         <h1 style="margin-top:6px">${p.key ? esc(p.name) : "Novo perfil"}</h1>
         ${p.builtin ? `<p class="muted small">Perfil que vem com o programa${p.modified ? " — <b>alterado por você</b>" : ""}. Pode editar à vontade; “Restaurar original” desfaz.</p>` : ""}</div>
       <div class="row">

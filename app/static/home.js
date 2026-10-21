@@ -8,13 +8,14 @@ function homeClient() { return getPref("cnt.cliente", ""); }
 async function renderHome() {
   document.body.classList.remove("editor-mode");
   await Promise.all([loadState(), loadProjects()]);
+  setCrumb("Editor <span class=\"muted\">/ abrir legenda avulsa</span>");
   const st = S.state;
   const client = homeClient();
   const clients = S.projects || [];
   main.innerHTML = `
     <div class="home">
-      <div class="page-head"><div><h1>O que vamos legendar hoje?</h1>
-        <p class="muted">Abra a legenda (e o vídeo, se tiver). Traduzir, sincronizar, revisar e entregar ficam no editor.</p></div></div>
+      <div class="page-head"><div><span class="eyebrow">Editor</span><h1 style="margin-top:6px">Abrir legenda avulsa</h1>
+        <p class="muted">Para revisar uma legenda rápida, fora de um projeto. Para o trabalho do dia a dia, use <a href="#/inicio">Projetos</a>: assim tudo fica organizado e entra nos relatórios.</p></div></div>
       <section class="panel home-open">
         <div class="drop big" id="home-drop">
           <p><strong>Arraste aqui a legenda (.srt) e o vídeo</strong></p>
@@ -39,11 +40,7 @@ async function renderHome() {
         <ul class="recent" id="home-recent">${recentHtml(st.recent || [])}</ul>
       </section>
 
-      <section class="home-more">
-        <a class="card" href="#/novo"><b>Transcrever um vídeo</b><span class="muted small">Sem legenda nenhuma: o programa escuta e escreve (OpenAI).</span></a>
-        <a class="card" href="#/clientes"><b>Clientes e regras</b><span class="muted small">Encripta, Netflix… glossário e instruções de cada um.</span></a>
-        <a class="card" href="#/trabalhos"><b>Trabalhos</b><span class="muted small">O que rodou em segundo plano (traduções pela API, transcrições).</span></a>
-      </section>
+
       ${st.api_key ? "" : `<p class="muted small">A tradução pelo seu ChatGPT e a sincronização funcionam sem chave. Para transcrever ou traduzir pela API, <a href="#/configuracoes">cadastre a chave da OpenAI</a>.</p>`}
     </div>`;
   drawHomeFiles();

@@ -249,7 +249,7 @@ async function followJob(jid, title, step) {
     if (v && v[1]) m.$("#fj-bar").style.width = `${Math.round((v[0] / v[1]) * 100)}%`;
     if (j.status === "pronto") {
       m.close();
-      const o = await api("POST", "/api/editor/open", { srt: j.outputs.srt, video: ED.video, profile_key: j.params.profile_key, client_id: ED.clientId });
+      const o = await api("POST", "/api/editor/open", { srt: j.outputs.srt, video: ED.video, profile_key: j.params.profile_key, client_id: ED.clientId, item_id: ED.itemId });
       ED.dirty = false;
       toast("Legenda sincronizada aberta no editor.");
       location.hash = `#/editor/${o.sid}`;

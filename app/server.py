@@ -106,7 +106,10 @@ class App:
         self.db.mark_interrupted()
         self.worker = Worker(self.db, self.uploads, transcriber_factory, translator_factory)
         from .editor import EditorManager
+        from .projects import ProjectManager
         self.editor = EditorManager(self.db)
+        self.projects = ProjectManager(self.db)
+        self.editor.projects = self.projects
         self.downloads: dict[str, str] = {}  # idioma -> status do download do modelo
         self.server: ThreadingHTTPServer | None = None
 
@@ -155,6 +158,8 @@ class App:
             "data_dir": str(data_dir()),
             "phase": {"transcrever": True, "sincronizar": True, "traduzir": True},
             "recent": self.recent(),
+            "projects_root": Settings.load().projects_root,
+            "home_dir": str(Path.home()),
         }
 
     def recent(self) -> list[dict]:
@@ -362,7 +367,7 @@ class Handler(BaseHTTPRequestHandler):
                 # requisições forjadas por outros sites)
                 if not (self._cookie_ok() and secrets.compare_digest(
                         self.headers.get("X-Token", ""), self.app.token)):
-                    raise ApiError("Sessão expirada. Feche esta aba e abra o Legendas pelo atalho.", 401)
+                    raise ApiError("Sessão expirada. Feche esta aba e abra o CNT Legendas pelo atalho.", 401)
                 for m, rx, name in ROUTES:
                     match = rx.match(path)
                     if m == method and match:
@@ -713,7 +718,95 @@ class Handler(BaseHTTPRequestHandler):
         b = self._body()
         return self.app.editor.open(b.get("srt") or None, b.get("video") or None,
                                     b.get("profile_key") or None, b.get("job_id"),
-                                    b.get("original") or None, b.get("client_id") or None)
+                                    b.get("original") or None, b.get("client_id") or None,
+                                    b.get("item_id") or None)
+
+    # ------------------------------------------------------------ projetos (filmes/séries)
+
+    @route("GET", r"/api/obras")
+    def api_obras(self):
+        pm = self.app.projects
+        return {"obras": pm.list(self.query.get("status", ""), self.query.get("q", "")),
+                "recent": pm.recent(), "root": pm.root()}
+
+    @route("GET", r"/api/obras/check")
+    def api_obras_check(self):
+        return self.app.projects.check_name(self.query.get("name", ""))
+
+    @route("POST", r"/api/obras/root")
+    def api_obras_root(self):
+        return self.app.projects.set_root(self._body().get("path", ""))
+
+    @route("POST", r"/api/obras/open")
+    def api_obras_open(self):
+        return self.app.projects.open_folder(self._body().get("path", ""))
+
+    @route("POST", r"/api/obras")
+    def api_obras_create(self):
+        return self.app.projects.create(self._body())
+
+    @route("GET", r"/api/obras/(\d+)")
+    def api_obra(self, oid):
+        return self.app.projects.get(int(oid))
+
+    @route("PUT", r"/api/obras/(\d+)")
+    def api_obra_update(self, oid):
+        return self.app.projects.update(int(oid), self._body())
+
+    @route("DELETE", r"/api/obras/(\d+)")
+    def api_obra_delete(self, oid):
+        self.app.projects.delete(int(oid))
+        return {"ok": True}
+
+    @route("POST", r"/api/obras/(\d+)/episodes")
+    def api_obra_episodes(self, oid):
+        b = self._body()
+        return self.app.projects.add_episodes(int(oid), b.get("season"), b.get("episodes", ""), b.get("title", ""))
+
+    @route("GET", r"/api/obras/(\d+)/report")
+    def api_obra_report(self, oid):
+        return self.app.projects.obra_report(int(oid))
+
+    @route("PUT", r"/api/itens/(\d+)")
+    def api_item_update(self, iid):
+        return self.app.projects.update_item(int(iid), self._body())
+
+    @route("DELETE", r"/api/itens/(\d+)")
+    def api_item_delete(self, iid):
+        return self.app.projects.remove_item(int(iid))
+
+    @route("POST", r"/api/itens/(\d+)/files")
+    def api_item_files(self, iid):
+        return self.app.projects.attach(int(iid), self._body().get("paths", []))
+
+    @route("GET", r"/api/copies/(\w+)")
+    def api_copy_status(self, cid):
+        return self.app.projects.copy_status(cid)
+
+    @route("GET", r"/api/itens/(\d+)/report")
+    def api_item_report(self, iid):
+        return self.app.projects.item_report(int(iid))
+
+    @route("POST", r"/api/itens/(\d+)/open")
+    def api_item_open(self, iid):
+        pm = self.app.projects
+        it = pm._item(int(iid))
+        o = pm._obra(it["obra_id"])
+        f = pm.item_files(int(iid))
+        if not f["srt"] and not f["video"]:
+            raise ApiError("Este episódio ainda não tem vídeo nem legenda. Adicione os arquivos primeiro.", 409)
+        return self.app.editor.open(f["srt"] or None, f["video"] or None, None, None, None,
+                                    o["client_id"], int(iid))
+
+    @route("GET", r"/api/report")
+    def api_report(self):
+        q = self.query
+        return self.app.projects.general_report(q.get("from", ""), q.get("to", ""), q.get("client") or None,
+                                                q.get("status", ""))
+
+    @route("POST", r"/api/editor/(\w+)/beat")
+    def api_editor_beat(self, sid):
+        return self.app.editor.beat(sid, float(self._body().get("seconds") or 0))
 
     @route("DELETE", r"/api/recent/(\d+)")
     def api_recent_delete(self, rid):

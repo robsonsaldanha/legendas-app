@@ -149,18 +149,63 @@ async function loadProjects() {
 /* ============================================================== router */
 
 const routes = [
-  [/^#\/inicio$/, renderHome],
+  [/^#\/inicio$/, renderStart],
+  [/^#\/bemvindo$/, renderWelcome],
+  [/^#\/projetos$/, renderProjectsList],
+  [/^#\/obra\/nova$/, renderNewProject],
+  [/^#\/obra\/(\d+)$/, renderObra],
+  [/^#\/item\/(\d+)$/, renderItem],
+  [/^#\/relatorios$/, renderReports],
   [/^#\/novo$/, renderNew],
   [/^#\/clientes$/, renderProjects],
   [/^#\/cliente\/(novo|\d+)$/, renderProject],
   [/^#\/trabalhos$/, renderJobs],
   [/^#\/trabalho\/(\d+)$/, renderJob],
-  [/^#\/projetos$/, renderProjects],
-  [/^#\/projeto\/(novo|\d+)$/, renderProject],
   [/^#\/configuracoes$/, renderSettings],
+  [/^#\/perfis$/, renderProfilesPage],
   [/^#\/perfil\/(novo|[\w\-]+)$/, renderProfile],
   [/^#\/editor(?:\/(\w+))?$/, renderEditor],
 ];
+
+/* barra de ferramentas (menu da esquerda) */
+const NAV = [
+  [null, [["inicio", "home", "Início"]]],
+  ["Trabalho", [["projetos", "folder", "Projetos"], ["editor", "editor", "Editor"], ["trabalhos", "layers", "Em segundo plano"]]],
+  ["Relatórios", [["relatorios", "chart", "Métricas"]]],
+  ["Cadastros", [["clientes", "users", "Clientes"], ["perfis", "rules", "Perfis de regras"]]],
+  ["Sistema", [["configuracoes", "settings", "Configurações"]]],
+];
+const CRUMB = { inicio: "Início", bemvindo: "Início", projetos: "Projetos", obra: "Projetos", item: "Projetos", relatorios: "Relatórios",
+  novo: "Em segundo plano", clientes: "Clientes", cliente: "Clientes", trabalhos: "Em segundo plano", trabalho: "Em segundo plano",
+  configuracoes: "Configurações", perfis: "Perfis de regras", perfil: "Perfis de regras", editor: "Editor" };
+function drawNav() {
+  document.getElementById("nav").innerHTML = NAV.map(([sec, items]) =>
+    (sec ? `<div class="nav-sec">${esc(sec)}</div>` : "") + items.map(([k, icon, t]) =>
+      `<a href="#/${k}" data-nav="${k}" title="${esc(t)}">${ic(icon)}<span>${esc(t)}</span>${k === "trabalhos" ? `<span class="count" id="running-count" hidden></span>` : ""}</a>`).join("")).join("");
+  const shell = document.getElementById("shell"), btn = document.getElementById("collapse");
+  const apply = (c) => { shell.classList.toggle("collapsed", c); btn.innerHTML = `${ic("chevron")}<span>${c ? "Expandir menu" : "Recolher menu"}</span>`; btn.title = c ? "Expandir menu" : "Recolher menu"; };
+  apply(getPref("cnt.menu", "") === "recolhido");
+  btn.onclick = () => { const c = !shell.classList.contains("collapsed"); setPref("cnt.menu", c ? "recolhido" : ""); apply(c); };
+  const sel = document.getElementById("theme-sel");
+  sel.value = getPref("cnt.tema", "dark");
+  sel.onchange = () => {
+    setPref("cnt.tema", sel.value);
+    const t = sel.value === "auto" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : sel.value;
+    document.documentElement.setAttribute("data-theme", t);
+    if (ED.sid) drawWave();
+  };
+}
+function setCrumb(html) { const el = document.getElementById("crumb"); if (el) el.innerHTML = html; }
+
+async function renderProfilesPage() {
+  await loadState();
+  main.innerHTML = `
+    <div class="page-head"><div><span class="eyebrow">Cadastros</span><h1 style="margin-top:6px">Perfis de regras</h1>
+      <p class="muted">Limites técnicos e a lista do que pode e do que não pode em cada cliente. As regras ligadas vão para a IA na tradução.</p></div>
+      <a class="btn primary" href="#/perfil/novo">${ic("plus")} Novo perfil</a></div>
+    <section class="panel"><div class="table-wrap"><table class="table report" id="profiles"></table></div></section>`;
+  drawProfiles(S.state.profiles);
+}
 
 let lastHash = location.hash;
 function leavingEditorOk() {
@@ -175,14 +220,15 @@ async function router() {
   }
   lastHash = location.hash;
   clearTimers();
-  main.onclick = null;
+  main.onclick = null; main.onchange = null;
   cancelAnimationFrame(ED.raf);
   document.querySelectorAll("video").forEach((v) => { v.pause(); v.removeAttribute("src"); v.load(); });
   const hash = location.hash || "#/inicio";
   if (!hash.startsWith("#/editor/")) { document.body.classList.remove("editor-mode"); ED.sid = null; ED.dirty = false; }
   ["ed-find", "ed-drawer", "ed-syncmenu-float"].forEach((id) => document.getElementById(id)?.remove());
   const section = hash.split("/")[1] || "inicio";
-  const navKey = { trabalho: "trabalhos", projeto: "clientes", projetos: "clientes", cliente: "clientes", novo: "trabalhos", perfil: "configuracoes" }[section] || section;
+  const navKey = { trabalho: "trabalhos", cliente: "clientes", novo: "trabalhos", perfil: "perfis", obra: "projetos", item: "projetos", bemvindo: "inicio" }[section] || section;
+  setCrumb(esc(CRUMB[section] || ""));
   document.querySelectorAll("[data-nav]").forEach((a) => {
     if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -1061,9 +1107,10 @@ async function renderSettings() {
     </section>
 
     <section class="panel">
-      <div class="row" style="justify-content:space-between"><h2>Perfis de regras</h2><a class="btn" href="#/perfil/novo">Novo perfil</a></div>
-      <p class="muted small">Cada perfil tem os limites técnicos e a lista de regras do que pode e do que não pode. Clique para ver e editar; as regras ligadas vão para a IA na tradução.</p>
-      <table class="table" id="profiles"></table>
+      <div class="row" style="justify-content:space-between"><h2>Perfis de regras</h2><a class="btn" href="#/perfis">Abrir perfis de regras</a></div>
+      <p class="muted small">Limites técnicos e regras do que pode e do que não pode, por cliente.</p>
+      <h2 style="margin-top:18px">Pasta dos projetos</h2>
+      <div class="row" style="margin-top:8px"><span class="mono small">${esc(st.projects_root || "não escolhida")}</span><a class="btn sm" href="#/bemvindo">Trocar</a></div>
     </section>
 
     <section class="panel stack">
@@ -1093,7 +1140,7 @@ async function renderSettings() {
       <button class="btn danger" data-action="quit">Fechar o programa</button></div>
     </section>`;
 
-  drawProfiles(st.profiles);
+
 
   main.onclick = async (e) => {
     const b = e.target.closest("[data-action]");
@@ -1169,9 +1216,10 @@ window.addEventListener("hashchange", router);
 document.addEventListener("dragover", (e) => e.preventDefault());
 document.addEventListener("drop", (e) => e.preventDefault());
 (async () => {
+  drawNav();
   try {
     await loadState();
-    if (!location.hash) { location.hash = "#/inicio"; }
+    if (!location.hash) { location.hash = S.state.projects_root ? "#/inicio" : "#/bemvindo"; }
     else router();
   } catch (e) { router(); }
   refreshRunningCount();

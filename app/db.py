@@ -48,6 +48,56 @@ CREATE TABLE IF NOT EXISTS meta (
     k TEXT PRIMARY KEY,
     v TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS obras (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    folder TEXT NOT NULL UNIQUE,
+    client_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'novo',
+    source_lang TEXT NOT NULL DEFAULT 'pt-BR',
+    target_lang TEXT NOT NULL DEFAULT 'es-419',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS itens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    obra_id INTEGER NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+    season INTEGER,
+    episode INTEGER,
+    title TEXT NOT NULL DEFAULT '',
+    folder TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'novo',
+    video TEXT NOT NULL DEFAULT '',
+    srt TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS metricas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NOT NULL REFERENCES itens(id) ON DELETE CASCADE,
+    at TEXT NOT NULL,
+    origem TEXT NOT NULL,
+    srt TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tempo (
+    item_id INTEGER NOT NULL REFERENCES itens(id) ON DELETE CASCADE,
+    dia TEXT NOT NULL,
+    segundos REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (item_id, dia)
+);
+CREATE TABLE IF NOT EXISTS eventos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    obra_id INTEGER NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+    item_id INTEGER,
+    at TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    detalhe TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL,

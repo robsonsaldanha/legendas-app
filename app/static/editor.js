@@ -129,7 +129,7 @@ function sortedCues() {
 
 async function renderEditor(sid) {
   document.body.classList.add("editor-mode");
-  if (!sid) return renderEditorOpen();
+  if (!sid) return renderHome();
   let data;
   try { data = await api("GET", `/api/editor/${sid}?full=1`); }
   catch (e) {
@@ -142,7 +142,7 @@ async function renderEditor(sid) {
     sel: 0, dirty: false, undo: [], redo: [], peaks: null, savedAt: "", playUntil: null,
     hasVideo: data.has_video, hasAudio: data.has_audio,
     detected: data.detected, suggested: data.suggested_target,
-    clientId: data.client_id || null, shots: data.shots || null,
+    clientId: data.client_id || null, shots: data.shots || null, itemId: data.item_id || null, lastAct: Date.now(),
   });
   ED.hasOrig = ED.cues.some((c) => c.orig != null);
   ED.wave.start = 0;
@@ -155,7 +155,7 @@ async function renderEditor(sid) {
   main.innerHTML = `
   <div class="ed">
     <header class="ed-tool">
-      <a class="btn ghost" href="#/inicio" title="Voltar ao início">‹ Início</a>
+      <a class="btn ghost" href="${data.obra_id ? `#/obra/${data.obra_id}` : "#/inicio"}" id="ed-back" title="${data.obra_id ? "Voltar ao projeto" : "Voltar ao início"}">‹ ${data.obra_id ? "Projeto" : "Início"}</a>
       <span class="ed-title" id="ed-name" title="${esc(ED.srt || ED.video)}">${esc(ED.name)}</span>
       <span class="sep"></span>
       <button class="btn ghost opt" data-ed="open">Abrir</button>
@@ -293,6 +293,13 @@ async function renderEditor(sid) {
   </div>`;
 
   bindEditor();
+  if (ED.itemId) {   // tempo trabalhado no episódio: conta a cada minuto com atividade
+    every(60000, () => {
+      const v = vid();
+      const active = Date.now() - ED.lastAct < 90000 || (v && !v.paused);
+      if (active && ED.sid) api("POST", `/api/editor/${ED.sid}/beat`, { seconds: 60 }).catch(() => {});
+    });
+  }
   setupVideo(data.media);
   loadPeaks();
   drawAll();
@@ -797,7 +804,7 @@ async function openTranslate(opts = {}) {
   estimate();
 
   const openResult = async (r) => {
-    const o = await api("POST", "/api/editor/open", { srt: r.srt, video: ED.video, original: r.original, profile_key: r.profile_key, client_id: ED.clientId });
+    const o = await api("POST", "/api/editor/open", { srt: r.srt, video: ED.video, original: r.original, profile_key: r.profile_key, client_id: ED.clientId, item_id: ED.itemId });
     ED.dirty = false;
     close();
     toast(r.missing?.length ? `Tradução aberta. ${r.missing.length} legenda(s) ficaram no original: revise as marcadas.` : "Tradução aberta no editor. A coluna Original mostra o texto de partida.");
@@ -1261,6 +1268,7 @@ function bindEditor() {
   window.onresize = () => { fitVideo(); drawWave(); };
 }
 
+["keydown", "mousedown", "wheel"].forEach((ev) => document.addEventListener(ev, () => { ED.lastAct = Date.now(); }, { passive: true }));
 function editorKeys(e) {
   if (!document.body.classList.contains("editor-mode") || !ED.sid || !document.getElementById("ed-txt")) return;
   const tag = (e.target.tagName || "").toLowerCase();

@@ -1,38 +1,44 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="token" content="{{TOKEN}}">
   <title>CNT Legendas</title>
-  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/icon.png" type="image/png">
   <link rel="stylesheet" href="/app.css">
+  <script src="/theme.js"></script>
 </head>
 <body>
-  <div class="shell">
-    <aside class="side">
-      <div class="brand">
-        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="5" width="30" height="22" rx="3"/><rect class="mark-bar" x="6" y="18" width="20" height="3" rx="1.5"/><rect class="mark-bar" x="9" y="22.5" width="14" height="2.5" rx="1.25"/></svg>
-        <span>CNT Legendas</span>
-      </div>
-      <nav class="nav" aria-label="Principal">
-        <a href="#/inicio" data-nav="inicio">Início</a>
-        <a href="#/editor" data-nav="editor">Editor</a>
-        <a href="#/clientes" data-nav="clientes">Clientes</a>
-        <a href="#/trabalhos" data-nav="trabalhos">Trabalhos <span class="count" id="running-count" hidden></span></a>
-        <a href="#/configuracoes" data-nav="configuracoes">Configurações</a>
-      </nav>
+  <div class="shell" id="shell">
+    <aside class="side" aria-label="Ferramentas">
+      <a class="brand" href="#/inicio" title="Início"><img src="/logo.png" alt="CNT"><span class="brand-sub">LEGENDAS</span></a>
+      <nav class="nav" aria-label="Principal" id="nav"></nav>
       <div class="side-foot">
-        <span class="muted small">Versão {{VERSION}}</span>
+        <span class="ver">Versão {{VERSION}}</span>
+        <button class="collapse-btn" id="collapse" type="button"><span></span></button>
       </div>
     </aside>
-    <main id="main" class="main" tabindex="-1"></main>
+    <div class="content">
+      <header class="topbar">
+        <span class="crumb" id="crumb">Início</span>
+        <span class="grow"></span>
+        <label class="theme"><span class="label">Tema</span>
+          <select id="theme-sel" aria-label="Tema">
+            <option value="dark">Escuro</option><option value="light">Claro</option><option value="auto">Automático (Windows)</option>
+          </select></label>
+      </header>
+      <main id="main" class="main" tabindex="-1"></main>
+    </div>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/icons.js"></script>
   <script src="/editor.js"></script>
   <script src="/tools.js"></script>
   <script src="/home.js"></script>
   <script src="/profiles.js"></script>
+  <script src="/projects.js"></script>
+  <script src="/reports.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

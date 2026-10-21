@@ -109,6 +109,19 @@ def main(wav: str, text: str) -> None:
     shots = detect_shot_changes(cuts, duration=4)
     check("cortes de cena", any(abs(x - 2.0) < 0.05 for x in shots), str(shots))
 
+    # projetos em pastas (caminhos reais do Windows) e métricas
+    from app.db import Database
+    from app.projects import ProjectManager
+    pm = ProjectManager(Database(tmp / "proj.db"))
+    pm.set_root(str(tmp / "Traduções"))
+    serie = pm.create({"kind": "serie", "name": "Série Ação — 2ª", "season": 2, "episodes": "40-41"})
+    ep = Path(serie["folder"]) / "temporada-2" / "ep-40"
+    check("projeto série", ep.is_dir() and (Path(serie["folder"]) / "projeto.cnt.json").exists(), str(ep))
+    check("nome proibido", "não aceita" in pm.check_name("a:b")["problem"] and "reservado" in pm.check_name("CON")["problem"])
+    from core.subtitle import read_srt as _rs
+    m = pm.record_metrics(serie["items"][0]["id"], _rs(res.outputs["srt"]), None, 3.0)
+    check("métricas", m["legendas"] >= 1 and m["palavras"] >= 5, str({k: m[k] for k in ("legendas", "palavras")}))
+
     # servidor + sessão
     from app.server import App, make_server
     app = App()

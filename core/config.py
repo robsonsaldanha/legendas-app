@@ -144,6 +144,8 @@ class Settings:
     keep_job_days: int = 30
     # Nome para a assinatura no fim da legenda ("Traducción: Nome").
     translator_name: str = ""
+    # Pasta onde ficam os projetos (perguntada na primeira abertura).
+    projects_root: str = ""
     extra: dict = field(default_factory=dict)
 
     @classmethod

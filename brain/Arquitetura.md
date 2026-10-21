@@ -39,6 +39,8 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 | `plan.py` | Valida a combinação de etapas × arquivos e monta a ordem do pipeline |
 | `jobs.py` | Pasta de trabalho com a saída de cada etapa (retomada) |
 | `sync.py` | Sincronização: deslocar, dois pontos, quadros por segundo, copiar tempos, automática (fala × legendas: FFT + programação dinâmica), cortes de cena (ffmpeg) e encaixe, correção automática de tempos, texto sem tempo → legenda |
+| `projects.py` | Pastas de projeto: nomes válidos no Windows, filme/série, `temporada-N/ep-M`, `projeto.cnt.json`, intervalos de episódios |
+| `metrics.py` | Métricas de uma legenda e soma de vários episódios; produtividade |
 | `style.py` | Regras de estilo do cliente: reticências/hífen, avisos (interjeições, pontuação dupla…), nome do arquivo (`_sub_spa`) |
 | `pipeline.py` | `run_job()` para a interface; `main()` para a linha de comando |
 | `config.py` | Pastas em `%APPDATA%\CNT Legendas` e `Settings` (modelos, preços, paralelismo) |
@@ -54,6 +56,7 @@ O programa é um servidor local (só `127.0.0.1`) e a tela abre no navegador pad
 | `worker.py` | Fila: um trabalho por vez numa thread; progresso e registro em memória para a tela |
 | `db.py` | SQLite `legendas.db`: clientes (tabela `projects`), glossários, perfis próprios, histórico, recentes |
 | `dialogs.py` | Janelas "Abrir" e "Salvar como" do Windows (tkinter) num processo separado, para obter o caminho real do arquivo |
+| `projects.py` | Projetos (tabelas `obras`, `itens`, `metricas`, `tempo`, `eventos`): criar, abrir pela pasta, episódios, status, copiar arquivos, relatórios |
 | `editor.py` | Sessões do editor: lê o SRT, prepara o vídeo para o player (cópia leve quando o navegador não toca o formato), forma de onda + sinal de fala, cliente, operações de sincronia, tarefas em segundo plano (sincronia automática, cortes de cena), entrega, rascunho, salvar com cópia de segurança, QC, quebra de linhas |
 | `static/` | `index.html`, `app.css`, `app.js` (telas gerais e roteador), `home.js` (Início), `editor.js` (editor), `tools.js` (Sincronizar, Verificar, Entregar, Localizar) — sem dependências externas (funciona offline) |
 

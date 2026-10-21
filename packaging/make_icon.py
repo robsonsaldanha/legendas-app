@@ -1,27 +1,35 @@
-"""Gera legendas.ico (o mesmo desenho do icon.svg da página) em vários tamanhos."""
+"""Gera o ícone do programa (legendas.ico) e o ícone da página a partir do logo CNT.
+
+O logo é largo (≈3:1); no ícone ele vai centralizado num quadrado escuro arredondado,
+a mesma cor do tema do programa.
+"""
 
 import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-TEAL = (14, 107, 104, 255)
-WHITE = (255, 255, 255, 255)
+HERE = Path(__file__).resolve().parent
+LOGO = HERE / "assets" / "cnt-logo.png"
+BG = (31, 35, 40, 255)
 
 
 def draw(size: int) -> Image.Image:
-    s = size / 32
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([1 * s, 5 * s, 31 * s, 27 * s], radius=3 * s, fill=TEAL)
-    d.rounded_rectangle([6 * s, 18 * s, 26 * s, 21 * s], radius=1.5 * s, fill=WHITE)
-    d.rounded_rectangle([9 * s, 22.5 * s, 23 * s, 25 * s], radius=1.25 * s, fill=WHITE)
+    d.rounded_rectangle([0, 0, size - 1, size - 1], radius=max(2, size // 5), fill=BG)
+    logo = Image.open(LOGO).convert("RGBA")
+    w = int(size * 0.86)
+    h = int(logo.height * w / logo.width)
+    logo = logo.resize((w, h), Image.LANCZOS)
+    img.alpha_composite(logo, ((size - w) // 2, (size - h) // 2))
     return img
 
 
 def main(out: str) -> None:
-    big = draw(256)
-    big.save(out, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    sizes = [16, 24, 32, 48, 64, 128, 256]
+    imgs = [draw(s) for s in sizes]
+    imgs[-1].save(out, sizes=[(s, s) for s in sizes], append_images=imgs[:-1])
     print(f"ícone: {Path(out).resolve()}")
 
 
