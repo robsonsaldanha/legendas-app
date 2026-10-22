@@ -1145,6 +1145,17 @@ async function renderSettings() {
             <option value="model" ${s.align === "model" ? "selected" : ""}>Sempre preciso (para se faltar o modelo)</option>
             <option value="estimate" ${s.align === "estimate" ? "selected" : ""}>Sempre estimado (mais rápido)</option>
           </select></label>
+        <label class="field"><span>Placa de vídeo (separar a voz e transcrever)</span>
+          <select id="s-gpu">
+            <option value="auto" ${s.use_gpu !== "nao" ? "selected" : ""}>Usar quando houver (recomendado)</option>
+            <option value="nao" ${s.use_gpu === "nao" ? "selected" : ""}>Não usar (só o processador)</option>
+          </select></label>
+        <label class="field"><span>Transcrição local (tempo das palavras na sincronia precisa)</span>
+          <select id="s-whisper">
+            <option value="small" ${s.whisper_model === "small" || !s.whisper_model ? "selected" : ""}>Rápida (~480 MB)</option>
+            <option value="medium" ${s.whisper_model === "medium" ? "selected" : ""}>Melhor (~1,5 GB)</option>
+            <option value="large-v3" ${s.whisper_model === "large-v3" ? "selected" : ""}>Máxima (~3 GB, use com placa de vídeo)</option>
+          </select></label>
         <label class="field"><span>Apagar arquivos temporários após (dias)</span><input type="number" min="1" max="365" id="s-days" value="${s.keep_job_days}"></label>
       </div>
       <div class="row"><button class="btn primary" data-action="save-settings">Salvar</button></div>
@@ -1204,6 +1215,8 @@ async function renderSettings() {
           translate_usd_per_mtok_out: Number(document.getElementById("s-tout").value),
           parallel_requests: Number(document.getElementById("s-par").value),
           align: document.getElementById("s-align").value,
+          use_gpu: document.getElementById("s-gpu").value,
+          whisper_model: document.getElementById("s-whisper").value,
           keep_job_days: Number(document.getElementById("s-days").value),
         });
         toast("Configurações salvas.");

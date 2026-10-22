@@ -40,6 +40,9 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 | `jobs.py` | Pasta de trabalho com a saída de cada etapa (retomada) |
 | `sync.py` | Sincronização: deslocar, dois pontos, quadros por segundo, copiar tempos, automática (fala × legendas: FFT + programação dinâmica), cortes de cena (ffmpeg) e encaixe, correção automática de tempos, acerto de início/fim na voz (`fit_to_voice`), texto sem tempo → legenda |
 | `vad.py` | Detector de voz (Silero VAD, ONNX): separa fala de música e ruído; modelo em `models/silero_vad.onnx` |
+| `separate.py` | Separação da voz (MDX-Net ONNX; DirectML/CPU) em processo separado |
+| `precise.py` | Sincronia precisa: início/fim de cada legenda pela fala, encaixe no quadro, marcas para conferir |
+| `whisper_local.py` | Transcrição local (faster-whisper; CUDA/CPU) só para o tempo das palavras, em processo separado |
 | `http.py` | Conexão com serviços de IA: User-Agent, IPv4 opcional, texto de erro legível, IPs de saída |
 | `projects.py` | Pastas de projeto: nomes válidos no Windows, filme/série, `temporada-N/ep-M`, `projeto.cnt.json`, intervalos de episódios |
 | `metrics.py` | Métricas de uma legenda e soma de vários episódios; produtividade |

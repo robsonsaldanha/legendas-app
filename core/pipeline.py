@@ -28,7 +28,7 @@ from .chunking import Chunk, plan_chunks
 from .config import Settings, logs_dir
 from .errors import LegendasError, PipelineError
 from .formatter import FormatResult, format_words, reflow_cues
-from .sync import auto_sync, detect_voice, fit_to_voice, read_script, sync_script
+from .sync import auto_sync, detect_voice, read_script, sync_script
 from .glossary import Entry, load_glossary, transcription_keywords
 from .jobs import Job, job_id_for
 from .media import detect_silences, extract_audio, load_wav, probe
@@ -218,11 +218,15 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
                 _add_translate_estimate(result, source_cues, settings)
             return result
         cb.status("Sincronizando a legenda com a fala do vídeo…")
-        speech, _how = detect_voice(load_wav(wav))
+        _audio16 = load_wav(wav)
+        speech, _how = detect_voice(_audio16)
         sr = auto_sync(source_cues, speech, min_gap=final_profile.min_gap(fps),
                        progress=lambda f: cb.progress(SYNC, int(f * 100), 100))
         cb.check_cancel()
-        source_cues, _fit = fit_to_voice(sr.cues, speech, source_profile, fps) if _how == "voz" else (sr.cues, None)
+        source_cues = sr.cues
+        if _how == "voz":   # início e fim de cada legenda pela fala (sem esticar pelo CPS)
+            from .precise import Speech, precise_times
+            source_cues, _rep = precise_times(sr.cues, Speech.from_audio(_audio16), source_profile, fps)
         job.mark(SYNC, "ok", deslocamento=sr.offset, proporcao=sr.ratio, trechos=sr.parts,
                  antes=round(sr.before, 3), depois=round(sr.after, 3))
         log.info("Sincronia: deslocamento %.2f s, proporção %.5f, %d trecho(s), %.0f%% → %.0f%%",

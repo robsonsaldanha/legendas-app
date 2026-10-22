@@ -69,6 +69,18 @@ def _cache_key(path: Path) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
+def _sync_msg(res) -> str:
+    if not res.changed:
+        return " ".join(res.notes)
+    parts = [f"Deslocamento de {res.offset:+.2f} s".replace(".", ",")]
+    if res.ratio != 1.0:
+        parts.append(f"velocidade ajustada ({res.ratio:.4f})".replace(".", ","))
+    if res.parts > 1:
+        parts.append(f"{res.parts} trechos com ajustes diferentes")
+    parts.append(f"concordância com a fala {res.before:.0%} → {res.after:.0%}")
+    return ", ".join(parts) + "."
+
+
 def _vad_ok() -> bool:
     from core import vad
     return vad.available()
@@ -742,7 +754,7 @@ class EditorManager:
         from core import sync
         s = self._get(sid)
         prof = self._profile_obj(s)
-        if kind in ("audio", "ref", "fit"):
+        if kind in ("audio", "ref", "fit", "precise"):
             if not raw:
                 raise EditorError("Não há legendas para sincronizar.")
             raw, cues = self._sorted_raw(raw)
@@ -778,47 +790,16 @@ class EditorManager:
                     (s.cache / "cortes.json").write_text(json.dumps(shots), encoding="utf-8")
                     task["result"] = {"shots": shots}
                     task["message"] = f"{len(shots)} cortes de cena encontrados."
-                elif kind == "fit":
-                    task["message"] = "Procurando a voz no vídeo (ignora música e ruído)…"
-                    voice, method = self._speech(s, progress=lambda f: prog(0.9 * f))
-                    new, rep_ = sync.fit_to_voice(cues, voice, prof, s.info.get("fps"))
-                    msg = rep_.summary()
-                    if method != "voz":
-                        msg += " Atenção: o detector de voz não está disponível; usei o volume do áudio."
-                    task["result"] = {"cues": self._apply_times(raw, new), "changed": rep_.changed > 0,
-                                      "fit": rep_.__dict__}
-                    task["message"] = msg
+                elif kind in ("fit", "audio", "precise"):
+                    task["result"], task["message"] = self._voice_sync(s, prof, kind, raw, cues, p, task, prog)
                 else:
-                    fit = None
-                    if kind == "audio":
-                        task["message"] = "Procurando a voz no vídeo (ignora música e ruído)…"
-                        speech, method = self._speech(s, progress=lambda f: prog(0.5 * f))
-                    else:
-                        speech, method = sync.subtitle_activity(ref), "ref"
                     task["message"] = "Encaixando as legendas…"
-                    base = 0.5 if kind == "audio" else 0.0
-                    res = sync.auto_sync(cues, speech, min_gap=prof.min_gap(s.info.get("fps")),
-                                         progress=lambda f: prog(base + (1 - base) * 0.95 * f))
-                    if kind == "audio" and p.get("fit", True):
-                        res.cues, fit = sync.fit_to_voice(res.cues, speech, prof, s.info.get("fps"))
-                        res.changed = res.changed or fit.changed > 0
-                    parts = []
-                    if res.changed:
-                        parts.append(f"Deslocamento de {res.offset:+.2f} s".replace(".", ","))
-                        if res.ratio != 1.0:
-                            parts.append(f"velocidade ajustada ({res.ratio:.4f})".replace(".", ","))
-                        if res.parts > 1:
-                            parts.append(f"{res.parts} trechos com ajustes diferentes")
-                        parts.append(f"concordância com a fala {res.before:.0%} → {res.after:.0%}")
-                    msg = (", ".join(parts) + ".") if parts else " ".join(res.notes)
-                    if fit is not None:
-                        msg += " " + fit.summary()
-                    if kind == "audio" and method != "voz":
-                        msg += " Atenção: o detector de voz não está disponível; usei o volume do áudio (música pode atrapalhar)."
+                    res = sync.auto_sync(cues, sync.subtitle_activity(ref), min_gap=prof.min_gap(s.info.get("fps")),
+                                         progress=lambda f: prog(0.95 * f))
                     task["result"] = {"cues": self._apply_times(raw, res.cues), "changed": res.changed,
                                       "offset": res.offset, "ratio": res.ratio, "parts": res.parts,
                                       "before": res.before, "after": res.after}
-                    task["message"] = msg
+                    task["message"] = _sync_msg(res)
                 task["progress"], task["status"] = 1.0, "pronto"
             except LegendasError as e:
                 task["status"], task["message"] = "erro", str(e)
@@ -828,6 +809,129 @@ class EditorManager:
 
         threading.Thread(target=work, daemon=True).start()
         return self.task_get(sid, tid)
+
+    # ------------------------------------------------ sincronia pela fala
+
+    def _audio16(self, s: Session) -> Path:
+        f = s.cache / "audio16.wav"
+        if not f.exists():
+            extract_audio(s.video, f)
+        return f
+
+    def _speech_obj(self, s: Session, clean: bool, prog, cancelled) -> tuple:
+        """A fala do vídeo (core.precise.Speech), guardada por vídeo. `clean`: voz separada da música."""
+        from core.precise import Speech
+        from core import vad
+        if s.video is None or not s.info.get("acodec"):
+            raise EditorError("Abra o vídeo (com áudio) junto da legenda para sincronizar pela fala.", 409)
+        if clean and not vad.available():
+            raise EditorError("O detector de voz não está instalado nesta versão.")
+        where = ""
+        with s.lock:
+            if clean:
+                from core import separate
+                voz = s.cache / "voz16.wav"
+                if not voz.exists():
+                    if not separate.available():
+                        raise EditorError("O separador de voz não está instalado nesta versão.")
+                    a44 = s.cache / "audio44.wav"
+                    if not a44.exists():
+                        prog("Preparando o áudio…", 0.0)
+                        extract_audio(s.video, a44, rate=44100, channels=2)
+                    try:
+                        where = separate.run_separation(a44, voz, Settings.load().use_gpu,
+                                                        progress=lambda f: prog("Separando a voz da música…", f),
+                                                        cancelled=cancelled)
+                    except separate.SeparationError as e:
+                        raise EditorError(str(e)) from e
+                    finally:
+                        a44.unlink(missing_ok=True)
+                    (s.cache / "voz16.txt").write_text(where, encoding="utf-8")
+                elif (s.cache / "voz16.txt").exists():
+                    where = (s.cache / "voz16.txt").read_text(encoding="utf-8")
+                src, pfile = voz, s.cache / "voz16_prob.npy"
+            else:
+                src, pfile = self._audio16(s), s.cache / "audio16_prob.npy"
+            audio = load_wav(src)
+            prob = np.load(pfile) if pfile.exists() else None
+            if prob is None:
+                if vad.available():
+                    prob = vad.speech_prob(audio, progress=lambda f: prog("Procurando a fala…", f))
+                else:   # reserva: volume do áudio (música pode contar como fala)
+                    from core.sync import speech_activity
+                    m = speech_activity(audio).astype(np.float32)
+                    k = int(len(audio) / 512)
+                    prob = m[np.minimum((np.arange(k) * 3.2).astype(int), max(0, len(m) - 1))] if len(m) else np.zeros(k, np.float32)
+                np.save(pfile, prob)
+        return Speech.from_audio(audio, prob=prob, clean=clean), where
+
+    def _words(self, s: Session, prog, cancelled) -> list | None:
+        from core import whisper_local as wl
+        f = s.cache / "palavras.json"
+        if not f.exists():
+            if not wl.available():
+                return None
+            st = Settings.load()
+            label = {"baixando": "Baixando o modelo de transcrição (só na primeira vez, ~480 MB)…",
+                     "transcrevendo": "Transcrevendo a fala (só para achar onde cada palavra começa)…"}
+            try:
+                wl.transcribe_words(s.cache / "voz16.wav", f, st.whisper_model,
+                                    "cpu" if st.use_gpu == "nao" else "auto",
+                                    progress=lambda fase, p: prog(label.get(fase, "Transcrevendo…"), p),
+                                    cancelled=cancelled)
+            except wl.WhisperError as e:
+                log.warning("Transcrição local: %s", e)
+                return None
+        return json.loads(f.read_text(encoding="utf-8")).get("palavras") or None
+
+    def _voice_sync(self, s: Session, prof, kind: str, raw: list[dict], cues: list[Cue], p: dict, task, prog) -> tuple:
+        """fit: só início/fim pela fala · audio: deslocamento (se claro) + início/fim ·
+        precise: separa a voz da música, transcreve (opcional) e acerta início/fim."""
+        from core import sync
+        from core.precise import precise_times
+        fps = s.info.get("fps")
+        cancelled = lambda: task["cancel"]   # noqa: E731
+        stages = {"fit": [(0, .9)], "audio": [(0, .9)], "precise": [(0, .7), (.7, .95)]}[kind]
+
+        def stage(k):
+            lo, hi = stages[min(k, len(stages) - 1)]
+            return lambda msg, f: (task.__setitem__("message", msg), prog(lo + (hi - lo) * f))
+        clean = kind == "precise"
+        sp, where = self._speech_obj(s, clean, stage(0), cancelled)
+        if task["cancel"]:
+            raise EditorError("Cancelado.")
+        words = None
+        if clean and p.get("words", True):
+            words = self._words(s, stage(1), cancelled)
+        notes = []
+        base = cues
+        if kind in ("audio", "precise"):   # legenda inteira fora do lugar? (só desloca se for claro)
+            mask = np.zeros(int(len(sp.env)), dtype=np.uint8)
+            for a, b in sp.segments:
+                mask[int(a / 0.01):int(b / 0.01)] = 1
+            res = sync.auto_sync(cues, mask, min_gap=prof.min_gap(fps))
+            if res.changed:
+                base = res.cues
+                notes.append(_sync_msg(res))
+        task["message"] = "Acertando início e fim de cada legenda na fala…"
+        new, rep = precise_times(base, sp, prof, fps, words=words)
+        out = self._apply_times(raw, new)
+        for i, why in rep.unsure.items():
+            out[i]["rev"] = why
+        for d in out:
+            if "rev" not in d:
+                d.pop("rev", None)
+        msg = " ".join(notes + [rep.summary()])
+        if clean:
+            msg += f" Voz separada no(a) {where or 'computador'}."
+            if p.get("words", True) and words is None:
+                msg += " (Sem a transcrição local: falas emendadas ficaram marcadas para conferir.)"
+        if any(abs(a.start - b.start) > 1e-3 or abs(a.end - b.end) > 1e-3 for a, b in zip(new, cues)):
+            changed = True
+        else:
+            changed = False
+            msg = "A legenda já acompanha a fala; nada mudou."
+        return {"cues": out, "changed": changed, "unsure": len(rep.unsure)}, msg
 
     def task_get(self, sid: str, tid: str) -> dict:
         s = self._get(sid)

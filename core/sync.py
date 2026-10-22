@@ -382,13 +382,13 @@ def auto_sync(cues: list[Cue], speech: np.ndarray, max_shift: float = 600.0,
     after = _agreement(out, speech)
     res = SyncResult(cues=out, offset=round(lag * HOP, 3), ratio=ratio, before=before, after=after,
                      parts=parts)
-    if after + 0.01 < before:   # piorou: não mexe
+    # Só mexe quando a melhora é clara: legenda que já acompanha a fala não é deslocada
+    # (deslocar 0,1 s "porque a correlação deu" estraga um arquivo certo).
+    small = abs(res.offset) < 0.25 and ratio == 1.0 and parts == 1
+    if after < before + 0.02 or small:
         res.cues, res.changed = cues, False
         res.after = before
-        res.notes.append("A legenda já parece sincronizada; nada foi alterado.")
-    elif abs(res.offset) < 0.02 and ratio == 1.0 and parts == 1:
-        res.changed = False
-        res.notes.append("A legenda já estava sincronizada.")
+        res.notes.append("A legenda já estava no lugar da fala; não desloquei.")
     if progress:
         progress(1.0)
     return res

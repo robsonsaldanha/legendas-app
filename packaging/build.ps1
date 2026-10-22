@@ -78,8 +78,14 @@ $site = Join-Path $Py "Lib\site-packages"
     torch --index-url https://download.pytorch.org/whl/cpu
 if ($LASTEXITCODE) { throw "falha ao instalar torch" }
 & python -m pip install --disable-pip-version-check --no-warn-script-location --target $site `
-    -r (Join-Path $Root "requirements.txt") -r (Join-Path $Root "requirements-align.txt")
+    -r (Join-Path $Root "requirements.txt") -r (Join-Path $Root "requirements-align.txt") `
+    -r (Join-Path $Root "requirements-whisper.txt") -r (Join-Path $Root "requirements-gpu.txt")
 if ($LASTEXITCODE) { throw "falha ao instalar as bibliotecas" }
+& python -m pip install --disable-pip-version-check --no-warn-script-location --target $site --no-deps faster-whisper==1.2.1
+if ($LASTEXITCODE) { throw "falha ao instalar o faster-whisper" }
+# só um onnxruntime: o DirectML (usa a placa de vídeo); o comum, se algum pacote trouxe, sai
+Get-ChildItem $site -Directory | Where-Object { $_.Name -match '^onnxruntime-[0-9].*\.dist-info$' } | ForEach-Object {
+    Write-Host "::warning::onnxruntime comum também instalado ($($_.Name))" }
 # limpeza: testes e caches que não servem para nada no programa instalado
 Get-ChildItem $site -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
 Get-ChildItem $site -Directory | Where-Object { $_.Name -in @("bin") } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
@@ -100,6 +106,11 @@ New-Item -ItemType Directory -Force -Path (Join-Path $App "models") | Out-Null
 Get-File $VadUrl (Join-Path $Dl "silero_vad-6.2.3.onnx")
 Copy-Item (Join-Path $Dl "silero_vad-6.2.3.onnx") (Join-Path $App "models\silero_vad.onnx")
 if ((Get-Item (Join-Path $App "models\silero_vad.onnx")).Length -lt 1MB) { throw "modelo do detector de voz incompleto" }
+# separador de voz (MDX-Net, projeto Ultimate Vocal Remover)
+$SepUrl = "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/UVR-MDX-NET-Voc_FT.onnx"
+Get-File $SepUrl (Join-Path $Dl "UVR-MDX-NET-Voc_FT.onnx")
+Copy-Item (Join-Path $Dl "UVR-MDX-NET-Voc_FT.onnx") (Join-Path $App "models\UVR-MDX-NET-Voc_FT.onnx")
+if ((Get-Item (Join-Path $App "models\UVR-MDX-NET-Voc_FT.onnx")).Length -lt 50MB) { throw "modelo do separador de voz incompleto" }
 
 # ---------------------------------------------------------------- ffmpeg
 $Stage = "ffmpeg"

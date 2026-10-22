@@ -383,18 +383,22 @@ def test_auto_sync_task_by_audio_and_reference(files):
 
 def test_fit_to_voice_task(files, monkeypatch):
     import numpy as np
+    from core.precise import Speech
     app, port, tmp, video, srt = files
     d = open_editor(app, port, srt=str(srt), video=str(video), profile_key="netflix-pt-br")
     sid = d["sid"]
-    voice = np.zeros(2000, dtype=np.uint8)
-    voice[100:250] = 1                                    # voz de 1,0 a 2,5 s; depois só música
-    monkeypatch.setattr(app.editor, "_speech", lambda s, progress=None: (voice, "voz"))
+    sr = 16000
+    audio = (np.random.default_rng(0).normal(0, 0.002, sr * 20)).astype(np.float32)
+    audio[sr:int(2.5 * sr)] += np.sin(2 * np.pi * 220 * np.arange(int(1.5 * sr)) / sr).astype(np.float32) * 0.5
+    prob = np.zeros(int(len(audio) / 512), np.float32)
+    prob[int(1.0 / 0.032):int(2.5 / 0.032)] = 0.95          # voz de 1,0 a 2,5 s; depois chiado/música
+    monkeypatch.setattr(app.editor, "_speech_obj", lambda s, clean, prog, cancelled: (Speech.from_audio(audio, prob=prob), ""))
     cues = [{"start": 1.0, "end": 6.0, "text": "Oi, tudo bem?"}]
     st, t = call(port, "POST", f"/api/editor/{sid}/task", {"kind": "fit", "cues": cues}, token=app.token)
     t = _wait_task(app, port, sid, t["id"])
     assert t["status"] == "pronto", t
     c = t["result"]["cues"][0]
-    assert c["start"] == 1.0 and 2.5 <= c["end"] <= 3.2 and "encurtado" in t["message"]
+    assert abs(c["start"] - 1.0) <= 0.04 and 2.45 <= c["end"] <= 2.6, c      # sai quando a voz acaba (sem esticar)
 
 
 def test_shots_task_and_snap(files):

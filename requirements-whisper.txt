@@ -1,0 +1,10 @@
+# Transcrição local (só o tempo das palavras, na sincronia precisa).
+# O faster-whisper é instalado à parte com --no-deps (ele puxaria o onnxruntime comum, que
+# conflita com o onnxruntime-directml do Windows):
+#   pip install -r requirements-whisper.txt
+#   pip install --no-deps faster-whisper==1.2.1
+ctranslate2>=4.5,<5
+tokenizers>=0.13
+huggingface_hub>=0.21
+av>=11
+tqdm

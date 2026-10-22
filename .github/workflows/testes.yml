@@ -24,10 +24,12 @@ jobs:
         run: |
           Invoke-WebRequest https://raw.githubusercontent.com/snakers4/silero-vad/v6.2.3/src/silero_vad/data/silero_vad.onnx -OutFile "$env:RUNNER_TEMP\silero_vad.onnx"
           Invoke-WebRequest https://raw.githubusercontent.com/snakers4/silero-vad/v6.2.3/tests/data/test.wav -OutFile "$env:RUNNER_TEMP\vad_test.wav"
+          Invoke-WebRequest https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/UVR-MDX-NET-Voc_FT.onnx -OutFile "$env:RUNNER_TEMP\sep.onnx"
       - name: Rodar testes
         env:
           CNT_VAD_MODEL: ${{ runner.temp }}\silero_vad.onnx
           CNT_VAD_TEST_WAV: ${{ runner.temp }}\vad_test.wav
+          CNT_SEP_MODEL: ${{ runner.temp }}\sep.onnx
         run: python -m pytest -q
 
   alinhamento-real:
@@ -44,7 +46,8 @@ jobs:
       - name: Instalar dependências (com torch CPU)
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements-dev.txt -r requirements-align.txt
+          pip install -r requirements-dev.txt -r requirements-align.txt -r requirements-whisper.txt
+          pip install --no-deps faster-whisper==1.2.1
       - name: Cache dos modelos de alinhamento
         uses: actions/cache@v4
         with:
@@ -67,5 +70,6 @@ jobs:
           ALIGN_TEST_TEXT: "The quick brown fox jumps over the lazy dog. Then the dog wakes up and runs after the fox across the green field."
           ALIGN_TEST_AFTER_PAUSE: "Then"
           ALIGN_TEST_LANG: en
-        run: python -m pytest tests/test_align_real.py -v -s -rs --strict-markers -p no:cacheprovider; if ($LASTEXITCODE -ne 0) { exit 1 }
+          WHISPER_TEST_WAV: ${{ runner.temp }}\fala.wav
+        run: python -m pytest tests/test_align_real.py tests/test_whisper_real.py -v -s -rs --strict-markers -p no:cacheprovider; if ($LASTEXITCODE -ne 0) { exit 1 }
         shell: pwsh

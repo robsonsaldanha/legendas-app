@@ -1,0 +1,3 @@
+# Placa NVIDIA para a transcrição local (CTranslate2 usa CUDA 12 + cuDNN 9). Só Windows/Linux x64.
+nvidia-cublas-cu12; platform_machine == "AMD64" or platform_machine == "x86_64"
+nvidia-cudnn-cu12>=9,<10; platform_machine == "AMD64" or platform_machine == "x86_64"

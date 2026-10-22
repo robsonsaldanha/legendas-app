@@ -100,10 +100,14 @@ async function runSync(kind) {
     }
     if (kind === "fit") {
       if (!ED.video || !ED.hasAudio) { toast("Abra o vídeo (com áudio) junto da legenda para acertar na voz.", true); return; }
-      const t = await runTask("fit", {}, "Acertando início e fim na voz");
+      const t = await runTask("fit", {}, "Acertando início e fim na fala");
       if (!t) return;
       if (t.result.changed) applyCues(t.result.cues, t.message);
       else toast(t.message);
+    }
+    if (kind === "precise") {
+      if (!ED.video || !ED.hasAudio) { toast("Abra o vídeo (com áudio) junto da legenda para sincronizar pela fala.", true); return; }
+      openPrecise();
     }
     if (kind === "ref") {
       const path = await pickPath("subtitle");
@@ -132,6 +136,34 @@ async function runSync(kind) {
     }
     if (kind === "script") openScript();
   } catch (e) { toast(e.message, true); }
+}
+
+function openPrecise() {
+  const m = modal("Sincronia precisa pela fala", `
+    <p class="muted small">Cada legenda passa a começar quando a fala começa e a terminar quando a fala termina. Música, chiado e respiração não contam. A legenda não é esticada para dar tempo de ler: se o CPS passar do limite, ele fica em vermelho para você revisar. Tudo encaixado no quadro do vídeo.</p>
+    <ol class="muted small" style="margin:8px 0 8px 18px">
+      <li>Separa a voz do resto do áudio (na placa de vídeo, se houver; uma vez por vídeo).</li>
+      <li>Acha o começo e o fim de cada fala.</li>
+      <li>Quando a fala é emendada (sem pausa entre duas legendas), corta entre as palavras.</li>
+    </ol>
+    <label class="check"><input type="checkbox" id="pr-words" ${getPref("cnt.precisa.palavras", "1") === "1" ? "checked" : ""}>
+      <span>Transcrever a fala para cortar falas emendadas entre as palavras <em class="muted small">(no computador, sem custo; baixa ~480 MB na primeira vez)</em></span></label>
+    <p class="muted small" style="margin-top:8px">Legendas em que o programa não teve certeza ficam com ⚑ e aparecem no F8 (próximo problema). Ctrl+Z desfaz tudo.</p>`,
+    `<button class="btn" data-x="close">Cancelar</button><button class="btn primary" data-x="go">Sincronizar</button>`);
+  m.ov.addEventListener("click", async (e) => {
+    const x = e.target.closest("[data-x]")?.dataset.x;
+    if (!x) return;
+    if (x === "close") return m.close();
+    const words = m.$("#pr-words").checked;
+    setPref("cnt.precisa.palavras", words ? "1" : "0");
+    m.close();
+    try {
+      const t = await runTask("precise", { words }, "Sincronia precisa pela fala");
+      if (!t) return;
+      if (t.result.changed) applyCues(t.result.cues, t.message);
+      else toast(t.message);
+    } catch (err) { toast(err.message, true); }
+  });
 }
 
 function openShift() {

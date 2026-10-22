@@ -5,4 +5,7 @@ keyring>=25
 # Claude, Gemini, GhostCLI e gateways (o openai novo usa "httpx2", não traz o httpx)
 httpx>=0.27,<1
 # Detector de voz (Silero VAD): separa fala de música e ruído na sincronia
-onnxruntime>=1.18
+# (no Windows, a versão DirectML também usa a placa de vídeo na separação da voz)
+onnxruntime>=1.18; sys_platform != "win32"
+onnxruntime-directml>=1.18; sys_platform == "win32"
+scipy>=1.11

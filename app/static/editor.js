@@ -61,6 +61,7 @@ function checkCue(i) {
     else if (gap < minGap() - 0.001) out.push(["w", "intervalo curto"]);
   }
   if (profChecks(p).size) styleChecks(c.text || "", out);
+  if (c.rev) out.push(["w", `conferir sincronia: ${c.rev}`]);
   return out;
 }
 function recheckAll() {
@@ -173,8 +174,9 @@ async function renderEditor(sid) {
       <span class="menuwrap">
         <button class="btn" data-ed="syncmenu" aria-haspopup="true" aria-expanded="false">Sincronizar ▾</button>
         <div class="menu" id="ed-syncmenu" role="menu" hidden>
-          <button role="menuitem" data-sy="audio"><b>Automática pela fala do vídeo</b><span>Encaixa a legenda no áudio e acerta início e fim de cada uma na voz (ignora música e ruído). Sem custo.</span></button>
-          <button role="menuitem" data-sy="fit"><b>Acertar início e fim na voz</b><span>Não desloca a legenda: só ajusta cada uma à fala, respeitando a leitura (CPS).</span></button>
+          <button role="menuitem" data-sy="precise"><b>Sincronia precisa pela fala</b><span>Separa a voz da música e do chiado e acerta início e fim de cada legenda na fala, quadro a quadro. Usa a placa de vídeo se houver. Sem custo.</span></button>
+          <button role="menuitem" data-sy="audio"><b>Automática pela fala (rápida)</b><span>Desloca a legenda se estiver fora do lugar e acerta início e fim na fala, sem separar a voz.</span></button>
+          <button role="menuitem" data-sy="fit"><b>Só acertar início e fim na fala</b><span>Não desloca a legenda. A saída fica onde a fala termina, mesmo que o CPS passe do limite (fica em vermelho).</span></button>
           <button role="menuitem" data-sy="ref"><b>Pela legenda de referência…</b><span>Usa outra legenda com o tempo certo (outro idioma serve).</span></button>
           <button role="menuitem" data-sy="copy"><b>Copiar os tempos de outra legenda…</b><span>Mesma quantidade de legendas, tempo a tempo.</span></button>
           <hr>
@@ -505,7 +507,7 @@ function rowHtml(c, i) {
   const timeBad = iss.some(([, m]) => (C.overlap && /sobrepõe|fim antes/.test(m)) || (C.gap && /intervalo/.test(m)));
   return `<tr data-i="${i}" class="${i === ED.sel ? "on" : ""}">
     <td class="c-n">${i + 1}</td>
-    <td class="c-t tnum">${fmtTC(c.start)}</td>
+    <td class="c-t tnum ${c.rev ? "bad" : ""}" ${c.rev ? `title="Conferir: ${esc(c.rev)}"` : ""}>${c.rev ? "⚑ " : ""}${fmtTC(c.start)}</td>
     <td class="c-t tnum ${timeBad ? "bad" : ""}">${fmtTC(c.end)}</td>
     <td class="c-d tnum ${durBad ? "bad" : ""}">${fmtSec(st.dur)}</td>
     <td class="c-c tnum ${cpsBad ? "bad" : ""}">${st.cps.toFixed(1).replace(".", ",")}</td>
@@ -562,6 +564,7 @@ function setCue(i, patch, opts = {}) {
   snapshot(opts.force);
   Object.assign(ED.cues[i], patch);
   if (patch.start !== undefined || patch.end !== undefined) {
+    delete ED.cues[i].rev;     // ela conferiu/acertou o tempo à mão
     ED.cues[i].start = r3(Math.max(0, ED.cues[i].start));
     ED.cues[i].end = r3(Math.max(ED.cues[i].start + 0.001, ED.cues[i].end));
   }
@@ -1197,6 +1200,7 @@ function bindWave() {
       ns = Math.max(lo, Math.min(hi - len, ns));
       c.start = r3(ns); c.end = r3(ns + len);
     }
+    delete c.rev;
     changed(false, d.i);
     updateRow(d.i); drawEdit(); drawWave(); tick();
     if (d.mode === "start" || d.mode === "move") seek(c.start + 0.001);

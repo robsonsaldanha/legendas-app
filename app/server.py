@@ -680,7 +680,7 @@ class Handler(BaseHTTPRequestHandler):
                    "translate_model": str, "translate_usd_per_mtok_in": float,
                    "translate_usd_per_mtok_out": float, "translate_method": str,
                    "parallel_requests": int, "align": str, "keep_job_days": int,
-                   "translator_name": str}
+                   "translator_name": str, "use_gpu": str, "whisper_model": str}
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))
@@ -689,6 +689,10 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(ed, dict) or len(json.dumps(ed)) > 8000:
                 raise ApiError("Preferências do editor inválidas.")
             s.editor = {k: v for k, v in ed.items() if isinstance(k, str) and len(k) < 40}
+        if s.use_gpu not in ("auto", "nao"):
+            s.use_gpu = "auto"
+        if s.whisper_model not in ("small", "medium", "large-v3"):
+            s.whisper_model = "small"
         if s.align not in ("auto", "model", "estimate"):
             raise ApiError("Opção de alinhamento inválida.")
         s.parallel_requests = max(1, min(8, s.parallel_requests))

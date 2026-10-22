@@ -419,7 +419,7 @@ body.editor-mode .main { padding: 0; max-width: none; height: 100vh; overflow: h
 .grid tbody tr:hover td { background: var(--panel-2); }
 .grid tbody tr.on:hover td { background: var(--grid-sel); }
 .grid .c-n { width: 48px; color: var(--muted); }
-.grid .c-t { width: 104px; }
+.grid .c-t { width: 116px; }
 .grid .c-d { width: 76px; text-align: right; }
 .grid .c-c { width: 56px; text-align: right; }
 .grid .br { color: var(--muted); font-style: normal; }

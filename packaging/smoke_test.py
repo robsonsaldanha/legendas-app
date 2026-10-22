@@ -114,6 +114,27 @@ def main(wav: str, text: str) -> None:
     musica_ok = max(voice[:550].mean(), voice[-550:].mean())
     check("detector de voz", vad.available() and how == "voz" and fala_ok > 0.5 and musica_ok < 0.1,
           f"{how}: fala {fala_ok:.0%}, música {musica_ok:.0%}")
+    # separação da voz (processo à parte) + sincronia precisa: a música sozinha não pode virar fala
+    from core import separate as sep
+    from core.precise import Speech, precise_times
+    from core.profiles import NETFLIX_ES_419
+    check("separador de voz", sep.available(), str(sep.model_path()))
+    t44 = np.arange(int(len(audio) / 16000 * 44100)) / 44100
+    fala44 = np.interp(t44, np.arange(len(audio)) / 16000, audio)
+    tm = np.arange(44100 * 4) / 44100
+    musica44 = 0.2 * (np.sin(2 * np.pi * 220 * tm) + np.sin(2 * np.pi * 330 * tm)) + (np.mod(tm, 0.5) < 0.05) * 0.3
+    mix = np.concatenate([musica44, fala44, musica44]).astype(np.float32)
+    sep.write_wav(tmp / "mix44.wav", np.stack([mix, mix]), 44100)
+    onde = sep.run_separation(tmp / "mix44.wav", tmp / "voz16.wav", "auto")
+    voz = load_wav(tmp / "voz16.wav")
+    sp = Speech.from_audio(voz, clean=True)
+    fala_ini, fala_fim = 4.0 + words[0].start, 4.0 + words[-1].end
+    cue, _rep = precise_times([Cue(round(fala_ini - 0.6, 3), round(fala_fim + 2.5, 3), [text])], sp, NETFLIX_ES_419, 25)
+    check("sincronia precisa", abs(cue[0].start - fala_ini) < 0.25 and abs(cue[0].end - fala_fim) < 0.35,
+          f"{onde}; fala {fala_ini:.2f}–{fala_fim:.2f}, legenda {cue[0].start:.2f}–{cue[0].end:.2f}")
+    import importlib
+    ok_w = all(importlib.util.find_spec(m) for m in ("faster_whisper", "ctranslate2"))
+    check("transcrição local instalada", ok_w)
     cuts = tmp / "cortes.mp4"
     subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=160x90:r=24:d=2",
                     "-f", "lavfi", "-i", "color=c=blue:s=160x90:r=24:d=2",

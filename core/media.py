@@ -90,13 +90,13 @@ def _parse_rate(rate: str | None) -> float | None:
         return None
 
 
-def extract_audio(src: str | Path, dst_wav: str | Path) -> Path:
-    """Áudio mono 16 kHz PCM 16 bits (formato que o alinhamento usa)."""
+def extract_audio(src: str | Path, dst_wav: str | Path, rate: int = SAMPLE_RATE, channels: int = 1) -> Path:
+    """Áudio PCM 16 bits; padrão mono 16 kHz (formato que o alinhamento usa)."""
     dst_wav = Path(dst_wav)
     dst_wav.parent.mkdir(parents=True, exist_ok=True)
     tmp = dst_wav.with_suffix(".tmp.wav")
     _run([ffmpeg(), "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
-          "-i", str(src), "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE),
+          "-i", str(src), "-vn", "-ac", str(channels), "-ar", str(rate),
           "-c:a", "pcm_s16le", str(tmp)],
          f"extrair o áudio de {Path(src).name}")
     tmp.replace(dst_wav)
