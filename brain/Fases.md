@@ -77,5 +77,6 @@
 - [x] 2.6.0: sincronia precisa pela fala (separação da voz na placa de vídeo, início/fim pela fala sem esticar pelo CPS, corte entre palavras pela transcrição local)
 - [x] 2.6.2: sincronia precisa ajustada com o episódio inteiro do PC dela
 - [x] 2.7.0: transcrição de vídeo sem legenda no computador (Whisper large-v3, sem custo; OpenAI vira opção)
+- [x] 2.8.0: 20 idiomas + detectar automaticamente; falas em outro idioma no mesmo episódio; japonês/chinês sem espaço
 - [ ] Calibrar com legendas acertadas à mão por ela (quanto antes da fala ela gosta de entrar)
 - [ ] Janela própria (sem navegador), se ela preferir

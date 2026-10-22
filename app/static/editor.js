@@ -62,6 +62,7 @@ function checkCue(i) {
   }
   if (profChecks(p).size) styleChecks(c.text || "", out);
   if (c.rev) out.push(["w", `conferir sincronia: ${c.rev}`]);
+  if (c.chk) out.push(["w", c.chk]);
   return out;
 }
 function recheckAll() {
@@ -507,7 +508,7 @@ function rowHtml(c, i) {
   const timeBad = iss.some(([, m]) => (C.overlap && /sobrepõe|fim antes/.test(m)) || (C.gap && /intervalo/.test(m)));
   return `<tr data-i="${i}" class="${i === ED.sel ? "on" : ""}">
     <td class="c-n">${i + 1}</td>
-    <td class="c-t tnum ${c.rev ? "bad" : ""}" ${c.rev ? `title="Conferir: ${esc(c.rev)}"` : ""}>${c.rev ? "⚑ " : ""}${fmtTC(c.start)}</td>
+    <td class="c-t tnum ${c.rev || c.chk ? "bad" : ""}" ${c.rev || c.chk ? `title="${esc([c.rev ? `Conferir: ${c.rev}` : "", c.chk || ""].filter(Boolean).join(" · "))}"` : ""}>${c.rev || c.chk ? "⚑ " : ""}${fmtTC(c.start)}</td>
     <td class="c-t tnum ${timeBad ? "bad" : ""}">${fmtTC(c.end)}</td>
     <td class="c-d tnum ${durBad ? "bad" : ""}">${fmtSec(st.dur)}</td>
     <td class="c-c tnum ${cpsBad ? "bad" : ""}">${st.cps.toFixed(1).replace(".", ",")}</td>
@@ -563,6 +564,7 @@ function drawTextStats() {
 function setCue(i, patch, opts = {}) {
   snapshot(opts.force);
   Object.assign(ED.cues[i], patch);
+  if (patch.text !== undefined) delete ED.cues[i].chk;  // ela mexeu no texto
   if (patch.start !== undefined || patch.end !== undefined) {
     delete ED.cues[i].rev;     // ela conferiu/acertou o tempo à mão
     ED.cues[i].start = r3(Math.max(0, ED.cues[i].start));

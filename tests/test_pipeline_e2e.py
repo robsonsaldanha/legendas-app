@@ -248,8 +248,9 @@ def test_local_whisper_transcription(env, monkeypatch):
     settings.transcribe_engine, settings.whisper_model = "local", "large-v3"
     got = {}
 
-    def fake(wav, out, size, device, language=None, progress=None, cancelled=None, prompt="", full=False):
-        got.update(size=size, language=language, full=full, prompt=prompt)
+    def fake(wav, out, size, device, language=None, progress=None, cancelled=None, prompt="", full=False,
+             multi=False):
+        got.update(size=size, language=language, full=full, prompt=prompt, multi=multi)
         words, segs = [], []
         for k, sent in enumerate(SENTENCES):
             t0 = k * 5.0
@@ -266,6 +267,48 @@ def test_local_whisper_transcription(env, monkeypatch):
     cues = read_srt(res.outputs["srt"])
     text = " ".join(c.text for c in cues)
     assert all(s in text for s in SENTENCES)
-    assert got["size"] == "large-v3" and got["full"] and "Narizinho" in got["prompt"]
+    assert got["size"] == "large-v3" and got["full"] and got["multi"] and "Narizinho" in got["prompt"]
     assert res.estimated_usd == 0.0
     assert res.outputs["srt"].name.endswith(".pt-BR.srt")
+
+
+TR = ["Merhaba, benim adım Asu ve burada yaşıyorum.", "Bugün hep beraber denize gideceğiz.",
+      "Where is the money? I need it now.", "Tamam, yarın konuşuruz o zaman."]
+
+
+def test_local_auto_language_with_foreign_speech(env, monkeypatch):
+    """Vídeo turco com uma fala em inglês: idioma detectado pela fala, arquivo .tr.srt, a fala
+    em inglês fica no original e marcada (relatório e ⚑ no editor)."""
+    import json as _json
+    from core import whisper_local as wl
+    from core.flags import load_flags
+    video, _, settings = env
+    got = {}
+
+    def fake(wav, out, size, device, language=None, progress=None, cancelled=None, prompt="", full=False,
+             multi=False):
+        got.update(language=language, prompt=prompt, multi=multi)
+        words, segs = [], []
+        for k, sent in enumerate(TR):
+            t0 = k * 5.0
+            toks = sent.split()
+            for j, w in enumerate(toks):
+                words.append([t0 + j * 0.3, t0 + j * 0.3 + 0.25, w])
+            segs.append([t0, t0 + len(toks) * 0.3, sent, "en" if k == 2 else "tr"])
+        r = {"onde": "processador", "idioma": "tr", "palavras": words, "segmentos": segs,
+             "outros": [{"ini": 10.0, "fim": 12.1, "idioma": "en"}]}
+        Path(out).write_text(_json.dumps(r), encoding="utf-8")
+        return r
+    monkeypatch.setattr(wl, "available", lambda: True)
+    monkeypatch.setattr(wl, "transcribe_words", fake)
+    res = run_job(JobRequest(inputs=[video], steps={TRANSCRIBE}, source_lang="auto"), settings)
+    assert got["language"] is None and got["multi"] and "Transcrição fiel" not in got["prompt"]
+    srt = res.outputs["srt"]
+    assert srt.name.endswith(".tr.srt") and res.source_lang == "tr"
+    cues = read_srt(srt)
+    en = [i for i, c in enumerate(cues, start=1) if "money" in c.text]
+    assert en
+    report = Path(str(srt)[:-4] + ".qc.txt").read_text(encoding="utf-8")
+    assert "inglês" in report
+    flags = load_flags(srt)
+    assert set(flags) == set(en) and "inglês" in flags[en[0]]

@@ -96,3 +96,37 @@ def starts_clause(word: str, language: str) -> bool:
 
 def is_tight_follower(word: str, language: str) -> bool:
     return normalize_token(word) in TIGHT_FOLLOWERS.get(base_language(language), frozenset())
+
+
+# ------------------------------------------- escritas sem espaço entre palavras
+# Japonês e chinês não separam palavras por espaço (o coreano separa). Vale pelo que está
+# escrito, não pelo idioma do trabalho: uma fala em japonês no meio de um episódio em turco
+# é juntada e quebrada como japonês.
+_NOSPACE = re.compile(r"[぀-ヿㇰ-ㇿ㐀-䶿一-鿿豈-﫿"
+                      r"　-〿！-｠]")
+
+
+def is_nospace_char(ch: str) -> bool:
+    return bool(ch) and bool(_NOSPACE.match(ch))
+
+
+def has_nospace_script(text: str) -> bool:
+    return bool(_NOSPACE.search(text or ""))
+
+
+def needs_space(left: str, right: str) -> bool:
+    """Espaço entre dois pedaços? Não entre dois caracteres de japonês/chinês."""
+    if not left or not right:
+        return False
+    return not (is_nospace_char(left[-1]) and is_nospace_char(right[0]))
+
+
+def join_tokens(tokens) -> str:
+    """Junta palavras como o idioma escreve: com espaço, exceto entre japonês/chinês."""
+    out = ""
+    for t in tokens:
+        t = t.strip()
+        if not t:
+            continue
+        out = out + (" " if out and needs_space(out, t) else "") + t
+    return out

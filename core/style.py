@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 
+from .languages import LANG_SUFFIX
 from .profiles import Profile
 
 # Interjeições sonoras comuns (pt e es), para as regras que as proíbem.
@@ -121,10 +122,10 @@ def output_name(stem: str, target: str, naming: str = "") -> str:
     """Nome do arquivo traduzido. `stem` já sem a extensão."""
     if naming == "encripta":
         base = re.sub(r"(_sub)?_(pt|spa|es|por|eng|en)$", "", stem, flags=re.IGNORECASE)
-        base = re.sub(r"\.(pt|es|en)([-_][A-Za-z0-9]{2,3})?$", "", base, flags=re.IGNORECASE)
+        base = re.sub(LANG_SUFFIX, "", base, flags=re.IGNORECASE)
         base = re.sub(r"\s+", "_", base.strip())
         suffix = "pt" if target.lower().startswith("pt") else (
             "spa" if target.lower().startswith("es") else target.split("-")[0].lower())
         return f"{base}_sub_{suffix}.srt"
-    stem = re.sub(r"\.(pt|es|en)([-_][A-Za-z0-9]{2,3})?$", "", stem, flags=re.IGNORECASE)
+    stem = re.sub(LANG_SUFFIX, "", stem, flags=re.IGNORECASE)
     return f"{stem}.{target}.srt"

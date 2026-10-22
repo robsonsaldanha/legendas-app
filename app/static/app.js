@@ -120,6 +120,7 @@ const STATUS = { fila: "Na fila", rodando: "Em andamento", pronto: "Pronto", err
 const STEP_NAMES = { transcrever: "Transcrever", sincronizar: "Sincronizar", traduzir: "Traduzir", formatar: "Formatar", alinhar: "Tempo das palavras" };
 
 function langName(code) {
+  if (!code || code === "auto") return "Detectar automaticamente";
   const l = (S.state?.languages || []).find((x) => x.code === code);
   return l ? l.name : code;
 }
@@ -291,7 +292,7 @@ async function renderNew() {
   await Promise.all([loadState(), loadProjects()]);
   const d = S.draft;
   const st = S.state;
-  const noKey = !st.api_key;
+  const noKey = !st.api_key && !st.local_transcribe;
 
   main.innerHTML = `
     <div class="page-head">
@@ -355,7 +356,7 @@ async function renderNew() {
             </label>
             <div class="langs" style="grid-column:1/-1">
               <label class="field"><span>Idioma de origem <em class="muted small" id="f-detected">${d.detected ? "· detectado na legenda" : ""}</em></span>
-                <select id="f-src">${langOptions(d.source_lang)}</select>
+                <select id="f-src">${langOptions(d.source_lang, true)}</select>
               </label>
               <button class="btn icon swap" data-action="swap" title="Inverter idiomas" aria-label="Inverter idiomas" ${d.steps.traduzir ? "" : "disabled"}>⇄</button>
               <label class="field"><span>Traduzir para</span>
@@ -397,8 +398,8 @@ function stepTile(key, title, desc) {
     </label>`;
 }
 
-function langOptions(sel) {
-  return S.state.languages.map((l) => `<option value="${l.code}" ${l.code === sel ? "selected" : ""}>${esc(l.name)}</option>`).join("");
+function langOptions(sel, auto = false) {
+  return (auto ? `<option value="auto" ${sel === "auto" ? "selected" : ""}>Detectar automaticamente</option>` : "") + S.state.languages.map((l) => `<option value="${l.code}" ${l.code === sel ? "selected" : ""}>${esc(l.name)}</option>`).join("");
 }
 
 function renderFiles() {
@@ -488,7 +489,8 @@ function curMethod() {
 let PENDING_TRANSLATE = null;  // o editor abre a janela de tradução assim que carregar
 
 function shortLang(code) {
-  return { "pt-BR": "Português", "es-419": "Espanhol (LatAm)", "es-ES": "Espanhol (Espanha)", "en-US": "Inglês" }[code] || code;
+  if (!code || code === "auto") return "idioma detectado";
+  return { "pt-BR": "Português", "es-419": "Espanhol (LatAm)", "es-ES": "Espanhol (Espanha)" }[code] || langName(code);
 }
 function startLabel(steps) {
   const t = steps.includes("transcrever"), tr = steps.includes("traduzir");
@@ -505,6 +507,7 @@ function autoProfile() {
   const m = /^(.+?)-(pt-br|es-419)(-kids)?$/.exec(d.profile_key);
   if (!m) return;
   const lang = d.steps.traduzir ? d.target_lang : d.source_lang;
+  if (!lang || lang === "auto") return;
   const code = lang.startsWith("pt") ? "pt-br" : lang === "es-419" ? "es-419" : null;
   if (!code) return;
   const key = `${m[1]}-${code}${m[3] || ""}`;
@@ -561,6 +564,7 @@ async function addPaths(paths) {
       toast("Texto sem tempo: vai ser encaixado na fala do vídeo (usa a transcrição pela API).");
     } else if (f.kind === "media" && !d.files.some((x) => x.kind === "subtitle" || x.kind === "text")) {
       d.steps.transcrever = true;
+      if (!d.detected) d.source_lang = "auto";   // o idioma sai da fala do vídeo
     }
   }
   syncNewForm();
@@ -1155,6 +1159,7 @@ async function renderSettings() {
             <option value="local" ${s.transcribe_engine !== "openai" ? "selected" : ""}>Este computador (Whisper, sem custo)</option>
             <option value="openai" ${s.transcribe_engine === "openai" ? "selected" : ""}>API da OpenAI (pago, pela internet)</option>
           </select></label>
+        <label class="check"><input type="checkbox" id="s-multi" ${s.transcribe_multilang !== false ? "checked" : ""}> Conferir falas em outros idiomas (personagem estrangeiro): transcreve no idioma da fala e marca ⚑</label>
         <label class="field"><span>Modelo de transcrição no computador</span>
           <select id="s-whisper">
             <option value="large-v3" ${s.whisper_model === "large-v3" || !s.whisper_model ? "selected" : ""}>O melhor (~3 GB, recomendado)</option>
@@ -1223,6 +1228,7 @@ async function renderSettings() {
           use_gpu: document.getElementById("s-gpu").value,
           whisper_model: document.getElementById("s-whisper").value,
           transcribe_engine: document.getElementById("s-engine").value,
+          transcribe_multilang: document.getElementById("s-multi").checked,
           keep_job_days: Number(document.getElementById("s-days").value),
         });
         await loadState();
@@ -1264,7 +1270,7 @@ function aiSection(st) {
   return `
     <section class="panel stack" id="ai">
       <div class="row" style="justify-content:space-between"><h2>Inteligência artificial</h2><span class="label">tradução automática</span></div>
-      <p class="muted small">A <b>tradução automática</b> (pela API) usa o serviço marcado abaixo. A transcrição continua pela OpenAI. As chaves ficam no Gerenciador de Credenciais do Windows, nunca em arquivo.</p>
+      <p class="muted small">A <b>tradução automática</b> (pela API) usa o serviço marcado abaixo. A transcrição é feita neste computador (ou pela OpenAI, se escolhido em Avançado). As chaves ficam no Gerenciador de Credenciais do Windows, nunca em arquivo.</p>
       <div class="ai-use">
         <span class="label">Traduzir com</span>
         ${ai.providers.map((x) => `<label class="ai-chip ${x.ready ? "" : "off"}" title="${x.ready ? "" : "Falta configurar"}">

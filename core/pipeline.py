@@ -17,7 +17,6 @@ import argparse
 import json
 import logging
 import sys
-import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -34,7 +33,9 @@ from .glossary import Entry, load_glossary, transcription_keywords
 from .jobs import Job, job_id_for
 from .media import detect_silences, extract_audio, load_wav, probe
 from .plan import FORMAT, SYNC, TRANSCRIBE, TRANSLATE, Inputs, build_plan, parse_steps
-from .profiles import Profile, default_profile_for, get_profile
+from .profiles import Profile, default_profile_for, for_language, get_profile
+from .languages import from_whisper, whisper_code
+from .flags import save_flags
 from .qc import AVISO, Issue, check_rules, write_report
 from .subtitle import Cue, Word, read_srt, write_srt
 from .transcribe import OpenAITranscriber, Segment, Transcriber, build_prompt, clean_text, run_transcription
@@ -151,25 +152,26 @@ def estimate_cost(chunks: list[Chunk], settings: Settings, local: bool | None = 
     return minutes, minutes * settings.transcribe_usd_per_min
 
 
-_WHISPER_LANG = {"pt": "pt-BR", "es": "es-419", "en": "en"}
-
-
 def _transcribe_local(job: Job, wav: Path, src_lang: str, req, settings: Settings, cb, glossary):
     """Transcreve no computador (Whisper). Devolve (segmentos, palavras, idioma)."""
     from . import whisper_local as wl
     size = settings.whisper_model or "large-v3"
     out = job.path("whisper.json")
-    lang = None if req.source_lang in ("", "auto") else base_language(src_lang)
+    lang = None if src_lang in ("", "auto") else whisper_code(src_lang)
     labels = {"baixando": f"Baixando o modelo de transcrição {size} (só na primeira vez)…",
-              "transcrevendo": f"Transcrevendo no computador (Whisper {size})…"}
+              "transcrevendo": f"Transcrevendo no computador (Whisper {size})…",
+              "idiomas": "Conferindo falas em outros idiomas…"}
     cb.status(labels["transcrevendo"])
-    prompt = build_prompt(src_lang, req.context)
+    # dica de contexto no idioma da fala; com idioma a detectar, sem frase-modelo (ela puxaria
+    # a transcrição para o idioma da frase)
+    prompt = build_prompt(src_lang, req.context) if lang else (req.context or "").strip()
     terms = transcription_keywords(glossary)
     if terms:
         prompt = (prompt + " " + ", ".join(terms[:40])).strip()
     try:
         r = wl.transcribe_words(wav, out, size, "cpu" if settings.use_gpu == "nao" else "auto",
                                 language=lang, prompt=prompt, full=True,
+                                multi=bool(getattr(settings, "transcribe_multilang", True)),
                                 progress=lambda fase, p: (cb.status(labels.get(fase, "Transcrevendo…")),
                                                           cb.progress(TRANSCRIBE, int(p * 100), 100)),
                                 cancelled=cb.cancelled)
@@ -177,13 +179,36 @@ def _transcribe_local(job: Job, wav: Path, src_lang: str, req, settings: Setting
         raise PipelineError(str(e)) from e
     cb.check_cancel()
     if lang is None and r.get("idioma"):
-        src_lang = _WHISPER_LANG.get(r["idioma"], r["idioma"])
-    segments = [Segment(float(a), float(b), clean_text(t)) for a, b, t in r.get("segmentos", []) if t.strip()]
+        src_lang = from_whisper(r["idioma"])
+    segments = [Segment(float(g[0]), float(g[1]), clean_text(g[2])) for g in r.get("segmentos", [])
+                if str(g[2]).strip()]
+    others = [(float(o["ini"]), float(o["fim"]), from_whisper(o["idioma"])) for o in r.get("outros", [])]
     words = [Word(text=w[2], start=float(w[0]), end=float(max(w[1], w[0] + 0.02))) for w in r.get("palavras", [])
              if str(w[2]).strip()]
-    log.info("Transcrição local (%s, %s): %d trechos, %d palavras, idioma %s",
-             size, r.get("onde"), len(segments), len(words), r.get("idioma"))
-    return segments, words, src_lang
+    log.info("Transcrição local (%s, %s): %d trechos, %d palavras, idioma %s, %d trecho(s) em outro idioma",
+             size, r.get("onde"), len(segments), len(words), r.get("idioma"), len(others))
+    return segments, words, src_lang, others
+
+
+def _in_ranges(t0: float, t1: float, ranges) -> bool:
+    mid = (t0 + t1) / 2
+    return any(a - 0.05 <= mid <= b + 0.05 for a, b, *_ in ranges)
+
+
+def foreign_issues(cues: list[Cue], others) -> list[Issue]:
+    """Legendas que caem (na maior parte) numa fala em outro idioma: avisar para conferir."""
+    from .languages import display_name
+    out = []
+    for i, c in enumerate(cues, start=1):
+        best, lang = 0.0, None
+        for a, b, lg in others:
+            ov = min(c.end, b) - max(c.start, a)
+            if ov > best:
+                best, lang = ov, lg
+        if lang and best >= 0.5 * max(0.04, c.end - c.start):
+            out.append(Issue(i, c.start, AVISO, "outro_idioma",
+                             f"Fala em {display_name(lang).lower()} (transcrita no idioma original). Confira."))
+    return out
 
 
 def _unique(path: Path, job: Job, key: str) -> Path:
@@ -228,14 +253,18 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         if not script.strip():
             raise PipelineError(f"O texto {inputs.text.name} está vazio.")
     src_lang = req.source_lang
-    if src_lang in ("", "auto"):
+    auto_src = src_lang in ("", "auto")
+    if auto_src:
         sample = [c.text for c in source_cues] if source_cues else script.splitlines()
-        src_lang = (detect_language(sample) if sample else None) or "pt-BR"
+        # vídeo sem texto: o idioma sai da própria fala, na transcrição
+        src_lang = (detect_language(sample) if sample else None) or ("auto" if needs_words and not sample
+                                                                     else "pt-BR")
     # mesmo idioma (ex.: espanhol → espanhol) = revisão: o prompt muda (core.translate.is_revision)
 
     final_profile = req.profile or default_profile_for(req.target_lang if translating else src_lang)
-    source_profile = (dataclasses.replace(final_profile, language=src_lang)
-                      if translating else final_profile)
+    if translating:
+        final_profile = for_language(final_profile, req.target_lang)
+    source_profile = for_language(final_profile, src_lang)
 
     job = Job.open(job_id_for(req.inputs, _params_for_id(req, final_profile, settings)), jobs_base)
     job.meta.update(versao=__version__, entradas=[str(p) for p in req.inputs],
@@ -253,6 +282,7 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         glossary += load_glossary(req.glossary)
     fps = None
     estimated: list[bool] = []
+    others: list = []          # falas em outro idioma: (início, fim, idioma)
 
     # ------------------------------------- sincronizar legenda pelo áudio
     if sub_sync:
@@ -320,26 +350,42 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         local_words: list[Word] | None = None
         if job.is_done("transcrever") and segs_path.exists():
             segments = [Segment(**s) for s in json.loads(segs_path.read_text(encoding="utf-8"))]
+            done = job.meta["etapas"]["transcrever"]
+            src_lang = done.get("idioma") or src_lang
+            others = [tuple(o) for o in done.get("outros", [])]
         elif transcriber is None and use_local_transcription(settings):
-            segments, local_words, src_lang = _transcribe_local(job, wav, src_lang, req, settings, cb, glossary)
+            segments, local_words, src_lang, others = _transcribe_local(job, wav, src_lang, req, settings,
+                                                                        cb, glossary)
             segs_path.write_text(json.dumps([s.to_dict() for s in segments], ensure_ascii=False,
                                             indent=1), encoding="utf-8")
             job.mark("transcrever", "ok", segmentos=len(segments), minutos=round(result.audio_minutes, 2),
-                     custo_usd=0.0, local=True)
+                     custo_usd=0.0, local=True, idioma=src_lang, outros=[list(o) for o in others])
         else:
             cb.status("Transcrevendo (API da OpenAI)…")
             transcriber = transcriber or OpenAITranscriber(settings.transcribe_model)
             segments = run_transcription(
-                audio, chunks, transcriber, job.path("blocos"), src_lang,
+                audio, chunks, transcriber, job.path("blocos"), "" if src_lang == "auto" else src_lang,
                 prompt=build_prompt(src_lang, req.context),
                 keywords=transcription_keywords(glossary), parallel=settings.parallel_requests,
                 progress=lambda d, t: cb.progress(TRANSCRIBE, d, t), cancelled=cb.cancelled)
             cb.check_cancel()
+            if src_lang == "auto":
+                src_lang = detect_language([sg.text for sg in segments]) or "pt-BR"
             segs_path.write_text(json.dumps([s.to_dict() for s in segments], ensure_ascii=False,
                                             indent=1), encoding="utf-8")
             job.mark("transcrever", "ok", segmentos=len(segments),
                      minutos=round(result.audio_minutes, 2),
-                     custo_usd=round(result.estimated_usd, 4))
+                     custo_usd=round(result.estimated_usd, 4), idioma=src_lang)
+        if src_lang == "auto":
+            src_lang = "pt-BR"
+        if auto_src:   # idioma descoberto pela fala: regras e nome do arquivo seguem ele
+            source_profile = for_language(final_profile if translating
+                                          else (req.profile or default_profile_for(src_lang)), src_lang)
+            if not translating:
+                final_profile = source_profile
+            result.source_lang = src_lang
+            job.meta["idioma_origem"] = src_lang
+            job.save()
         if not segments:
             raise PipelineError("Não foi encontrada fala no áudio.")
 
@@ -355,10 +401,15 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
             job.mark("alinhar", "ok", palavras=len(words), estimadas=0, origem="whisper")
         else:
             cb.status("Calculando o tempo de cada palavra…")
-            words = align_segments(segments, audio, src_lang, mode=settings.align,
+            # falas em outro idioma ficam com os tempos do Whisper; o alinhador é do idioma principal
+            main = [sg for sg in segments if not _in_ranges(sg.start, sg.end, others)] if others else segments
+            words = align_segments(main, audio, src_lang, mode=settings.align,
                                    device=settings.align_device,
                                    progress=lambda d, t: cb.progress("alinhar", d, t),
                                    status=cb.status)
+            if others and local_words:
+                words = sorted(words + [w for w in local_words if _in_ranges(w.start, w.end, others)],
+                               key=lambda w: w.start)
             words_path.write_text(json.dumps([w.to_dict() for w in words], ensure_ascii=False),
                                   encoding="utf-8")
             job.mark("alinhar", "ok", palavras=len(words),
@@ -382,8 +433,11 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         source_cues = fmt.cues
         result.outputs["srt"] = src_srt
         result.estimated_timing = any(estimated)
+        if others:
+            save_flags(src_srt, {x.index: x.message for x in foreign_issues(fmt.cues, others)})
         if not translating:
             issues = check_rules(fmt.cues, source_profile, fps, estimated, src_lang)
+            issues = sorted(issues + foreign_issues(fmt.cues, others), key=lambda x: x.index)
             qc_txt = src_srt.with_name(src_srt.name[:-4] + ".qc.txt")
             write_report(issues, fmt.cues, source_profile, qc_txt, job.path("qc.json"),
                          title=media.name, note=_estimated_note(estimated))
@@ -441,7 +495,11 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
             target = target.with_name(target.name[:-4] + " (tradução).srt")
         out = write_srt(cues, _unique(target, job, "srt"))
         _remember_output(job, "srt", out)
+        if needs_words and others:
+            save_flags(out, {x.index: x.message for x in foreign_issues(cues, others)})
         issues = check_rules(cues, final_profile, fps, estimated or None, req.target_lang)
+        if needs_words and others:
+            issues += foreign_issues(cues, others)
         for i in tr.missing:
             issues.append(Issue(i, cues[i - 1].start, AVISO, "sem_traducao",
                                 "Ficou no idioma original (a tradução não voltou). Traduzir à mão."))

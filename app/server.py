@@ -29,6 +29,7 @@ from core.media import probe
 from core.openai_client import delete_api_key, get_api_key, make_client, set_api_key, with_retry
 from core.plan import MEDIA_EXT, SUBTITLE_EXT, TEXT_EXT
 from core.subtitle import read_srt
+from core.languages import as_dicts as as_languages
 from core.translate import detect_language, opposite_language
 
 from . import dialogs
@@ -39,12 +40,7 @@ log = logging.getLogger("legendas.server")
 
 STATIC = Path(__file__).resolve().parent / "static"
 
-LANGUAGES = [
-    {"code": "pt-BR", "name": "Português (Brasil)"},
-    {"code": "es-419", "name": "Espanhol (América Latina)"},
-    {"code": "es-ES", "name": "Espanhol (Espanha)"},
-    {"code": "en-US", "name": "Inglês"},
-]
+LANGUAGES = as_languages()
 
 
 class ApiError(Exception):
@@ -690,7 +686,7 @@ class Handler(BaseHTTPRequestHandler):
                    "translate_usd_per_mtok_out": float, "translate_method": str,
                    "parallel_requests": int, "align": str, "keep_job_days": int,
                    "translator_name": str, "use_gpu": str, "whisper_model": str,
-                   "transcribe_engine": str}
+                   "transcribe_engine": str, "transcribe_multilang": bool}
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))

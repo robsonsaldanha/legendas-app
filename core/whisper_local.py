@@ -68,18 +68,21 @@ def transcribe_words(wav16: Path, out_json: Path, size: str = "large-v3", device
                      language: str | None = None,
                      progress: Callable[[str, float], None] | None = None,
                      cancelled: Callable[[], bool] | None = None,
-                     prompt: str = "", full: bool = False) -> dict:
+                     prompt: str = "", full: bool = False, multi: bool = False) -> dict:
     """Transcrição com tempo das palavras → out_json.
 
     Devolve {"onde", "idioma", "palavras": [[ini, fim, palavra]], "segmentos": [[ini, fim, texto]]}.
-    `full`: transcrição para virar legenda (ignora trechos sem fala, usa o `prompt` de contexto)."""
+    `full`: transcrição para virar legenda (ignora trechos sem fala, usa o `prompt` de contexto).
+    `multi`: confere o idioma de cada trecho de fala e transcreve no idioma dele os que forem
+    de outro idioma (personagem estrangeiro). Esses trechos vêm com o idioma no 4º campo de
+    "segmentos" e em "outros"."""
     if not available():
         raise WhisperError("A transcrição local não está instalada nesta versão.")
     devices = ["cuda", "cpu"] if device == "auto" else [device]
     last = ""
     for dev in devices:
         cmd = [_python(), "-m", "core.whisper_local", str(wav16), str(out_json), size, dev, language or "",
-               "1" if full else "0", prompt or ""]
+               "1" if full else "0", prompt or "", "1" if multi else "0"]
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                 cwd=str(Path(__file__).resolve().parent.parent), creationflags=_NO_WINDOW)
         try:
@@ -130,6 +133,74 @@ def _detect_language(model, audio) -> str | None:
     return votes.most_common(1)[0][0] if votes else None
 
 
+MIN_FOREIGN = 1.0       # s: trecho mais curto em que dá para reconhecer o idioma
+FOREIGN_PROB = 0.8      # certeza mínima do Whisper de que o trecho é de outro idioma
+SURE_PROB = 0.92        # com esta certeza, aceita mesmo sem melhora clara
+BETTER_LP = 0.15        # a transcrição no outro idioma tem de ser claramente mais provável
+
+
+def _other_languages(model, audio, segs: list[dict], main: str, progress=None) -> list[dict]:
+    """Falas em outro idioma no meio do episódio: detecta o idioma de cada trecho e
+    retranscreve no idioma dele. Só troca se o Whisper tiver certeza e a nova transcrição
+    for claramente mais provável que a primeira (senão fica como estava)."""
+    sr = 16000
+    cand = []
+    for k, g in enumerate(segs):
+        if progress and k % 20 == 0:
+            progress(k / max(1, len(segs)) * 0.7)
+        if g["e"] - g["s"] < MIN_FOREIGN or not g["text"]:
+            continue
+        clip = audio[max(0, int((g["s"] - 0.1) * sr)): int((g["e"] + 0.1) * sr)]
+        try:
+            lang, prob, _ = model.detect_language(clip)
+        except Exception:  # noqa: BLE001
+            continue
+        if lang != main and prob >= FOREIGN_PROB:
+            cand.append((k, lang, prob))
+    groups: list[list] = []          # trechos seguidos no mesmo idioma: transcritos juntos
+    for k, lang, prob in cand:
+        if groups and groups[-1][1] == lang and groups[-1][0][-1] == k - 1 \
+                and segs[k]["s"] - segs[k - 1]["e"] < 1.5:
+            groups[-1][0].append(k)
+            groups[-1][2] = min(groups[-1][2], prob)
+        else:
+            groups.append([[k], lang, prob])
+    replace: dict[int, list[dict]] = {}
+    for n, (ks, lang, prob) in enumerate(groups):
+        if progress:
+            progress(0.7 + 0.3 * n / max(1, len(groups)))
+        a, b = segs[ks[0]]["s"], segs[ks[-1]]["e"]
+        off = max(0.0, a - 0.2)
+        clip = audio[int(off * sr): int((b + 0.2) * sr)]
+        try:
+            new, _ = model.transcribe(clip, language=lang, task="transcribe", word_timestamps=True,
+                                      beam_size=5, condition_on_previous_text=False, vad_filter=False)
+            new = list(new)
+        except Exception:  # noqa: BLE001
+            continue
+        new = [x for x in new if x.text.strip()]
+        if not new:
+            continue
+        dur = lambda xs, f: sum((x.end - x.start if f else x["e"] - x["s"]) for x in xs) or 1.0  # noqa: E731
+        old_lp = sum(segs[k]["lp"] * (segs[k]["e"] - segs[k]["s"]) for k in ks) / dur([segs[k] for k in ks], False)
+        new_lp = sum(x.avg_logprob * (x.end - x.start) for x in new) / dur(new, True)
+        # forçado no idioma principal, o Whisper às vezes *traduz* a fala estrangeira (texto
+        # plausível); com detecção muito certa basta a nova não ser pior
+        if not (new_lp >= old_lp + BETTER_LP or (prob >= SURE_PROB and new_lp >= old_lp - 0.1)):
+            continue
+        replace[ks[0]] = [{"s": x.start + off, "e": x.end + off, "text": x.text.strip(), "lp": x.avg_logprob,
+                           "lang": lang, "words": [[w.start + off, w.end + off, w.word.strip()]
+                                                   for w in x.words or []]} for x in new]
+        for k in ks[1:]:
+            replace[k] = []
+    out = []
+    for k, g in enumerate(segs):
+        out += replace.get(k, [g])
+    if progress:
+        progress(1.0)
+    return out
+
+
 def _main(argv: list[str]) -> int:
     import wave
     import numpy as np
@@ -137,6 +208,7 @@ def _main(argv: list[str]) -> int:
     lang = (argv[4] if len(argv) > 4 else "") or None
     full = len(argv) > 5 and argv[5] == "1"
     prompt = (argv[6] if len(argv) > 6 else "") or None
+    multi = len(argv) > 7 and argv[7] == "1"
     if dev == "cuda":
         _cuda_dlls()
         import ctranslate2
@@ -163,16 +235,24 @@ def _main(argv: list[str]) -> int:
     segments, info = model.transcribe(audio, language=lang, task="transcribe", word_timestamps=True,
                                       vad_filter=full, beam_size=5, condition_on_previous_text=False,
                                       initial_prompt=prompt if full else None)
-    words, segs = [], []
+    main = lang or info.language
+    segs = []
     for seg in segments:
-        for w in seg.words or []:
-            words.append([round(w.start, 3), round(w.end, 3), w.word.strip()])
-        if seg.text.strip():
-            segs.append([round(seg.start, 3), round(seg.end, 3), seg.text.strip()])
+        segs.append({"s": seg.start, "e": seg.end, "text": seg.text.strip(), "lp": seg.avg_logprob,
+                     "lang": main, "words": [[w.start, w.end, w.word.strip()] for w in seg.words or []]})
         say("transcrevendo", min(1.0, seg.end / max(1.0, total)))
+    if multi:
+        segs = _other_languages(model, audio, segs, main, lambda p: say("idiomas", p))
+    words, out_segs, others = [], [], []
+    for g in segs:
+        words += [[round(a, 3), round(b, 3), w] for a, b, w in g["words"] if w]
+        if g["text"]:
+            out_segs.append([round(g["s"], 3), round(g["e"], 3), g["text"], g["lang"]])
+            if g["lang"] != main:
+                others.append({"ini": round(g["s"], 3), "fim": round(g["e"], 3), "idioma": g["lang"]})
     Path(dst).write_text(json.dumps({"onde": "placa de vídeo (CUDA)" if dev == "cuda" else "processador",
-                                     "idioma": info.language, "palavras": words, "segmentos": segs},
-                                    ensure_ascii=False), encoding="utf-8")
+                                     "idioma": main, "palavras": words, "segmentos": out_segs,
+                                     "outros": others}, ensure_ascii=False), encoding="utf-8")
     return 0
 
 

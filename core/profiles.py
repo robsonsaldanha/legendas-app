@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict, field, replace
 from pathlib import Path
 
 from .rules import NETFLIX_ES_RULES, NETFLIX_PT_RULES, active_checks
@@ -196,4 +196,26 @@ def default_profile_for(language: str) -> Profile:
     lang = language.lower()
     if lang.startswith("pt"):
         return NETFLIX_PT_BR
-    return NETFLIX_ES_419
+    if lang.startswith("es") or not lang or lang == "auto":
+        return NETFLIX_ES_419
+    from .languages import display_name
+    generic = replace(NETFLIX_ES_419, name=f"Netflix — {display_name(language)}", rules=[],
+                      notes="Guia geral da Netflix para o idioma.")
+    return for_language(generic, language)
+
+
+def for_language(profile: Profile, language: str | None) -> Profile:
+    """O perfil vale para pt/es (manual do cliente). Em japonês, chinês, coreano, árabe e
+    hindi a Netflix tem limites próprios de linha e de leitura: usa os desse idioma."""
+    from .languages import get, base
+    if not language or language == "auto":
+        return profile
+    lang = get(language)
+    if lang is None or base(profile.language) == base(language):
+        return profile if profile.language == language else replace(profile, language=language)
+    special = lang.chars != 42 or lang.cps != 17.0
+    if not special:
+        return replace(profile, language=language)
+    kids = profile.max_cps < 15
+    return replace(profile, language=language, max_chars_per_line=lang.chars,
+                   max_cps=lang.kids_cps if kids else lang.cps, optimal_cps=None)

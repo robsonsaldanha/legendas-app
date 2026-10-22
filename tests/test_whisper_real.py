@@ -31,3 +31,17 @@ def test_full_transcription_detects_language(tmp_path):
                             prompt="Transcrição fiel.")
     assert r["idioma"] == "en" and r["segmentos"] and len(r["palavras"]) >= 8
     assert all(a <= b and t.strip() for a, b, t in r["segmentos"])
+
+
+@pytest.mark.skipif(not (wl.available() and os.environ.get("WHISPER_MIXED_WAV")),
+                    reason="faster-whisper ou áudio com dois idiomas ausentes")
+def test_foreign_speech_in_its_own_language(tmp_path):
+    """Português com uma fala em inglês no meio: o inglês sai em inglês, marcado."""
+    out = tmp_path / "misto.json"
+    r = wl.transcribe_words(Path(os.environ["WHISPER_MIXED_WAV"]), out, "small", "cpu", full=True, multi=True)
+    print(r["segmentos"], r["outros"])
+    assert r["idioma"] == "pt"
+    en = [s for s in r["segmentos"] if s[3] == "en"]
+    assert en and any("station" in s[2].lower() for s in en)
+    assert r["outros"] and all(o["idioma"] == "en" for o in r["outros"])
+    assert any("praia" in s[2].lower() for s in r["segmentos"] if s[3] == "pt")

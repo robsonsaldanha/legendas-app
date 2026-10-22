@@ -8,8 +8,10 @@ com a linha de baixo mais longa, sem forçar quando a sintaxe não ajuda.
 
 from __future__ import annotations
 
+import re
+
 from .lang import (is_weak, ends_sentence, ends_clause, visible_len, starts_clause,
-                   is_tight_follower)
+                   is_tight_follower, has_nospace_script, join_tokens, _NOSPACE)
 
 # Pesos da função de custo (quanto menor o custo, melhor a quebra).
 W_OVERFLOW = 1000.0   # por caractere acima do limite
@@ -81,6 +83,8 @@ def break_lines(text: str, max_len: int, max_lines: int, language: str) -> list[
         return []
     if visible_len(text) <= max_len or max_lines <= 1:
         return [text]
+    if has_nospace_script(text):
+        return _break_nospace(text, max_len, max_lines)
     words = text.split(" ")
     if len(words) == 1:
         return [text]
@@ -115,4 +119,51 @@ def rewrap(lines: list[str], max_len: int, max_lines: int, language: str,
     if len(lines) >= 2 and any(l.lstrip().startswith(("-", "–", "—")) for l in lines[1:]):
         return [normalize_dialogue_line(l, dash) if l.lstrip().startswith(("-", "–", "—")) else l.strip()
                 for l in lines]
-    return break_lines(" ".join(lines), max_len, max_lines, language)
+    return break_lines(join_tokens(lines), max_len, max_lines, language)
+
+
+# ------------------------------------------------ japonês / chinês (sem espaços)
+_UNIT = re.compile(_NOSPACE.pattern + r"|[^" + _NOSPACE.pattern[1:-1] + r"]+")
+_NO_LINE_START = set("、。，．・：；？！ー…‥）」』】〉》〕］｝)]!?,.:;%")   # não começa linha
+_NO_LINE_END = set("（「『【〈《〔［｛([")                                  # não termina linha
+_GOOD_END = set("、。，！？…!?,") 
+
+
+def _units(text: str) -> list[tuple[str, bool]]:
+    """Pedaços que podem ir para a linha de baixo: cada caractere japonês/chinês ou uma
+    palavra de outra escrita inteira. bool = havia espaço antes."""
+    out: list[tuple[str, bool]] = []
+    for i, part in enumerate(text.split(" ")):
+        for j, u in enumerate(_UNIT.findall(part)):
+            out.append((u, i > 0 and j == 0))
+    return out
+
+
+def _join_units(units: list[tuple[str, bool]]) -> str:
+    return "".join((" " if sp and k else "") + u for k, (u, sp) in enumerate(units))
+
+
+def _break_nospace(text: str, max_len: int, max_lines: int) -> list[str]:
+    units = _units(text)
+    if len(units) < 2:
+        return [text]
+    best_k, best_cost = 1, float("inf")
+    for k in range(1, len(units)):
+        top, bottom = _join_units(units[:k]), _join_units(units[k:]).lstrip()
+        l1, l2 = visible_len(top), visible_len(bottom)
+        cost = W_OVERFLOW * (max(0, l1 - max_len) + (max(0, l2 - max_len) if max_lines <= 2 else 0))
+        prev, nxt = units[k - 1][0], units[k][0]
+        if nxt[0] in _NO_LINE_START or prev[-1] in _NO_LINE_END:
+            cost += 500
+        if units[k][1] or prev[-1] in _GOOD_END:
+            cost += B_CLAUSE
+        if l1 > l2:
+            cost += W_TOP_HEAVY * (l1 - l2)
+        else:
+            cost += W_BOTTOM_HEAVY * (l2 - l1)
+        if cost < best_cost:
+            best_k, best_cost = k, cost
+    top, bottom = _join_units(units[:best_k]), _join_units(units[best_k:]).lstrip()
+    if max_lines > 2 and visible_len(bottom) > max_len:
+        return [top] + _break_nospace(bottom, max_len, max_lines - 1)
+    return [top, bottom]

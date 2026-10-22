@@ -65,6 +65,16 @@ LANG_RULES = {
         "Natural American English.",
         "Numbers one to ten spelled out.",
     ],
+    # guias da Netflix (pontuação própria desses idiomas)
+    "zh": [
+        "Chinês simplificado. Não use vírgula nem ponto: ponha um espaço no lugar. Pontos de interrogação e exclamação de largura total quando necessários; não combine ?! nem !!.",
+    ],
+    "ja": [
+        "Japonês: no lugar de 、 use um espaço de meia largura e no lugar de 。 um espaço de largura total; pontuação de largura total.",
+    ],
+    "ko": [
+        "Coreano natural, com o espaçamento padrão entre palavras.",
+    ],
 }
 
 SCHEMA = {
@@ -86,14 +96,16 @@ SCHEMA = {
 
 
 def lang_name(code: str) -> str:
-    return LANG_NAMES.get(code) or LANG_NAMES.get(base_language(code), code)
+    from .languages import prompt_name
+    return LANG_NAMES.get(code) or LANG_NAMES.get(base_language(code)) or prompt_name(code)
 
 
 def lang_rules(code: str) -> list[str]:
     if code in LANG_RULES:
         return LANG_RULES[code]
     b = base_language(code)
-    return {"es": LANG_RULES["es-419"], "pt": LANG_RULES["pt-BR"], "en": LANG_RULES["en-US"]}.get(b, [])
+    return {"es": LANG_RULES["es-419"], "pt": LANG_RULES["pt-BR"], "en": LANG_RULES["en-US"]}.get(
+        b, LANG_RULES.get(b, []))
 
 
 # ===================================================== detecção de idioma
@@ -106,29 +118,76 @@ con su gracias ahora aquí al del los las nosotros el y qué sí hay hola bien p
 más mi todo nada hacer fue va voy ser tiene ya dónde cuándo porque""".split())
 _EN = set("""the and you is are this that with what not have it's i'm don't of to was
 we they he she my your yes okay""".split())
+_IT = set("""il che non è sono gli della perché questo questa anche sei siamo cosa come grazie
+ciao molto bene allora dove quando io tu lui lei noi voi loro adesso qui ancora""".split())
+_FR = set("""le les des est je tu il elle nous vous ils pas une que qui avec pour mais c'est
+oui non merci très bien où quand pourquoi être avoir fait ça maintenant""".split())
+_DE = set("""der die das und ist nicht ich du er sie wir ihr ein eine mit auf für aber auch
+ja nein danke sehr gut wo wann warum sein haben jetzt hier noch""".split())
+_TR = set("""bir bu ve ne ben sen o biz siz onlar değil var yok için ama çok iyi nerede
+neden şimdi burada evet hayır teşekkürler mi mı mu mü da de""".split())
+_NL = set("""de het een en is niet ik je jij hij zij wij jullie zijn van met op voor maar
+ook ja nee dank heel goed waar wanneer waarom hebben nu hier nog""".split())
+_PL = set("""nie jest się to że na co jak ale tak ja ty on ona my wy oni czy dla już
+dziękuję bardzo dobrze gdzie kiedy dlaczego teraz tutaj jeszcze""".split())
+_ID = set("""yang dan ini itu tidak aku saya kamu dia kami kita mereka ada untuk dengan tapi
+ya terima kasih sangat baik mana kapan kenapa sekarang sini sudah belum""".split())
+_LATIN_SETS = {"pt-BR": _PT, "es-419": _ES, "en-US": _EN, "it": _IT, "fr": _FR, "de": _DE,
+               "tr": _TR, "nl": _NL, "pl": _PL, "id": _ID}
 _COMMON = _PT & _ES
-_WORD = re.compile(r"[a-záàâãéêíóôõúüçñ']+", re.IGNORECASE)
+_WORD = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)?", re.UNICODE)
+
+# escrita própria: conta caracteres de cada alfabeto
+_SCRIPTS = [
+    ("ja", re.compile(r"[\u3040-\u30ff]")),           # hiragana/katakana
+    ("ko", re.compile(r"[\uac00-\ud7af\u1100-\u11ff]")),
+    ("zh", re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf]")),
+    ("ru", re.compile(r"[\u0400-\u04ff]")),
+    ("el", re.compile(r"[\u0370-\u03ff\u1f00-\u1fff]")),
+    ("ar", re.compile(r"[\u0600-\u06ff\u0750-\u077f]")),
+    ("he", re.compile(r"[\u0590-\u05ff]")),
+    ("hi", re.compile(r"[\u0900-\u097f]")),
+]
+_FA_ONLY = re.compile(r"[پچژگکی]")   # letras do persa (k e y persas)
+
+
+def _by_script(text: str) -> str | None:
+    counts = {code: len(rx.findall(text)) for code, rx in _SCRIPTS}
+    letters = len(re.findall(r"[^\W\d_]", text))
+    if not letters:
+        return None
+    code, n = max(counts.items(), key=lambda kv: kv[1])
+    if n < 0.3 * letters:
+        return None
+    if code == "zh" and counts["ja"] > 0.05 * n:
+        return "ja"                                    # japonês mistura kanji com kana
+    if code == "ar" and len(_FA_ONLY.findall(text)) > 0.02 * n:
+        return "fa"
+    return code
 
 
 def detect_language(texts: list[str]) -> str | None:
-    """'pt-BR', 'es-419', 'en-US' ou None (incerto)."""
+    """Código do idioma (ex.: 'pt-BR', 'es-419', 'tr', 'ja') ou None (incerto)."""
     joined = " ".join(texts)[:20000]
     lower = joined.lower()
-    score = {"pt-BR": 0.0, "es-419": 0.0, "en-US": 0.0}
+    by_script = _by_script(lower)
+    if by_script:
+        return by_script
+    score = {k: 0.0 for k in _LATIN_SETS}
     for w in _WORD.findall(lower):
         if w in _COMMON:
             continue
-        if w in _PT:
-            score["pt-BR"] += 1
-        if w in _ES:
-            score["es-419"] += 1
-        if w in _EN:
-            score["en-US"] += 1
+        for k, words in _LATIN_SETS.items():
+            if w in words:
+                score[k] += 1
     score["pt-BR"] += 2 * sum(lower.count(c) for c in "ãõç")
     score["es-419"] += 2 * sum(lower.count(c) for c in "ñ¿¡")
+    score["tr"] += 2 * sum(lower.count(c) for c in "ğış")
+    score["pl"] += 2 * sum(lower.count(c) for c in "ąęłńśźż")
+    score["de"] += 1 * sum(lower.count(c) for c in "ß")
     best = max(score, key=score.get)
     total = sum(score.values())
-    if total < 3 or score[best] < 0.55 * total:
+    if total < 3 or score[best] < 0.45 * total:
         return None
     return best
 
@@ -506,6 +565,7 @@ COMO TRADUZIR
 - Não traduza nomes de pessoas, lugares e marcas, a não ser que o glossário diga outra coisa.
 - Indicações entre colchetes ou parênteses (sons, música) e ♪ seguem as mesmas regras de tradução.
 - Palavrões e gírias: mantenha o mesmo nível de intensidade e registro do original.
+- Pode haver falas em outros idiomas (um personagem estrangeiro, por exemplo): traduza essas também para {lang_name(target)}. Se a fala já estiver em {lang_name(target)}, mantenha como está.
 - Não explique nada, não acrescente notas. Só a tradução.
 
 REGRAS DO IDIOMA DE DESTINO

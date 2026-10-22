@@ -556,3 +556,21 @@ def test_split_chat_lot_unit():
     lots = plan_chat_lots(250, 100)
     out = split_chat_lot(lots, 2, list(range(130, 201)), 25)
     assert [(l.n, l.first, l.last) for l in out] == [(1, 1, 100), (2, 130, 154), (3, 155, 179), (4, 180, 200), (5, 201, 250)]
+
+
+def test_open_shows_program_flags(server):  # noqa: F811
+    """Marcas deixadas pela transcrição (fala em outro idioma) aparecem como ⚑ no editor;
+    se o arquivo mudar fora do programa, somem."""
+    from core.flags import save_flags
+    app, port, tmp = server
+    srt = tmp / "Ep.tr.srt"
+    srt.write_text(SRT, encoding="utf-8")
+    save_flags(srt, {2: "Fala em inglês (transcrita no idioma original). Confira."})
+    d = open_editor(app, port, srt=str(srt))
+    assert [c.get("chk") for c in d["cues"]][:2] == [None, "Fala em inglês (transcrita no idioma original). Confira."]
+    time.sleep(0.05)
+    srt.write_text(SRT + "\n", encoding="utf-8")
+    import os
+    os.utime(srt, (time.time() + 5, time.time() + 5))
+    d = open_editor(app, port, srt=str(srt))
+    assert all("chk" not in c for c in d["cues"])

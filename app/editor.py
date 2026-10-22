@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 import uuid
+from core.languages import LANG_SUFFIX
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,10 +30,11 @@ from core.config import Settings, data_dir
 from core.errors import LegendasError
 from core.linebreak import rewrap
 from core.media import SAMPLE_RATE, extract_audio, ffmpeg, load_wav, probe
-from core.profiles import Profile, default_profile_for, same_family
+from core.profiles import Profile, default_profile_for, for_language, same_family
 from core.formatter import reflow_cues
 from core.qc import AVISO, Issue, check_rules, write_report
 from core.subtitle import Cue, read_srt, write_srt
+from core.flags import load_flags
 from core.translate import (ChatLot, chat_message, detect_language, is_revision, opposite_language,
                             output_name, parse_chat_answer, plan_chat_lots, restore_pos_tags,
                             split_chat_lot, strip_pos_tags)
@@ -216,7 +218,7 @@ class EditorManager:
             profile_key = same_family(ck, language or "pt-BR", self._keys()) or ck
         if not profile_key:  # automático: perfil Netflix do idioma da legenda
             profile_key = "netflix-pt-br" if (language or "").startswith("pt") else "netflix-es-419"
-        profile = self._profile(profile_key, language)
+        profile = for_language(self._profile(profile_key, language), language)
         orig_texts: list[str] | None = None
         if original and Path(original).exists() and Path(original) != srt_path:
             oc = read_srt(original)
@@ -232,6 +234,9 @@ class EditorManager:
             self._prepare_media(s)
         s.draft = [{"start": c.start, "end": c.end, "text": "\n".join(c.lines),
                     **({"orig": orig_texts[i]} if orig_texts else {})} for i, c in enumerate(cues)]
+        for n, why in (load_flags(srt_path).items() if srt_path else ()):
+            if 0 < n <= len(s.draft):
+                s.draft[n - 1]["chk"] = why          # marcas que o programa deixou ao gerar (texto)
         s.detected = detected
         s.profile = {"key": profile_key or "", **profile.to_dict()}
         s.client_id = int(client["id"]) if client else None
@@ -434,7 +439,7 @@ class EditorManager:
         folder.mkdir(parents=True, exist_ok=True)
         src = folder / (base.stem + ".srt")
         write_srt(cues, src)
-        stem = re.sub(r"\.(pt|es|en)([-_][A-Za-z0-9]{2,3})?$", "", base.stem, flags=re.IGNORECASE)
+        stem = re.sub(LANG_SUFFIX, "", base.stem, flags=re.IGNORECASE)
         inputs = [str(src)] + ([str(s.video)] if s.video else [])
         params = {"steps": ["traduzir"], "source_lang": opts.get("source_lang") or s.detected or "auto",
                   "target_lang": opts.get("target_lang") or opposite_language(s.detected),
@@ -456,7 +461,8 @@ class EditorManager:
             raise EditorError("Não há legendas para traduzir.")
         if empty:
             raise EditorError(f"A legenda {empty[0]} está sem texto. Escreva algo ou apague-a antes de traduzir.")
-        source = opts.get("source_lang") or s.detected or "pt-BR"
+        source = (opts.get("source_lang") if opts.get("source_lang") not in (None, "", "auto") else None) \
+            or s.detected or "pt-BR"
         target = opts.get("target_lang") or opposite_language(source)
         # mesmo idioma = revisão (corrige e aplica as regras, sem traduzir)
         key = opts.get("profile_key") or _auto_key(target, s.profile_key, self._keys())

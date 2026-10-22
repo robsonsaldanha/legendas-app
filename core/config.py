@@ -165,6 +165,7 @@ class Settings:
     editor: dict = field(default_factory=dict)       # preferências do editor (cores, fontes, tamanhos das áreas)
     use_gpu: str = "auto"            # placa de vídeo na separação de voz/transcrição: auto | nao
     whisper_model: str = "large-v3"  # transcrição local: sempre o melhor por padrão (small | medium | large-v3)
+    transcribe_multilang: bool = True  # transcrição local: falas em outros idiomas no idioma delas
     transcribe_engine: str = "local"  # transcrever: local (Whisper no computador, sem custo) | openai (API)
     # Nome para a assinatura no fim da legenda ("Traducción: Nome").
     translator_name: str = ""

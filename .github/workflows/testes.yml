@@ -64,8 +64,35 @@ jobs:
           $s.SpeakSsml($ssml)
           $s.Dispose()
           Get-Item "$env:RUNNER_TEMP\fala.wav" | Select-Object Length
+      - name: Fala com dois idiomas (português + inglês)
+        shell: pwsh
+        run: |
+          pip install gTTS==2.5.4
+          $py = @'
+          import subprocess, sys
+          from gtts import gTTS
+          parts = [("pt", "Olá, tudo bem? Hoje nós vamos viajar para a praia com a família inteira."),
+                   ("en", "Excuse me, where is the train station? I am completely lost."),
+                   ("pt", "Ele é um turista, vamos ajudar o rapaz a encontrar a estação.")]
+          files = []
+          for i, (lang, text) in enumerate(parts):
+              f = rf"{sys.argv[1]}\parte{i}.mp3"
+              gTTS(text, lang=lang).save(f)
+              files.append(f)
+          args = ["ffmpeg", "-y", "-loglevel", "error"]
+          for f in files:
+              args += ["-i", f]
+          n = len(files)
+          flt = "".join(f"[{i}:a]apad=pad_dur=1[a{i}];" for i in range(n)) + "".join(f"[a{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[o]"
+          subprocess.run(args + ["-filter_complex", flt, "-map", "[o]", "-ar", "16000", "-ac", "1",
+                                 rf"{sys.argv[1]}\misto.wav"], check=True)
+          '@
+          Set-Content -Path "$env:RUNNER_TEMP\misto.py" -Value $py
+          python "$env:RUNNER_TEMP\misto.py" "$env:RUNNER_TEMP"
+          Get-Item "$env:RUNNER_TEMP\misto.wav" | Select-Object Length
       - name: Rodar teste de alinhamento
         env:
+          WHISPER_MIXED_WAV: ${{ runner.temp }}\misto.wav
           ALIGN_TEST_WAV: ${{ runner.temp }}\fala.wav
           ALIGN_TEST_TEXT: "The quick brown fox jumps over the lazy dog. Then the dog wakes up and runs after the fox across the green field."
           ALIGN_TEST_AFTER_PAUSE: "Then"

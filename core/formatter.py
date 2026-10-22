@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .lang import (is_weak, ends_sentence, ends_clause, visible_len, starts_clause,
-                   is_tight_follower)
+                   is_tight_follower, join_tokens, needs_space)
 from .linebreak import break_lines, rewrap
 from .style import normalize_lines
 from .profiles import Profile
@@ -49,20 +49,23 @@ class FormatResult:
 
 
 def _join(words: list[Word]) -> str:
-    return " ".join(w.text.strip() for w in words if w.text.strip())
+    return join_tokens(w.text for w in words)
 
 
-def _fits_two_lines(lengths: list[int], max_len: int, max_lines: int) -> bool:
-    """`lengths` = tamanho visível de cada palavra. Verifica se cabe em N linhas."""
-    total = sum(lengths) + len(lengths) - 1
+def _fits_two_lines(lengths: list[int], max_len: int, max_lines: int,
+                    seps: list[int] | None = None) -> bool:
+    """`lengths` = tamanho visível de cada palavra; `seps` = espaço antes de cada uma (1/0;
+    0 entre caracteres de japonês/chinês). Verifica se cabe em N linhas."""
+    seps = seps if seps is not None else [1] * len(lengths)
+    total = sum(lengths) + sum(seps[1:])
     if total <= max_len:
         return True
     if max_lines < 2:
         return False
     # guloso por linha (suficiente para checar viabilidade)
     lines, cur = 1, -1
-    for L in lengths:
-        add = L if cur < 0 else cur + 1 + L
+    for L, sp in zip(lengths, seps):
+        add = L if cur < 0 else cur + sp + L
         if add <= max_len:
             cur = add
         else:
@@ -80,6 +83,7 @@ def segment(words: list[Word], profile: Profile, language: str, fps: float | Non
         return []
     texts = [w.text.strip() for w in words]
     vlen = [visible_len(t) for t in texts]
+    sep = [0] + [1 if needs_space(texts[k - 1], texts[k]) else 0 for k in range(1, n)]
     gap_after = [
         (words[k + 1].start - words[k].end) if k + 1 < n else 999.0 for k in range(n)
     ]
@@ -93,14 +97,18 @@ def segment(words: list[Word], profile: Profile, language: str, fps: float | Non
     for i in range(n):
         if best[i] == INF:
             continue
-        chars = -1
+        chars = 0
+        spaces = 0
         lengths: list[int] = []
+        seps: list[int] = []
         inner_long_pause = False
         inner_sentence_end = False
         for j in range(i + 1, min(n, i + MAX_WORDS_PER_CUE) + 1):
             k = j - 1
             lengths.append(vlen[k])
-            chars += vlen[k] + 1
+            seps.append(sep[k] if k > i else 0)
+            chars += vlen[k] + seps[-1]
+            spaces += seps[-1]
             if j - 1 > i:
                 if gap_after[k - 1] >= LONG_PAUSE:
                     inner_long_pause = True
@@ -110,7 +118,7 @@ def segment(words: list[Word], profile: Profile, language: str, fps: float | Non
                 break
 
             cost = C_PER_CUE
-            if not _fits_two_lines(lengths, profile.max_chars_per_line, profile.max_lines):
+            if not _fits_two_lines(lengths, profile.max_chars_per_line, profile.max_lines, seps):
                 if j > i + 1:
                     cost += C_OVERFLOW + C_OVERFLOW_PER_CHAR * max(0, chars - max_cue)
                 # palavra única gigante: sem escolha, aceita
@@ -119,7 +127,7 @@ def segment(words: list[Word], profile: Profile, language: str, fps: float | Non
             room = gap_after[k] - profile.min_gap(fps)
             shown = min(max(speech + min(profile.linger, max(0.0, room)), profile.min_duration),
                         max(profile.max_duration, speech))
-            count = chars if profile.cps_count_spaces else chars - (j - i - 1)
+            count = chars if profile.cps_count_spaces else chars - spaces
             cps = count / max(shown, 1e-3)
             if cps > profile.target_cps:
                 cost += C_CPS * (cps - profile.target_cps)
