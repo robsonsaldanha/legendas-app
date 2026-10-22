@@ -183,3 +183,4 @@
 - Legendas sem certeza ganham ⚑ (motivo no `rev`), entram no F8 e somem quando ela mexe no tempo.
 - Menu Sincronizar: "Sincronia precisa pela fala" (separa a voz), "Automática pela fala (rápida)" (desloca se claro + tempos pela fala sem separar) e "Só acertar início e fim na fala". Configurações: placa de vídeo (auto/não usar) e tamanho do modelo de transcrição.
 - Instalador maior (bibliotecas da NVIDIA para a transcrição): o Róbson autorizou ("não me importo com o peso do instalador").
+- 2.6.1: a sincronia precisa falhava no programa instalado com "name 'Settings' is not defined" (import faltando em app/editor.py). Os testes cobriam as partes, não a ligação; entrou um teste do caminho completo (separação e detector simulados) e uma checagem de nomes indefinidos (pyflakes) antes de lançar.

@@ -25,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-from core.config import data_dir
+from core.config import Settings, data_dir
 from core.errors import LegendasError
 from core.linebreak import rewrap
 from core.media import SAMPLE_RATE, extract_audio, ffmpeg, load_wav, probe

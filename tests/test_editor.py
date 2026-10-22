@@ -401,6 +401,40 @@ def test_fit_to_voice_task(files, monkeypatch):
     assert abs(c["start"] - 1.0) <= 0.04 and 2.45 <= c["end"] <= 2.6, c      # sai quando a voz acaba (sem esticar)
 
 
+def test_precise_task_end_to_end(files, monkeypatch):
+    """Caminho completo da sincronia precisa (separação e detector simulados): pega erros de
+    ligação como import faltando, que os testes das partes não pegam."""
+    import numpy as np
+    from core import separate, vad, whisper_local
+    from core.media import write_wav
+    app, port, tmp, video, srt = files
+    d = open_editor(app, port, srt=str(srt), video=str(video), profile_key="netflix-pt-br")
+    sid = d["sid"]
+    sr = 16000
+    voz = (np.random.default_rng(0).normal(0, 0.002, sr * 20)).astype(np.float32)
+    voz[sr:int(2.5 * sr)] += (0.5 * np.sin(2 * np.pi * 220 * np.arange(int(1.5 * sr)) / sr)).astype(np.float32)
+    calls = {}
+
+    def fake_sep(src, out, use_gpu, progress=None, cancelled=None):
+        calls["gpu"] = use_gpu
+        write_wav(out, voz)
+        return "processador"
+    monkeypatch.setattr(separate, "available", lambda: True)
+    monkeypatch.setattr(separate, "run_separation", fake_sep)
+    monkeypatch.setattr(vad, "available", lambda: True)
+    prob = np.zeros(int(len(voz) / 512), np.float32)
+    prob[int(1.0 / 0.032):int(2.5 / 0.032)] = 0.95
+    monkeypatch.setattr(vad, "speech_prob", lambda a, progress=None: prob)
+    monkeypatch.setattr(whisper_local, "available", lambda: False)
+    cues = [{"start": 1.0, "end": 6.0, "text": "Oi, tudo bem?"}]
+    st, t = call(port, "POST", f"/api/editor/{sid}/task", {"kind": "precise", "words": True, "cues": cues}, token=app.token)
+    t = _wait_task(app, port, sid, t["id"])
+    assert t["status"] == "pronto", t
+    c = t["result"]["cues"][0]
+    assert abs(c["start"] - 1.0) <= 0.04 and 2.45 <= c["end"] <= 2.6, c
+    assert calls["gpu"] == "auto" and "processador" in t["message"]
+
+
 def test_shots_task_and_snap(files):
     app, port, tmp, video, srt = files
     v = tmp / "cortes.mp4"
