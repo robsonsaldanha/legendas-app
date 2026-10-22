@@ -78,5 +78,6 @@
 - [x] 2.6.2: sincronia precisa ajustada com o episódio inteiro do PC dela
 - [x] 2.7.0: transcrição de vídeo sem legenda no computador (Whisper large-v3, sem custo; OpenAI vira opção)
 - [x] 2.8.0: 20 idiomas + detectar automaticamente; falas em outro idioma no mesmo episódio; japonês/chinês sem espaço
+- [x] 2.9.0: pastas por mês (e trabalhos antigos encontrados nas pastas), interface simplificada com dicas "?" (ver Design.md)
 - [ ] Calibrar com legendas acertadas à mão por ela (quanto antes da fala ela gosta de entrar)
 - [ ] Janela própria (sem navegador), se ela preferir

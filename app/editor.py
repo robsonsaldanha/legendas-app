@@ -880,7 +880,9 @@ class EditorManager:
             if not wl.available():
                 return None
             st = Settings.load()
-            label = {"baixando": "Baixando o modelo de transcrição (só na primeira vez, ~480 MB)…",
+            size = wl.SIZE_TEXT.get(st.whisper_model, "")
+            label = {"baixando": f"Baixando o modelo de transcrição (só na primeira vez, {size}). Pode levar alguns minutos…",
+                     "carregando": "Preparando a transcrição…",
                      "transcrevendo": "Transcrevendo a fala (só para achar onde cada palavra começa)…"}
             try:
                 wl.transcribe_words(s.cache / "voz16.wav", f, st.whisper_model,

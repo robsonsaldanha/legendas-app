@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Callable
 
 _NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+SIZE_TEXT = {"small": "~480 MB", "medium": "~1,5 GB", "large-v3": "~3 GB"}
 SIZES = {"small": "Systran/faster-whisper-small", "medium": "Systran/faster-whisper-medium",
          "large-v3": "Systran/faster-whisper-large-v3"}
 
@@ -298,6 +299,7 @@ def _main(argv: list[str]) -> int:
     model = WhisperModel(SIZES.get(size, size), device=dev,
                          compute_type="float16" if dev == "cuda" else "int8",
                          download_root=str(model_dir()))
+    say("carregando")
     with wave.open(src) as w:
         sr, ch = w.getframerate(), w.getnchannels()
         audio = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32) / 32768

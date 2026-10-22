@@ -18,16 +18,41 @@ from core.config import Settings
 from core.errors import LegendasError
 from core.metrics import aggregate, productivity, subtitle_metrics
 from core.projects import (ANDAMENTO, FILME, FINALIZADO, MARKER, NOVO, SERIE, STATUSES, ProjectError,
-                           find_files, folder_name_problem, item_folder, next_episode, parse_range,
-                           read_marker, scan_series, write_marker)
+                           VIDEO_EXT, current_month, find_files, folder_name_problem, guess_episode,
+                           item_folder, month_folder, month_label, next_episode, parse_month_folder,
+                           parse_range, read_marker, scan_series, write_marker)
 
 log = logging.getLogger("legendas.projetos")
 
 STATUS_LABEL = {NOVO: "Novo", ANDAMENTO: "Em andamento", FINALIZADO: "Finalizado"}
+# passos de cada episódio (o índice do passo atual = quantos estão feitos)
+STEPS = ["Arquivos", "Traduzir", "Revisar", "Entregar"]
+ACTIONS = ["Pôr arquivos", "Traduzir", "Revisar", "Entregar", "Abrir"]
+
+
+def _valid_month(mes) -> str:
+    mes = str(mes or "").strip() or current_month()
+    try:
+        y, m = mes.split("-")
+        if not (1900 < int(y) < 2200 and 1 <= int(m) <= 12):
+            raise ValueError
+    except ValueError as e:
+        raise ProjectError("Mês inválido.") from e
+    return f"{int(y)}-{int(m):02d}"
 
 
 def _now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _has_work(folder: Path, deep: bool = False) -> bool:
+    """Tem vídeo ou legenda (na pasta, ou até 2 níveis abaixo com `deep`)."""
+    pats = [folder.glob("*")] + ([folder.glob("*/*"), folder.glob("*/*/*")] if deep else [])
+    for it in pats:
+        for p in it:
+            if p.is_file() and (p.suffix.lower() == ".srt" or p.suffix.lower() in VIDEO_EXT):
+                return True
+    return False
 
 
 class ProjectManager:
@@ -54,7 +79,12 @@ class ProjectManager:
         st = Settings.load()
         st.projects_root = str(p)
         st.save()
-        return {"projects_root": str(p)}
+        try:
+            found = self.scan_root()      # trabalhos que já estão nas pastas de mês
+        except (ProjectError, OSError) as e:
+            log.warning("Não consegui ler a pasta dos trabalhos: %s", e)
+            found = {"meses": 0, "adicionados": 0, "projetos": []}
+        return {"projects_root": str(p), "scan": found}
 
     def _root_path(self) -> Path:
         r = self.root()
@@ -62,10 +92,14 @@ class ProjectManager:
             raise ProjectError("Escolha primeiro a pasta dos projetos.", )
         return Path(r)
 
-    def check_name(self, name: str) -> dict:
+    def month_dir(self, mes: str | None = None) -> Path:
+        return self._root_path() / month_folder(_valid_month(mes))
+
+    def check_name(self, name: str, mes: str | None = None) -> dict:
         problem = folder_name_problem(name)
         try:
-            path = str(self._root_path() / name) if name else str(self._root_path())
+            base = self.month_dir(mes)
+            path = str(base / name) if name else str(base)
         except ProjectError:
             path = name
         exists = bool(name) and not problem and Path(path).exists()
@@ -96,6 +130,8 @@ class ProjectManager:
 
     def _save_marker(self, obra_id: int) -> None:
         o = self._obra(obra_id)
+        if o.get("importada"):
+            return      # pasta que já existia: o programa não grava nada nela
         items = self.db._q("SELECT season, episode, title, status FROM itens WHERE obra_id = ? ORDER BY season, episode", (obra_id,))
         client = self.db.get_project(o["client_id"]) if o["client_id"] else None
         try:
@@ -113,7 +149,8 @@ class ProjectManager:
             raise ProjectError("Escolha se é filme ou série.")
         name = str(data.get("name") or "")
         self._root_path()   # sem pasta raiz escolhida: erro claro
-        chk = self.check_name(name)
+        mes = _valid_month(data.get("mes"))
+        chk = self.check_name(name, mes)
         if chk["problem"]:
             raise ProjectError(chk["problem"])
         folder = Path(chk["path"])
@@ -132,10 +169,10 @@ class ProjectManager:
             raise ProjectError(f"Não consegui criar a pasta: {e}") from e
         now = _now()
         oid = self.db._exec(
-            "INSERT INTO obras (kind, name, folder, client_id, status, source_lang, target_lang, notes, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO obras (kind, name, folder, client_id, status, source_lang, target_lang, notes, created_at,"
+            " updated_at, mes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (kind, name, str(folder), data.get("client_id") or None, NOVO, data.get("source_lang") or "pt-BR",
-             data.get("target_lang") or "es-419", str(data.get("notes") or ""), now, now))
+             data.get("target_lang") or "es-419", str(data.get("notes") or ""), now, now, mes))
         self._event(oid, "criado", "Filme" if kind == FILME else f"Série, {len(episodes)} episódio(s)")
         if kind == FILME:
             self.db._exec("INSERT INTO itens (obra_id, season, episode, title, folder, status, created_at, updated_at)"
@@ -248,6 +285,132 @@ class ProjectManager:
             return "Filme"
         return f"T{it['season']} E{it['episode']}"
 
+    # ------------------------------------------------------------ meses
+
+    def continue_month(self, oid: int, mes: str | None = None) -> dict:
+        """Série que continua em outro mês: a mesma série ganha uma pasta nesse mês
+        (OUTUBRO 2026/<Série>), com o mesmo cliente e idiomas."""
+        o = self._obra(oid)
+        mes = _valid_month(mes)
+        if o.get("mes") == mes:
+            return self.get(oid)
+        for r in self.db._q("SELECT id FROM obras WHERE mes = ? AND lower(name) = lower(?) AND kind = ? "
+                            "AND COALESCE(client_id, 0) = COALESCE(?, 0)", (mes, o["name"], o["kind"], o["client_id"])):
+            return self.get(r["id"])
+        folder = self.month_dir(mes) / Path(o["folder"]).name
+        known = self._by_folder(folder)
+        if known:
+            return self.get(known["id"])
+        folder.mkdir(parents=True, exist_ok=True)
+        now = _now()
+        nid = self.db._exec(
+            "INSERT INTO obras (kind, name, folder, client_id, status, source_lang, target_lang, notes, created_at,"
+            " updated_at, mes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (o["kind"], o["name"], str(folder), o["client_id"], NOVO, o["source_lang"], o["target_lang"],
+             o.get("notes") or "", now, now, mes))
+        if o["kind"] == FILME:
+            self.db._exec("INSERT INTO itens (obra_id, season, episode, title, folder, status, created_at, updated_at)"
+                          " VALUES (?, NULL, NULL, ?, ?, ?, ?, ?)", (nid, o["name"], str(folder), NOVO, now, now))
+        self._event(nid, "criado", f"Continuação de {month_label(o['mes'])}" if o.get("mes") else "Continuação")
+        self._save_marker(nid)
+        return self.get(nid)
+
+    def months(self) -> list[dict]:
+        """Meses com trabalho (no banco ou como pasta na raiz), do mais novo ao mais velho."""
+        out: dict[str, dict] = {}
+        for r in self.db._q("SELECT mes, status, COUNT(*) AS n FROM obras WHERE mes != '' GROUP BY mes, status"):
+            m = out.setdefault(r["mes"], {"mes": r["mes"], "total": 0, NOVO: 0, ANDAMENTO: 0, FINALIZADO: 0})
+            m["total"] += r["n"]
+            m[r["status"]] = m.get(r["status"], 0) + r["n"]
+        try:
+            root = self._root_path()
+            for d in root.iterdir() if root.is_dir() else []:
+                mes = parse_month_folder(d.name) if d.is_dir() else None
+                if mes:
+                    out.setdefault(mes, {"mes": mes, "total": 0, NOVO: 0, ANDAMENTO: 0, FINALIZADO: 0})
+        except (ProjectError, OSError):
+            pass
+        cur = current_month()
+        out.setdefault(cur, {"mes": cur, "total": 0, NOVO: 0, ANDAMENTO: 0, FINALIZADO: 0})
+        res = sorted(out.values(), key=lambda m: m["mes"], reverse=True)
+        for m in res:
+            m["label"] = month_label(m["mes"])
+            m["folder"] = month_folder(m["mes"])
+        return res
+
+    def scan_root(self) -> dict:
+        """Coloca na lista os trabalhos que já estão nas pastas de mês (OUTUBRO 2026/…).
+        Nada é movido, renomeado nem gravado nessas pastas."""
+        root = self._root_path()
+        if not root.is_dir():
+            raise ProjectError("A pasta dos trabalhos não foi encontrada.")
+        cur = current_month()
+        added, months = [], 0
+        for md in sorted(root.iterdir()):
+            mes = parse_month_folder(md.name) if md.is_dir() else None
+            if not mes:
+                continue
+            months += 1
+            for pd in sorted(md.iterdir()):
+                if not pd.is_dir() or pd.name.startswith(".") or self._by_folder(pd):
+                    continue
+                try:
+                    oid = self._import_folder(pd, mes, finished=mes < cur)
+                except OSError as e:
+                    log.warning("Não consegui ler %s: %s", pd, e)
+                    continue
+                if oid:
+                    added.append(oid)
+        return {"meses": months, "adicionados": len(added),
+                "projetos": [self._obra(i)["name"] for i in added][:50]}
+
+    def _import_folder(self, folder: Path, mes: str, finished: bool) -> int | None:
+        marker = read_marker(folder) or {}
+        ours = bool(marker)           # pasta criada pelo programa (tem projeto.cnt.json)
+        eps = scan_series(folder)     # temporada-N/ep-M do programa
+        loose: list[tuple[int, int, Path]] = []
+        if not eps:                   # pastas de episódio feitas à mão ("EP 90", "T2E05"…)
+            for sub in sorted(folder.iterdir()):
+                if sub.is_dir() and not sub.name.lower().startswith(("entrega", ".")):
+                    g = guess_episode(sub.name)
+                    if g and _has_work(sub):
+                        loose.append((g[0], g[1], sub))
+        kind = marker.get("tipo") or (SERIE if (eps or len(loose) >= 1) else FILME)
+        if kind == FILME and not _has_work(folder, deep=True):
+            return None               # pasta vazia ou sem vídeo/legenda: não é trabalho
+        client_id = None
+        if marker.get("cliente"):
+            for c in self.db.list_projects():
+                if c["name"].lower() == str(marker["cliente"]).lower():
+                    client_id = c["id"]
+        status = marker.get("status") or (FINALIZADO if finished else ANDAMENTO)
+        now = _now()
+        oid = self.db._exec(
+            "INSERT INTO obras (kind, name, folder, client_id, status, source_lang, target_lang, created_at, updated_at,"
+            " mes, importada, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (kind, marker.get("nome") or folder.name, str(folder), client_id, status,
+             marker.get("idioma_origem") or "pt-BR", marker.get("idioma_destino") or "es-419",
+             marker.get("criado_em") or f"{mes}-01 00:00:00", now, mes, 0 if ours else 1,
+             now if status == FINALIZADO else None))
+        item_status = FINALIZADO if status == FINALIZADO else ANDAMENTO
+        if kind == FILME:
+            self.db._exec("INSERT INTO itens (obra_id, season, episode, title, folder, status, created_at, updated_at)"
+                          " VALUES (?, NULL, NULL, ?, ?, ?, ?, ?)", (oid, folder.name, str(folder), item_status, now, now))
+        elif eps:
+            for s, e in eps:
+                iid = self._new_item(oid, folder, s, e)
+                self.db._exec("UPDATE itens SET status = ? WHERE id = ?", (item_status, iid))
+        else:
+            seen = set()
+            for s, e, sub in loose:
+                if (s, e) in seen:
+                    continue
+                seen.add((s, e))
+                self.db._exec("INSERT INTO itens (obra_id, season, episode, title, folder, status, created_at, updated_at)"
+                              " VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (oid, s, e, "", str(sub), item_status, now, now))
+        self._event(oid, "aberto", f"Encontrado na pasta {month_folder(mes)}")
+        return oid
+
     # ------------------------------------------------------------ abrir pasta
 
     def open_folder(self, path: str) -> dict:
@@ -277,12 +440,13 @@ class ProjectManager:
                 if c["name"].lower() == str(marker["cliente"]).lower():
                     client_id = c["id"]
         now = _now()
+        mes = parse_month_folder(cand.parent.name) or (marker.get("criado_em") or now)[:7]
         oid = self.db._exec(
-            "INSERT INTO obras (kind, name, folder, client_id, status, source_lang, target_lang, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO obras (kind, name, folder, client_id, status, source_lang, target_lang, created_at, updated_at, mes)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (kind, marker.get("nome") or cand.name, str(cand), client_id, marker.get("status") or ANDAMENTO,
              marker.get("idioma_origem") or "pt-BR", marker.get("idioma_destino") or "es-419",
-             marker.get("criado_em") or now, now))
+             marker.get("criado_em") or now, now, mes))
         if kind == FILME:
             self.db._exec("INSERT INTO itens (obra_id, season, episode, title, folder, status, created_at, updated_at)"
                           " VALUES (?, NULL, NULL, ?, ?, ?, ?, ?)", (oid, cand.name, str(cand), ANDAMENTO, now, now))
@@ -457,7 +621,24 @@ class ProjectManager:
         it["srt"] = it["srt"] if it["srt"] and Path(it["srt"]).exists() else (files["srts"][0] if files["srts"] else "")
         it["metrics"] = self._latest(it["id"])
         it["seconds"] = self._seconds(it["id"])
+        it["step"] = self._step(it, files)
+        it["action"] = ACTIONS[it["step"]]
         return it
+
+    def _step(self, it: dict, files: dict) -> int:
+        """Quantos passos (Arquivos, Traduzir, Revisar, Entregar) já estão feitos."""
+        rows = self.db._q("SELECT origem FROM metricas WHERE item_id = ? ORDER BY id", (it["id"],))
+        origins = [r["origem"] for r in rows]
+        folder = Path(it["folder"])
+        if it["status"] == FINALIZADO or "entrega" in origins or (folder / "Entrega").is_dir():
+            return 4
+        if not (files["videos"] or files["srts"]):
+            return 0
+        made = any(self.db.is_generated(p) for p in files["srts"])
+        if "traducao" not in origins and not made:
+            return 1
+        last = origins[-1] if origins else ""
+        return 3 if last == "salvar" else 2
 
     def get(self, oid: int) -> dict:
         o = self._obra(oid)
@@ -475,9 +656,10 @@ class ProjectManager:
                 "items": items, "seasons": [{"season": s, "items": v} for s, v in sorted(seasons.items())],
                 "next_episode": {str(s): next_episode([(i["season"], i["episode"]) for i in items], s) for s in seasons},
                 "metrics": agg, "seconds": secs, "productivity": productivity(agg, secs),
+                "mes_label": month_label(o["mes"]) if o.get("mes") else "", "steps": STEPS,
                 "counts": {st: sum(1 for i in items if i["status"] == st) for st in STATUSES}}
 
-    def list(self, status: str = "", q: str = "") -> list[dict]:
+    def list(self, status: str = "", q: str = "", mes: str = "") -> list[dict]:
         rows = self.db._q("SELECT o.*, (SELECT COUNT(*) FROM itens i WHERE i.obra_id = o.id) AS n_itens, "
                           "(SELECT COUNT(*) FROM itens i WHERE i.obra_id = o.id AND i.status = 'finalizado') AS n_fin "
                           "FROM obras o ORDER BY o.updated_at DESC, o.id DESC")
@@ -489,14 +671,37 @@ class ProjectManager:
                 continue
             if q and q.lower() not in (o["name"] + " " + clients.get(o["client_id"], "")).lower():
                 continue
+            if mes and o.get("mes") != mes:
+                continue
             iids = [x["id"] for x in self.db._q("SELECT id FROM itens WHERE obra_id = ?", (o["id"],))]
             agg = aggregate([m for m in (self._latest(i) for i in iids) if m])
             secs = sum(self._seconds(i) for i in iids)
             out.append({**o, "status_label": STATUS_LABEL.get(o["status"], o["status"]),
                         "client_name": clients.get(o["client_id"], ""), "legendas": agg["legendas"],
                         "palavras": agg["palavras"], "duracao_video_s": agg["duracao_video_s"],
-                        "seconds": secs, "exists": Path(o["folder"]).is_dir()})
+                        "seconds": secs, "exists": Path(o["folder"]).is_dir(),
+                        "mes_label": month_label(o["mes"]) if o.get("mes") else "",
+                        **(self._progress(o) if mes else {})})
         return out
+
+    def _progress(self, o: dict) -> dict:
+        """Para a lista do mês: quantos entregues e qual o próximo passo."""
+        rows = [dict(r) for r in self.db._q("SELECT * FROM itens WHERE obra_id = ? ORDER BY season, episode, id", (o["id"],))]
+        steps = [(r, self._step(r, find_files(Path(r["folder"])))) for r in rows]
+        done = sum(1 for _, st in steps if st == 4)
+        nxt = next(((r, st) for r, st in steps if st < 4), None)
+        if nxt is None:
+            text = "Tudo entregue" if rows else "Pôr episódios"
+        else:
+            r, st = nxt
+            text = ACTIONS[st] + (f" o EP {r['episode']}" if r["season"] is not None else "")
+        if o["kind"] == SERIE:
+            pl = "s" if len(rows) != 1 else ""
+            prog = f"{done} de {len(rows)} episódio{pl} entregue{pl}"
+        else:
+            prog = "Entregue" if done else ("Começado" if steps and steps[0][1] > 0 else "Não começado")
+        return {"done": done, "total": len(rows), "progress": prog, "next": text,
+                "pct": round(100 * done / len(rows)) if rows else 0}
 
     def recent(self) -> dict | None:
         """O que ela mexeu por último (projeto + episódio), para o botão “Continuar”."""

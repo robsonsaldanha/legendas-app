@@ -170,20 +170,19 @@ const routes = [
 ];
 
 /* barra de ferramentas (menu da esquerda) */
+/* 2.9: quatro itens (o resto continua, aberto por Configurações e pelo Novo trabalho) */
 const NAV = [
-  [null, [["inicio", "home", "Início"]]],
-  ["Trabalho", [["projetos", "folder", "Projetos"], ["editor", "editor", "Editor"], ["trabalhos", "layers", "Em segundo plano"]]],
-  ["Relatórios", [["relatorios", "chart", "Métricas"]]],
-  ["Cadastros", [["clientes", "users", "Clientes"], ["perfis", "rules", "Perfis de regras"]]],
-  ["Sistema", [["configuracoes", "settings", "Configurações"]]],
+  [null, [["inicio", "home", "Início"], ["editor", "editor", "Editor"], ["relatorios", "chart", "Relatórios"],
+    ["configuracoes", "settings", "Configurações"]]],
 ];
-const CRUMB = { inicio: "Início", bemvindo: "Início", projetos: "Projetos", obra: "Projetos", item: "Projetos", relatorios: "Relatórios",
-  novo: "Em segundo plano", clientes: "Clientes", cliente: "Clientes", trabalhos: "Em segundo plano", trabalho: "Em segundo plano",
-  configuracoes: "Configurações", perfis: "Perfis de regras", perfil: "Perfis de regras", editor: "Editor" };
+const CRUMB = { inicio: "Início", bemvindo: "Início", projetos: "Início", obra: "Início", item: "Início", relatorios: "Relatórios",
+  novo: "Configurações / Em segundo plano", clientes: "Configurações / Clientes", cliente: "Configurações / Clientes",
+  trabalhos: "Configurações / Em segundo plano", trabalho: "Configurações / Em segundo plano",
+  configuracoes: "Configurações", perfis: "Configurações / Perfis de regras", perfil: "Configurações / Perfis de regras", editor: "Editor" };
 function drawNav() {
   document.getElementById("nav").innerHTML = NAV.map(([sec, items]) =>
     (sec ? `<div class="nav-sec">${esc(sec)}</div>` : "") + items.map(([k, icon, t]) =>
-      `<a href="#/${k}" data-nav="${k}" title="${esc(t)}">${ic(icon)}<span>${esc(t)}</span>${k === "trabalhos" ? `<span class="count" id="running-count" hidden></span>` : ""}</a>`).join("")).join("");
+      `<a href="#/${k}" data-nav="${k}" title="${esc(t)}">${ic(icon)}<span>${esc(t)}</span>${k === "configuracoes" ? `<span class="count" id="running-count" hidden title="Trabalhos rodando em segundo plano"></span>` : ""}</a>`).join("")).join("");
   const shell = document.getElementById("shell"), btn = document.getElementById("collapse");
   const apply = (c) => { shell.classList.toggle("collapsed", c); btn.innerHTML = `${ic("chevron")}<span>${c ? "Expandir menu" : "Recolher menu"}</span>`; btn.title = c ? "Expandir menu" : "Recolher menu"; };
   apply(getPref("cnt.menu", "") === "recolhido");
@@ -247,14 +246,16 @@ async function router() {
   }
   lastHash = location.hash;
   clearTimers();
-  main.onclick = null; main.onchange = null;
+  main.onclick = null; main.onchange = null; main.onsubmit = null; main.oninput = null;
   cancelAnimationFrame(ED.raf);
   document.querySelectorAll("video").forEach((v) => { v.pause(); v.removeAttribute("src"); v.load(); });
   const hash = location.hash || "#/inicio";
   if (!hash.startsWith("#/editor/")) { document.body.classList.remove("editor-mode"); ED.sid = null; ED.dirty = false; }
   ["ed-find", "ed-drawer", "ed-syncmenu-float"].forEach((id) => document.getElementById(id)?.remove());
   const section = hash.split("/")[1] || "inicio";
-  const navKey = { trabalho: "trabalhos", cliente: "clientes", novo: "trabalhos", perfil: "perfis", obra: "projetos", item: "projetos", bemvindo: "inicio" }[section] || section;
+  const navKey = { trabalho: "configuracoes", trabalhos: "configuracoes", cliente: "configuracoes", clientes: "configuracoes",
+    novo: "configuracoes", perfil: "configuracoes", perfis: "configuracoes", obra: "inicio", item: "inicio", projetos: "inicio",
+    bemvindo: "inicio" }[section] || section;
   setCrumb(esc(CRUMB[section] || ""));
   document.querySelectorAll("[data-nav]").forEach((a) => {
     if (a.dataset.nav === navKey) a.setAttribute("aria-current", "page");
@@ -1091,7 +1092,7 @@ async function renderProject(id) {
 /* ========================================================= configurações */
 
 async function renderSettings() {
-  const st = await loadState();
+  const [st] = await Promise.all([loadState(), loadProjects()]);
   const s = st.settings;
   const al = st.align;
   const modelRow = (lang, label) => {
@@ -1103,35 +1104,49 @@ async function renderSettings() {
     return `<tr><td>${label}</td><td class="num">${status}</td></tr>`;
   };
 
+  const setRow = (help, title, value, action) => `<div class="ds-set-row"><div class="ds-set-line">
+      <div class="ds-set-text"><div class="ds-set-title">${esc(title)} ${helpBtn(help)}</div><div class="ds-set-value">${value}</div></div>
+      ${action}</div></div>`;
+  const nClients = (S.projects || []).length;
+  const prov = (st.ai?.providers || []).find((x) => x.id === st.ai?.provider);
   main.innerHTML = `
-    <div class="page-head"><div><h1>Configurações</h1></div></div>
+  <div class="ds-page">
+    <header class="ds-head"><div class="ds-head-main"><h1 class="ds-title">Configurações</h1>
+      <p class="ds-sub">O dia a dia fica aqui em cima. O técnico fica em “Avançado”, lá embaixo.</p></div></header>
 
-    <section class="panel stack">
-      <h2>Você</h2>
-      <div class="row" style="flex-wrap:nowrap;align-items:end">
-        <label class="field" style="flex:1"><span>Nome para a assinatura (“Traducción: Nome”, no fim da legenda)</span>
-          <input type="text" id="s-who" value="${esc(s.translator_name || "")}" placeholder="Como você assina as legendas"></label>
-        <button class="btn" data-action="save-who">Salvar</button>
-      </div>
+    <section class="ds-set" aria-label="Configurações principais">
+      ${setRow("cfg-nome", "Seu nome na legenda", `<input type="text" id="s-who" value="${esc(s.translator_name || "")}" placeholder="Como você assina as legendas" aria-label="Seu nome na legenda">`,
+        `<button class="ds-btn sm" data-action="save-who">Salvar</button>`)}
+      ${setRow("cfg-pasta", "Pasta dos trabalhos", `<span class="mono small">${esc(st.projects_root || "não escolhida")}</span> — um mês por pasta (${esc(monthFolder(thisMonth()))}…)`,
+        `<a class="ds-btn sm" href="#/bemvindo">Trocar</a>`)}
+      ${setRow("cfg-clientes", "Clientes", nClients ? `${nClients} cadastrado${nClients === 1 ? "" : "s"}: ${esc((S.projects || []).slice(0, 4).map((c) => c.name).join(", "))}${nClients > 4 ? "…" : ""}` : "Nenhum ainda",
+        `<a class="ds-btn sm" href="#/clientes">Abrir</a>`)}
+      ${setRow("cfg-perfis", "Perfis de regras", `${(st.profiles || []).length} perfis (limites e manual de cada cliente)`,
+        `<a class="ds-btn sm" href="#/perfis">Abrir</a>`)}
+      ${setRow("cfg-ia", "Tradução automática", `Pelo seu ChatGPT (sem custo) ou pela API${prov ? ` · serviço: ${esc(prov.name || prov.id)}${prov.ready ? " (pronto)" : " (falta a chave)"}` : ""}`,
+        `<button class="ds-btn sm" data-action="open-ai">Configurar</button>`)}
+      ${setRow("cfg-fila", "Trabalhos em segundo plano", "Transcrições e traduções que rodam sozinhas",
+        `<a class="ds-btn sm" href="#/trabalhos">Ver</a>`)}
+      ${setRow("cfg-editor", "Preferências do editor", "Cores, fontes, forma de onda e tamanho das áreas",
+        `<button class="ds-btn sm" data-action="edprefs">Abrir</button>`)}
     </section>
 
-    ${aiSection(st)}
+    <details class="ds-adv" id="ai-wrap" ${AI_TAB ? "open" : ""}>
+      <summary><div class="ds-set-text"><div class="ds-set-title">Tradução automática pela API</div>
+        <div class="ds-set-value">Serviço, modelo e chaves (ficam no Gerenciador de Credenciais do Windows).</div></div></summary>
+      <div class="ds-adv-body">${aiSection(st)}</div>
+    </details>
 
+    <details class="ds-adv" id="adv-wrap">
+      <summary><div class="ds-set-text"><div class="ds-set-title">Avançado ${helpBtn("cfg-avancado")}</div>
+        <div class="ds-set-value">Modelos de IA, preços, placa de vídeo, transcrição, tempo das palavras e arquivos temporários. Não precisa mexer no dia a dia.</div></div></summary>
+      <div class="ds-adv-body">
     <section class="panel stack">
       <h2>Tempo das palavras</h2>
       <p class="muted">Para a legenda entrar e sair no momento exato da fala, o programa usa um modelo de alinhamento que roda no próprio computador. Sem ele, os tempos são estimados.</p>
       ${al.installed ? "" : `<p class="note warn">O alinhamento preciso não está instalado nesta versão. Os tempos serão estimados até a versão com instalador completo.</p>`}
       <table class="table"><tbody>${modelRow("pt", "Português")}${modelRow("es", "Espanhol")}</tbody></table>
       <p class="muted small">Se não baixar antes, o modelo é baixado automaticamente no primeiro trabalho daquele idioma.</p>
-    </section>
-
-    <section class="panel">
-      <div class="row" style="justify-content:space-between"><h2>Perfis de regras</h2><a class="btn" href="#/perfis">Abrir perfis de regras</a></div>
-      <p class="muted small">Limites técnicos e regras do que pode e do que não pode, por cliente.</p>
-      <div class="row" style="justify-content:space-between;margin-top:18px"><h2>Editor</h2><button class="btn" data-action="edprefs">Configurações do editor</button></div>
-      <p class="muted small">Cores dos problemas na lista, legenda sobre o vídeo, forma de onda, fontes e tamanhos das áreas. Também pelo botão ⚙ dentro do editor.</p>
-      <h2 style="margin-top:18px">Pasta dos projetos</h2>
-      <div class="row" style="margin-top:8px"><span class="mono small">${esc(st.projects_root || "não escolhida")}</span><a class="btn sm" href="#/bemvindo">Trocar</a></div>
     </section>
 
     <section class="panel stack">
@@ -1170,13 +1185,16 @@ async function renderSettings() {
       </div>
       <div class="row"><button class="btn primary" data-action="save-settings">Salvar</button></div>
     </section>
+      </div>
+    </details>
 
     <section class="panel stack">
       <h2>Programa</h2>
       <p class="muted small">Versão ${esc(st.version)}. Dados e arquivos temporários em <span class="tnum">${esc(st.data_dir)}</span>.</p>
       <div class="row"><button class="btn" data-action="open-data">Abrir pasta de dados</button>
       <button class="btn danger" data-action="quit">Fechar o programa</button></div>
-    </section>`;
+    </section>
+  </div>`;
 
 
 
@@ -1189,6 +1207,7 @@ async function renderSettings() {
     try {
       if (a.startsWith("ai-")) { await aiAction(a, b); return; }
       if (a === "edprefs") { openEdPrefs(); return; }
+      if (a === "open-ai") { const d = document.getElementById("ai-wrap"); d.open = true; d.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
       if (a === "save-key") {
         const v = document.getElementById("key-in").value.trim();
         if (!v) { toast("Cole a chave no campo.", true); return; }

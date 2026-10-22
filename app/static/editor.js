@@ -191,6 +191,7 @@ async function renderEditor(sid) {
       </span>
       <button class="btn" data-ed="verify" title="Problemas e correção automática">Verificar <span class="count" id="ed-issn" hidden></span></button>
       <button class="btn" data-ed="deliver" title="Salvar com o nome do cliente, assinatura e verificação final">Entregar</button>
+      ${helpBtn("editor", "O que faz cada botão do editor?")}
       <span class="sep"></span>
       <button class="btn ghost icon" data-ed="undo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer">↶</button>
       <button class="btn ghost icon" data-ed="redo" title="Refazer (Ctrl+Y)" aria-label="Refazer">↷</button>

@@ -4,7 +4,10 @@ import json
 import time
 from pathlib import Path
 
+from core.projects import current_month, month_folder
 from tests.test_app_server import call, server  # noqa: F401  (fixture)
+
+MES = month_folder(current_month())   # os trabalhos novos ficam na pasta do mês (OUTUBRO 2026)
 from tests.test_pipeline_e2e import _make_video
 
 SRT = ("1\n00:00:00,500 --> 00:00:02,000\nOlá, tudo bem?\n\n"
@@ -30,7 +33,7 @@ def test_root_and_names(server):  # noqa: F811
     st, r = call(port, "POST", "/api/obras/root", {"path": str(root)}, token=app.token)
     assert st == 200 and root.is_dir()
     st, c = call(port, "GET", "/api/obras/check?name=teste1", token=app.token)
-    assert c["problem"] == "" and c["path"] == str(root / "teste1")
+    assert c["problem"] == "" and c["path"] == str(root / MES / "teste1")
     st, c = call(port, "GET", "/api/obras/check?name=a%3Fb", token=app.token)
     assert "não aceita" in c["problem"]
     st, r = call(port, "POST", "/api/obras/root", {"path": "relativo"}, token=app.token)
@@ -43,7 +46,7 @@ def test_film_flow_metrics_and_reports(server):  # noqa: F811
     call(port, "POST", "/api/obras/root", {"path": str(root)}, token=app.token)
     st, o = call(port, "POST", "/api/obras", {"kind": "filme", "name": "Resgate no Oeste"}, token=app.token)
     assert st == 200, o
-    folder = root / "Resgate no Oeste"
+    folder = root / MES / "Resgate no Oeste"
     assert o["folder"] == str(folder) and folder.is_dir() and (folder / "projeto.cnt.json").exists()
     assert o["status"] == "novo" and len(o["items"]) == 1 and o["items"][0]["label"] == "Filme"
     st, c = call(port, "GET", "/api/obras/check?name=Resgate%20no%20Oeste", token=app.token)
@@ -101,7 +104,7 @@ def test_series_flow(server):  # noqa: F811
     st, o = call(port, "POST", "/api/obras", {"kind": "serie", "name": "teste2", "season": 1, "episodes": "1, 7"},
                  token=app.token)
     assert st == 200, o
-    base = root / "teste2"
+    base = root / MES / "teste2"
     assert (base / "temporada-1" / "ep-1").is_dir() and (base / "temporada-1" / "ep-7").is_dir()
     assert [i["label"] for i in o["items"]] == ["T1 E1", "T1 E7"] and o["next_episode"] == {"1": 8}
     st, o = call(port, "POST", f"/api/obras/{o['id']}/episodes", {"season": 4, "episodes": "1"}, token=app.token)
@@ -131,4 +134,4 @@ def test_series_flow(server):  # noqa: F811
     st, r = call(port, "POST", "/api/obras/open", {"path": str(base)}, token=app.token)
     assert any(i["label"] == "T3 E9" for i in r["obra"]["items"])
     st, r = call(port, "POST", "/api/obras", {"kind": "serie", "name": "sem ep", "season": 1, "episodes": ""}, token=app.token)
-    assert st == 400 and not (root / "sem ep").exists()
+    assert st == 400 and not (root / MES / "sem ep").exists()

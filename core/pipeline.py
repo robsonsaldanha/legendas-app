@@ -158,7 +158,8 @@ def _transcribe_local(job: Job, wav: Path, src_lang: str, req, settings: Setting
     size = settings.whisper_model or "large-v3"
     out = job.path("whisper.json")
     lang = None if src_lang in ("", "auto") else whisper_code(src_lang)
-    labels = {"baixando": f"Baixando o modelo de transcrição {size} (só na primeira vez)…",
+    labels = {"baixando": f"Baixando o modelo de transcrição (só na primeira vez, {wl.SIZE_TEXT.get(size, '')}). Pode levar alguns minutos…",
+              "carregando": "Preparando a transcrição…",
               "transcrevendo": f"Transcrevendo no computador (Whisper {size})…",
               "idiomas": "Conferindo falas em outros idiomas…"}
     cb.status(labels["transcrevendo"])

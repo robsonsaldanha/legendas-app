@@ -140,7 +140,21 @@ class Database:
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.executescript(SCHEMA)
         self.conn.commit()
+        self._migrate()
         self._seed_clients()
+
+    def _migrate(self) -> None:
+        """Colunas novas em bancos antigos."""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(obras)")}
+        if "mes" not in cols:      # 2.9: mês do trabalho (pasta "OUTUBRO 2026")
+            self.conn.execute("ALTER TABLE obras ADD COLUMN mes TEXT NOT NULL DEFAULT ''")
+        if "importada" not in cols:  # 2.9: pasta que já existia (o programa não grava nada nela)
+            self.conn.execute("ALTER TABLE obras ADD COLUMN importada INTEGER NOT NULL DEFAULT 0")
+        from core.projects import parse_month_folder
+        for r in self.conn.execute("SELECT id, folder, created_at FROM obras WHERE mes = ''").fetchall():
+            mes = parse_month_folder(Path(r["folder"]).parent.name) or (r["created_at"] or "")[:7]
+            self.conn.execute("UPDATE obras SET mes = ? WHERE id = ?", (mes, r["id"]))
+        self.conn.commit()
 
     # ----------------------------------------------------------- clientes
 

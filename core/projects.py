@@ -1,10 +1,14 @@
 """Projetos (filmes e séries) organizados em pastas.
 
-Estrutura no disco, dentro da pasta de projetos escolhida pela usuária:
+Estrutura no disco, dentro da pasta de projetos escolhida pela usuária (um mês por pasta,
+o mês em que o trabalho foi recebido; série que continua no mês seguinte ganha uma pasta
+nesse mês também):
 
-    <raiz>/<Filme>/                         vídeo e legendas do filme
-    <raiz>/<Série>/temporada-1/ep-1/        um episódio
-    <raiz>/<Série>/temporada-2/ep-40/       temporadas e episódios em qualquer ordem
+    <raiz>/OUTUBRO 2026/<Filme>/                         vídeo e legendas do filme
+    <raiz>/OUTUBRO 2026/<Série>/temporada-1/ep-1/        um episódio
+    <raiz>/NOVEMBRO 2026/<Série>/temporada-1/ep-5/       a mesma série, no mês seguinte
+
+Projetos antigos direto na raiz (antes da 2.9) continuam funcionando.
 
 Cada pasta de projeto tem um `projeto.cnt.json` (dados do projeto) para poder ser
 reaberta mesmo em outro computador ou se o banco de dados se perder.
@@ -32,6 +36,50 @@ MAX_NAME = 120
 
 class ProjectError(LegendasError):
     pass
+
+
+# ------------------------------------------------------------ meses
+
+MONTHS = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO",
+          "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"]
+_PLAIN = {"MARCO": 3}
+
+
+def current_month() -> str:
+    return time.strftime("%Y-%m")
+
+
+def month_folder(mes: str) -> str:
+    """'2026-10' → 'OUTUBRO 2026'."""
+    y, m = mes.split("-")
+    return f"{MONTHS[int(m) - 1]} {int(y)}"
+
+
+def month_label(mes: str) -> str:
+    """'2026-10' → 'Outubro 2026'."""
+    y, m = mes.split("-")
+    return f"{MONTHS[int(m) - 1].capitalize()} {int(y)}"
+
+
+def parse_month_folder(name: str) -> str | None:
+    """Nome de pasta de mês → '2026-10'. Aceita 'OUTUBRO 2026', 'Outubro 2026', 'MARCO 2026',
+    '10 - OUTUBRO 2026', 'outubro-2026'."""
+    up = (name or "").upper()
+    y = re.search(r"(19|20)\d{2}", up)
+    if not y:
+        return None
+    words = re.findall(r"[A-ZÇÃÉ]+", up)
+    for w in words:
+        n = MONTHS.index(w) + 1 if w in MONTHS else _PLAIN.get(w)
+        if n:
+            return f"{y.group(0)}-{n:02d}"
+    return None
+
+
+def shift_month(mes: str, delta: int) -> str:
+    y, m = map(int, mes.split("-"))
+    k = y * 12 + (m - 1) + delta
+    return f"{k // 12}-{k % 12 + 1:02d}"
 
 
 def folder_name_problem(name: str) -> str:
@@ -153,6 +201,24 @@ def scan_series(folder: Path) -> list[tuple[int, int]]:
 
 
 VIDEO_EXT = {".mp4", ".mkv", ".mov", ".mxf", ".avi", ".wmv", ".m4v", ".webm", ".ts", ".mpg", ".mpeg"}
+
+
+_SEASON = re.compile(r"(?:temporada|season|t|s)[\s._-]*(\d{1,2})(?:\D|$)", re.IGNORECASE)
+
+
+def guess_episode(name: str) -> tuple[int, int] | None:
+    """Pasta de episódio feita à mão → (temporada, episódio). 'EP 90' → (1, 90);
+    'T2E05' / 'S02E05' → (2, 5); 'Endless Love 90' → (1, 90)."""
+    m = re.search(r"[TS](\d{1,2})\s*E(\d{1,4})", name, re.IGNORECASE)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    nums = re.findall(r"\d{1,4}", re.sub(r"(19|20)\d{2}", " ", name))
+    if not nums:
+        return None
+    s = _SEASON.search(name)
+    season = int(s.group(1)) if s else 1
+    ep = int(nums[-1])
+    return season, ep
 
 
 def find_files(folder: Path) -> dict:

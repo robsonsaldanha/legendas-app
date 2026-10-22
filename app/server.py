@@ -903,12 +903,24 @@ class Handler(BaseHTTPRequestHandler):
     @route("GET", r"/api/obras")
     def api_obras(self):
         pm = self.app.projects
-        return {"obras": pm.list(self.query.get("status", ""), self.query.get("q", "")),
+        return {"obras": pm.list(self.query.get("status", ""), self.query.get("q", ""), self.query.get("mes", "")),
                 "recent": pm.recent(), "root": pm.root()}
 
     @route("GET", r"/api/obras/check")
     def api_obras_check(self):
-        return self.app.projects.check_name(self.query.get("name", ""))
+        return self.app.projects.check_name(self.query.get("name", ""), self.query.get("mes") or None)
+
+    @route("GET", r"/api/obras/months")
+    def api_obras_months(self):
+        return {"months": self.app.projects.months(), "root": self.app.projects.root()}
+
+    @route("POST", r"/api/obras/scan")
+    def api_obras_scan(self):
+        return self.app.projects.scan_root()
+
+    @route("POST", r"/api/obras/(\d+)/continue")
+    def api_obra_continue(self, oid):
+        return self.app.projects.continue_month(int(oid), self._body().get("mes") or None)
 
     @route("POST", r"/api/obras/root")
     def api_obras_root(self):

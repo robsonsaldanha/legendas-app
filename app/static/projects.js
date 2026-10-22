@@ -31,133 +31,118 @@ function todayLong() {
 
 async function renderWelcome() {
   await loadState();
-  const sug = (S.state.home_dir ? S.state.home_dir + "\\Documents\\CNT Legendas\\Projetos" : "");
+  const sug = (S.state.home_dir ? S.state.home_dir + "\\Documents\\Legendas" : "");
+  const mf = monthFolder(thisMonth());
   main.innerHTML = `
-    <section class="hero">
-      <span class="eyebrow">Bem-vinda</span>
-      <h1>Onde ficam os seus projetos?</h1>
-      <p class="muted">Escolha uma pasta. Cada filme ou série que você criar aqui vira uma pasta dentro dela, com as temporadas e os episódios organizados.</p>
-    </section>
-    <section class="panel stack" style="max-width:780px">
-      <label class="field"><span>Pasta dos projetos</span>
-        <div class="row" style="flex-wrap:nowrap"><input type="text" id="w-root" class="mono" value="${esc(S.state.projects_root || sug)}" placeholder="C:\\Users\\voce\\Traducoes">
-        <button class="btn" data-w="pick">${ic("open")} Escolher</button></div></label>
-      <p class="muted small">Exemplo: com <span class="mono">C:\\Users\\mila\\traducoes</span>, um filme “Resgate” fica em <span class="mono">C:\\Users\\mila\\traducoes\\Resgate</span> e uma série em <span class="mono">…\\traducoes\\Série\\temporada-1\\ep-1</span>.</p>
-      <div><button class="btn primary big-inline" data-w="save">${ic("check")} Usar esta pasta</button></div>
-    </section>`;
+  <div class="ds-page" style="max-width:860px">
+    <header class="ds-head"><div class="ds-head-main"><h1 class="ds-title">Onde ficam os seus trabalhos?</h1>
+      <p class="ds-sub">Escolha a pasta onde você guarda as legendas. Dentro dela o programa usa uma pasta por mês (<b>${esc(mf)}</b>) e, dentro do mês, uma por projeto. Se a pasta já tem os seus meses, os trabalhos que estão lá aparecem no programa — nada é movido nem apagado.</p></div></header>
+    <section class="ds-set"><div class="ds-set-row"><div class="ds-set-line">
+      <div class="ds-set-text"><div class="ds-set-title">Pasta dos trabalhos ${helpBtn("cfg-pasta")}</div>
+        <input type="text" id="w-root" class="mono" style="width:100%;margin-top:8px" value="${esc(S.state.projects_root || sug)}" placeholder="C:\\Users\\voce\\Documents\\Legendas"></div>
+      <button type="button" class="ds-btn sm" data-w="pick">${ic("open")} Escolher</button></div></div></section>
+    <p class="ds-meta">Exemplo: <span class="mono small">…\\Legendas\\${esc(mf)}\\Endless Love\\temporada-2\\ep-90</span></p>
+    <div><button type="button" class="ds-btn primary" data-w="save">${ic("check")} Usar esta pasta</button></div>
+  </div>`;
   main.onclick = async (e) => {
     const b = e.target.closest("[data-w]");
     if (!b) return;
     try {
       if (b.dataset.w === "pick") {
-        const { paths } = await api("POST", "/api/dialog", { kind: "folder", title: "Pasta dos projetos" });
+        const { paths } = await api("POST", "/api/dialog", { kind: "folder", title: "Pasta dos trabalhos" });
         if (paths[0]) document.getElementById("w-root").value = paths[0];
       }
       if (b.dataset.w === "save") {
-        await api("POST", "/api/obras/root", { path: document.getElementById("w-root").value.trim() });
-        toast("Pronto! Os projetos vão ficar nesta pasta.");
+        b.disabled = true;
+        const r = await api("POST", "/api/obras/root", { path: document.getElementById("w-root").value.trim() });
+        const n = r.scan?.adicionados || 0;
+        toast(n ? `Pronto! ${n} trabalho(s) encontrado(s) nas pastas de mês.` : "Pronto! Os trabalhos vão ficar nesta pasta.");
+        START_MES = null;
         location.hash = "#/inicio";
       }
-    } catch (err) { toast(err.message, true); }
+    } catch (err) { toast(err.message, true); b.disabled = false; }
   };
 }
 
-/* ------------------------------------------------------------ tela inicial */
+/* ------------------------------------------------------------ tela inicial (mês a mês) */
 
-let START_FILTER = { status: "", q: "" };
+let START_MES = null;
 
 async function renderStart() {
-  await loadState();
+  await Promise.all([loadState(), loadProjects()]);
   if (!S.state.projects_root) { location.hash = "#/bemvindo"; return; }
-  const data = await api("GET", "/api/obras");
-  const who = (S.state.settings.translator_name || "").split(" ")[0];
+  const mes = START_MES || thisMonth();
+  const [data, mm] = await Promise.all([api("GET", `/api/obras?mes=${mes}`), api("GET", "/api/obras/months")]);
+  const rows = data.obras;
   const rec = data.recent;
-  const all = data.obras;
-  const cnt = (st) => all.filter((o) => o.status === st).length;
+  const root = data.root.replace(/[\\/]+$/, "");
+  const going = rows.filter((o) => o.done < o.total).length;
+  const toDeliver = rows.filter((o) => /^Entregar/.test(o.next || "")).length;
+  const delivered = rows.reduce((a, o) => a + (o.done || 0), 0);
+  const others = mm.months.filter((m) => m.mes !== mes);
+  const isNow = mes === thisMonth();
   main.innerHTML = `
-    <section class="hero">
-      <div><span class="eyebrow">CNT Legendas</span>
-        <h1>${greeting()}${who ? `, ${esc(who)}` : ""}</h1>
-        <p class="muted">${todayLong()}</p></div>
-      <div class="hero-side">
-        <span class="label">Pasta dos projetos</span>
-        <span class="mono small path" title="${esc(data.root)}">${esc(data.root)}</span>
-        <div class="row" style="gap:6px"><button class="btn sm" data-s="openroot">${ic("open")} Abrir pasta</button><a class="btn sm ghost" href="#/bemvindo">Trocar</a></div>
-      </div>
-    </section>
-
-    <section class="action-cards">
-      <button class="acard" data-s="new">
-        <span class="chip c-accent">${ic("plus")}</span>
-        <b>Novo projeto</b><span class="muted small">Filme ou série, com a pasta organizada</span></button>
-      <button class="acard" data-s="open">
-        <span class="chip c-info">${ic("open")}</span>
-        <b>Abrir</b><span class="muted small">Reabrir um projeto pela pasta</span></button>
-      <button class="acard ${rec ? "" : "off"}" data-s="recent" ${rec ? "" : "disabled"}>
-        <span class="chip c-violet">${ic("play")}</span>
-        <b>${rec ? "Continuar" : "Mais recente"}</b>
-        <span class="muted small">${rec ? `${esc(rec.name)}${rec.kind === "serie" ? ` · ${esc(rec.label)}` : ""}` : "Nenhum projeto ainda"}</span>
-        ${rec ? `<span class="label">${esc(when(rec.updated_at))}</span>` : ""}</button>
-    </section>
-
-    <section class="kpis">
-      ${kpi("Em andamento", cnt("andamento"), "projetos", "c-accent", "clock")}
-      ${kpi("Novos", cnt("novo"), "ainda não começados", "c-info", "plus")}
-      ${kpi("Finalizados", cnt("finalizado"), "entregues", "c-ok", "check")}
-      ${kpi("Legendas", n0(all.reduce((a, o) => a + (o.legendas || 0), 0)), "em todos os projetos", "c-violet", "text")}
-    </section>
-
-    <section class="panel">
-      <div class="row" style="justify-content:space-between;margin-bottom:12px">
-        <h2>Projetos recentes</h2>
-        <div class="row" style="gap:8px">
-          <a class="btn sm ghost" href="#/projetos">Ver todos os projetos ${ic("right")}</a>
-          <div class="seg" role="tablist" id="st-filter">
-            ${[["", "Todos", all.length], ["novo", "Novos", cnt("novo")], ["andamento", "Em andamento", cnt("andamento")], ["finalizado", "Finalizados", cnt("finalizado")]]
-              .map(([k, t, n]) => `<button role="tab" data-f="${k}" aria-selected="${START_FILTER.status === k}">${t} <span class="mono">${n}</span></button>`).join("")}
-          </div>
-          <label class="search">${ic("search")}<input type="search" id="st-q" placeholder="Procurar projeto ou cliente" value="${esc(START_FILTER.q)}"></label>
+  <div class="ds-page">
+    <header class="ds-head">
+      <div class="ds-head-main">
+        <div class="ds-head-line">
+          <button type="button" class="ds-iconbtn" data-s="prev" aria-label="Mês anterior">‹</button>
+          <h1 class="ds-title">${esc(monthLabel(mes))}</h1>
+          <button type="button" class="ds-iconbtn" data-s="next" aria-label="Próximo mês">›</button>
+          ${helpBtn("inicio")}
         </div>
+        <p class="ds-sub">Pasta: <span class="mono small">${esc(root)}</span> › <b>${esc(monthFolder(mes))}</b>
+          <button type="button" class="ds-link" data-s="openmonth">Abrir no Windows</button></p>
       </div>
-      <div class="table-wrap"><table class="table report" id="st-table"></table></div>
-    </section>`;
+      <div class="ds-actions">
+        <a class="ds-btn" href="#/editor">Abrir uma legenda solta</a>
+        <a class="ds-btn primary" href="#/obra/nova">${ic("plus")} Novo trabalho</a>
+      </div>
+    </header>
 
-  const draw = () => {
-    const q = START_FILTER.q.toLowerCase();
-    const rows = all.filter((o) => (!START_FILTER.status || o.status === START_FILTER.status)
-      && (!q || `${o.name} ${o.client_name}`.toLowerCase().includes(q))).slice(0, 8);
-    document.getElementById("st-table").innerHTML = `
-      <thead><tr><th>Projeto</th><th>Tipo</th><th>Cliente</th><th>Status</th><th class="num">Episódios</th><th class="num">Legendas</th><th class="num">Palavras</th><th class="num">Vídeo</th><th class="num">Tempo</th><th>Atualizado</th></tr></thead>
-      <tbody>${rows.length ? rows.map((o) => `<tr class="click" data-href="#/obra/${o.id}">
-        <td><div class="pname">${ic(o.kind === "serie" ? "tv" : "film")}<div><strong>${esc(o.name)}</strong>${o.exists ? "" : `<div class="small" style="color:var(--err)">pasta não encontrada</div>`}</div></div></td>
-        <td>${o.kind === "serie" ? "Série" : "Filme"}</td>
-        <td>${esc(o.client_name || "—")}</td>
-        <td>${pill(o.status)}</td>
-        <td class="num mono">${o.kind === "serie" ? `${o.n_fin}/${o.n_itens}` : "—"}</td>
-        <td class="num mono">${n0(o.legendas)}</td>
-        <td class="num mono">${n0(o.palavras)}</td>
-        <td class="num mono">${o.duracao_video_s ? fmtHMS(o.duracao_video_s) : "—"}</td>
-        <td class="num mono">${fmtHM(o.seconds)}</td>
-        <td class="mono small">${esc(when(o.updated_at))}</td></tr>`).join("")
-        : `<tr><td colspan="10" class="muted" style="padding:24px">${all.length ? "Nenhum projeto com esse filtro." : "Nenhum projeto ainda. Clique em <b>Novo projeto</b> para começar."}</td></tr>`}</tbody>`;
-    document.querySelectorAll("#st-table tr[data-href]").forEach((tr) => tr.addEventListener("click", () => (location.hash = tr.dataset.href)));
-  };
-  draw();
-  document.getElementById("st-q").addEventListener("input", (e) => { START_FILTER.q = e.target.value; draw(); });
+    ${rows.length ? `<div class="ds-chips">
+      <span class="ds-chip"><b>${going}</b> em andamento</span>
+      ${toDeliver ? `<span class="ds-chip"><b>${toDeliver}</b> para entregar</span>` : ""}
+      <span class="ds-chip"><b>${delivered}</b> entregue${delivered === 1 ? "" : "s"} no mês</span>
+      ${rec && isNow ? `<button type="button" class="ds-chip" data-s="recent" style="cursor:pointer">Continuar de onde parou: <b>${esc(rec.name)}${rec.kind === "serie" ? ` · ${esc(rec.label)}` : ""}</b> ›</button>` : ""}
+    </div>` : ""}
+
+    <section class="ds-list" aria-label="Trabalhos de ${esc(monthLabel(mes))}">
+      ${rows.length ? rows.map((o) => `
+        <article class="ds-row ${o.total && o.done === o.total ? "done" : ""}">
+          <div class="ds-row-name"><a href="#/obra/${o.id}">${esc(o.name)}</a>
+            <span class="ds-meta">${o.kind === "serie" ? "Série" : "Filme"}${o.client_name ? ` · ${esc(o.client_name)}` : ""} · ${esc(shortLang(o.source_lang))} → ${esc(shortLang(o.target_lang))}${o.exists ? "" : ` · <span class="ds-err">pasta não encontrada</span>`}</span></div>
+          <div class="ds-prog"><div class="ds-bar" aria-hidden="true"><i style="width:${o.pct || 0}%"></i></div><span class="ds-meta">${esc(o.progress || "")}</span></div>
+          <div class="ds-next"><small>Próximo passo</small><span>${esc(o.next || "")}</span></div>
+          <a class="ds-btn sm" href="#/obra/${o.id}">Abrir</a>
+        </article>`).join("")
+        : `<div class="ds-empty"><b>Nenhum trabalho em ${esc(monthLabel(mes).toLowerCase().replace(/^./, (c) => c.toUpperCase()))} ainda</b>
+            <span>${isNow ? "Quando chegar um trabalho, clique em Novo trabalho." : "Use as setas para ir a outro mês."}</span>
+            ${isNow ? `<a class="ds-btn primary" href="#/obra/nova">${ic("plus")} Novo trabalho</a>` : ""}</div>`}
+    </section>
+
+    ${others.length ? `<section style="display:flex;flex-direction:column;gap:12px" aria-label="Outros meses">
+      <h2 class="ds-h2">Outros meses</h2>
+      <div class="ds-months">${others.slice(0, 12).map((m) => `<button type="button" class="ds-month" data-mes="${m.mes}">
+        <strong>${esc(m.label)}</strong><span>${m.total ? `${m.total} trabalho${m.total === 1 ? "" : "s"}${m.total && m.finalizado === m.total ? " · todos entregues" : m.andamento ? ` · ${m.andamento} em andamento` : ""}` : "Nenhum trabalho"}</span></button>`).join("")}</div>
+      <p class="ds-meta">Procurando um trabalho antigo? <a href="#/projetos">Ver a lista de todos os projetos</a> · <button type="button" class="ds-link" data-s="scan">Procurar trabalhos novos nas pastas</button></p>
+    </section>` : ""}
+  </div>`;
   main.onclick = async (e) => {
-    const f = e.target.closest("[data-f]");
-    if (f) {
-      START_FILTER.status = f.dataset.f;
-      document.querySelectorAll("#st-filter button").forEach((x) => x.setAttribute("aria-selected", String(x === f)));
-      draw(); return;
-    }
+    const m = e.target.closest("[data-mes]");
+    if (m) { START_MES = m.dataset.mes; renderStart(); return; }
     const b = e.target.closest("[data-s]");
     if (!b) return;
     try {
-      if (b.dataset.s === "new") location.hash = "#/obra/nova";
-      if (b.dataset.s === "open") await openProjectFolder();
+      if (b.dataset.s === "prev") { START_MES = shiftMonth(mes, -1); renderStart(); }
+      if (b.dataset.s === "next") { START_MES = shiftMonth(mes, 1); renderStart(); }
       if (b.dataset.s === "recent" && rec) await openItem(rec.item_id);
-      if (b.dataset.s === "openroot") await api("POST", "/api/open", { path: data.root });
+      if (b.dataset.s === "openmonth") await api("POST", "/api/open", { path: `${root}\\${monthFolder(mes)}` }).catch(() => api("POST", "/api/open", { path: root }));
+      if (b.dataset.s === "scan") {
+        const r = await api("POST", "/api/obras/scan");
+        toast(r.adicionados ? `${r.adicionados} trabalho(s) encontrado(s) nas pastas.` : "Nenhum trabalho novo nas pastas de mês.");
+        renderStart();
+      }
     } catch (err) { toast(err.message, true); }
   };
 }
@@ -180,128 +165,183 @@ async function openItem(itemId) {
   location.hash = `#/editor/${o.sid}`;
 }
 
-/* ------------------------------------------------------------ novo projeto */
+/* ------------------------------------------------------------ novo trabalho (3 perguntas) */
+
+const NT_KINDS = [
+  { id: "traduzir", title: "Traduzir uma legenda", text: "O cliente mandou a legenda pronta (.srt). É o mais comum.",
+    a: ["subtitle", "Legenda do cliente (.srt)"], b: ["media", "Vídeo — opcional, para conferir"], cta: "Criar e abrir no editor" },
+  { id: "transcrever", title: "Legendar um vídeo", text: "Só tem o vídeo. O programa escreve a legenda a partir da fala, no seu computador.",
+    a: ["media", "Vídeo"], b: null, cta: "Criar e começar a legendar" },
+  { id: "sincronizar", title: "Acertar o tempo", text: "A legenda existe, mas está fora do tempo do vídeo.",
+    a: ["subtitle", "Legenda fora do tempo (.srt)"], b: ["media", "Vídeo"], cta: "Criar e abrir no editor" },
+];
 
 async function renderNewProject() {
   await Promise.all([loadState(), loadProjects()]);
   if (!S.state.projects_root) { location.hash = "#/bemvindo"; return; }
-  const W = { kind: "", name: "", client_id: getPref("cnt.cliente", ""), season: 1, episodes: "1", title: "",
-    source_lang: "pt-BR", target_lang: "es-419", video: "", srt: "", nameOk: false };
-  main.innerHTML = `
-    <div class="page-head"><div><p class="label"><a href="#/inicio">Início</a> / Novo projeto</p><h1 style="margin-top:6px">Novo projeto</h1></div></div>
-    <section class="panel">
-      <span class="label">1 · O que é?</span>
-      <div class="kind-cards" style="margin-top:12px">
-        <button class="kcard k-film" data-k="filme">${ic("film")}<b>Filme</b><span>Um título só. A pasta guarda o vídeo e as legendas.</span></button>
-        <button class="kcard k-serie" data-k="serie">${ic("tv")}<b>Série</b><span>Temporadas e episódios, em qualquer ordem.</span></button>
-      </div>
-    </section>
-    <section class="panel" id="np-rest" hidden>
-      <span class="label">2 · Nome da pasta</span>
-      <div class="grid-2" style="margin-top:12px">
-        <label class="field" style="grid-column:1/-1"><span>Nome</span>
-          <input type="text" id="np-name" maxlength="120" placeholder="Ex.: Resgate no Oeste" autocomplete="off"></label>
-      </div>
-      <div class="pathbox mono" id="np-path"></div>
-      <p class="small" id="np-err"></p>
-      <div id="np-serie" hidden style="margin-top:18px">
-        <span class="label">3 · Temporada e episódios</span>
-        <div class="grid-3" style="margin-top:12px">
-          <label class="field"><span>Temporada</span><input type="number" id="np-season" min="0" value="1"></label>
-          <label class="field"><span>Episódio(s)</span><input type="text" id="np-eps" value="1" placeholder="1   ou   40-45   ou   1, 3, 7"></label>
-          <label class="field"><span>Título do episódio <em class="muted small">(opcional)</em></span><input type="text" id="np-title"></label>
-        </div>
-        <p class="muted small" style="margin-top:6px">Pode começar em qualquer temporada e episódio (a temporada 2 pode começar no 40). Depois dá para acrescentar mais.</p>
-      </div>
-      <div class="grid-3" style="margin-top:18px">
-        <label class="field"><span>Cliente</span><select id="np-client"><option value="">Nenhum</option>${(S.projects || []).map((c) => `<option value="${c.id}" ${String(c.id) === W.client_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
-        <label class="field"><span>Idioma de origem</span><select id="np-src">${langOptions(W.source_lang)}</select></label>
-        <label class="field"><span>Traduzir para</span><select id="np-dst">${langOptions(W.target_lang)}</select></label>
-      </div>
-      <div id="np-files" style="margin-top:18px">
-        <span class="label">Arquivos <em class="muted">(opcional — dá para pôr depois)</em></span>
-        <p class="muted small" style="margin:6px 0 10px">São <b>copiados</b> para a pasta do projeto; os originais ficam onde estão.</p>
-        <div class="row">
-          <button class="btn" data-a="video">${ic("film")} Escolher vídeo</button><span class="mono small" id="np-video">—</span>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <button class="btn" data-a="srt">${ic("file")} Escolher legenda</button><span class="mono small" id="np-srt">—</span>
-        </div>
-      </div>
-      <div class="row" style="margin-top:22px;justify-content:flex-end">
-        <a class="btn" href="#/inicio">Cancelar</a>
-        <button class="btn primary" data-a="create" id="np-create" disabled>${ic("check")} Criar projeto</button>
-      </div>
-    </section>`;
+  const all = (await api("GET", "/api/obras")).obras;
+  // um projeto por nome+cliente (o mês mais recente)
+  const seen = new Set();
+  const projs = all.slice().sort((x, y) => (y.mes || "").localeCompare(x.mes || "") || y.updated_at.localeCompare(x.updated_at))
+    .filter((o) => { const k = `${o.name.toLowerCase()}|${o.client_id || 0}`; if (seen.has(k)) return false; seen.add(k); return true; });
+  const mes = thisMonth();
+  const clientId = getPref("cnt.cliente", "");
+  const cli = (S.projects || []).find((c) => String(c.id) === clientId);
+  const W = { kind: "traduzir", client: clientId, proj: projs.length ? String(projs[0].id) : "new", newKind: "serie", name: "",
+    season: 1, episode: "", src: cli?.source_lang || "auto", dst: cli?.target_lang || "es-419", files: { a: "", b: "" }, nameErr: "" };
+  const cur = () => NT_KINDS.find((k) => k.id === W.kind);
+  const obra = () => projs.find((o) => String(o.id) === W.proj);
+  const pickProj = () => {
+    const o = obra();
+    if (o) { W.src = o.source_lang || W.src; W.dst = o.target_lang || W.dst; W.client = o.client_id ? String(o.client_id) : W.client; }
+  };
+  pickProj();
 
-  const $ = (id) => document.getElementById(id);
-  let timer;
-  const preview = () => {
+  const draw = () => {
+    const k = cur(), o = obra(), isNew = W.proj === "new";
+    const serie = isNew ? W.newKind === "serie" : o?.kind === "serie";
     const root = S.state.projects_root.replace(/[\\/]+$/, "");
-    const name = $("np-name").value;
-    let p = `${root}\\${name || "…"}`;
-    if (W.kind === "serie") {
-      let eps = [];
-      try { eps = parseEps($("np-eps").value); } catch {}
-      const s = $("np-season").value || "?";
-      const list = eps.length ? eps : ["?"];
-      p = list.slice(0, 6).map((e) => `${root}\\${name || "…"}\\temporada-${s}\\ep-${e}`).join("\n") + (list.length > 6 ? `\n… e mais ${list.length - 6}` : "");
-    }
-    $("np-path").textContent = p;
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
-      if (!name) { W.nameOk = false; $("np-err").textContent = ""; upd(); return; }
-      const r = await api("GET", `/api/obras/check?name=${encodeURIComponent(name)}`).catch(() => ({ problem: "" }));
-      W.nameOk = !r.problem;
-      $("np-err").innerHTML = r.problem ? `<span class="note err" style="display:block">${esc(r.problem)}</span>` : `<span style="color:var(--ok)">${ic("check")} Nome válido</span>`;
-      upd();
-    }, 180);
-  };
-  const upd = () => {
-    let epsOk = true;
-    if (W.kind === "serie") { try { epsOk = parseEps($("np-eps").value).length > 0 && $("np-season").value !== ""; } catch { epsOk = false; } }
-    $("np-create").disabled = !(W.kind && W.nameOk && epsOk);
-    const single = W.kind === "filme" || (epsOk && parseEpsSafe($("np-eps").value).length === 1);
-    $("np-files").hidden = !single;
-    $("np-title").disabled = !single;
-  };
-  // só deixa digitar o que o Windows aceita em nome de pasta
-  $("np-name").addEventListener("beforeinput", (e) => { if (e.data && /[<>:"/\\|?*\u0000-\u001f]/.test(e.data)) { e.preventDefault(); toast("O Windows não aceita < > : \" / \\ | ? * em nomes de pasta.", true); } });
-  $("np-name").addEventListener("input", (e) => {
-    const clean = e.target.value.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "");
-    if (clean !== e.target.value) e.target.value = clean;
-    preview();
-  });
-  ["np-season", "np-eps"].forEach((id) => $(id).addEventListener("input", () => { preview(); upd(); }));
+    const pname = isNew ? (W.name || "…") : (o?.folder.split(/[\\/]/).pop() || "");
+    const dest = `${root}\\${monthFolder(mes)}\\${pname}${serie ? `\\temporada-${W.season || "?"}\\ep-${W.episode || "?"}` : ""}`;
+    main.innerHTML = `
+    <div class="ds-page">
+      <a class="ds-back" href="#/inicio">‹ Voltar ao Início</a>
+      <header class="ds-head"><div class="ds-head-main"><div class="ds-head-line"><h1 class="ds-title">Novo trabalho</h1>${helpBtn("novo")}</div>
+        <p class="ds-sub">Vai para a pasta de <b>${esc(monthLabel(mes))}</b>.</p></div></header>
+      <form class="ds-form" id="nt" novalidate>
+        <section class="ds-q" aria-labelledby="q1">
+          <h2 id="q1"><em>1.</em> O que você vai fazer? ${helpBtn("o-que")}</h2>
+          <div class="ds-choices">${NT_KINDS.map((x) => `<button type="button" class="ds-choice" data-kind="${x.id}" aria-pressed="${x.id === W.kind}">
+            <strong>${esc(x.title)}</strong><span>${esc(x.text)}</span></button>`).join("")}</div>
+        </section>
 
+        <section class="ds-q" aria-labelledby="q2">
+          <h2 id="q2"><em>2.</em> Para quem e qual ${serie ? "episódio" : "trabalho"}? ${helpBtn("quem")}</h2>
+          <div class="ds-fields">
+            <label class="ds-field"><span>Cliente</span><select id="nt-client"><option value="">Sem cliente</option>${(S.projects || []).map((c) => `<option value="${c.id}" ${String(c.id) === W.client ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+            <label class="ds-field"><span>Projeto</span><select id="nt-proj">
+              ${projs.map((p) => `<option value="${p.id}" ${String(p.id) === W.proj ? "selected" : ""}>${esc(p.name)}${p.mes_label ? ` (${esc(p.mes_label)})` : ""}</option>`).join("")}
+              <option value="new" ${isNew ? "selected" : ""}>+ Projeto novo…</option></select></label>
+            ${serie ? `<label class="ds-field"><span>Temporada</span><input type="number" id="nt-season" min="0" value="${esc(W.season)}"></label>
+              <label class="ds-field"><span>Episódio</span><input type="number" id="nt-ep" min="0" value="${esc(W.episode)}" placeholder="ex.: 93"></label>` : ""}
+          </div>
+          ${isNew ? `<div class="ds-fields">
+            <label class="ds-field" style="grid-column:span 2"><span>Nome do projeto (vira o nome da pasta)</span><input type="text" id="nt-name" maxlength="120" value="${esc(W.name)}" placeholder="Ex.: Endless Love — T2" autocomplete="off"></label>
+            <label class="ds-field"><span>É…</span><select id="nt-newkind"><option value="serie" ${W.newKind === "serie" ? "selected" : ""}>Série (com episódios)</option><option value="filme" ${W.newKind === "filme" ? "selected" : ""}>Filme</option></select></label>
+          </div>${W.nameErr ? `<p class="ds-err">${esc(W.nameErr)}</p>` : ""}` : ""}
+          <div class="ds-fields">
+            <label class="ds-field"><span>Idioma do original ${helpBtn("idiomas")}</span><select id="nt-src">${langOptions(W.src, true)}</select></label>
+            ${W.kind !== "sincronizar" ? `<label class="ds-field"><span>${W.kind === "transcrever" ? "Depois traduzir para" : "Traduzir para"}</span><select id="nt-dst">${W.kind === "transcrever" ? `<option value="">Não traduzir</option>` : ""}${langOptions(W.dst)}</select></label>` : ""}
+          </div>
+        </section>
+
+        <section class="ds-q" aria-labelledby="q3">
+          <h2 id="q3"><em>3.</em> Arquivos ${helpBtn("arquivos")}</h2>
+          <div class="ds-drops">
+            ${[["a", k.a], ["b", k.b]].filter(([, v]) => v).map(([slot, [kind, label]]) => `<div class="ds-drop ${W.files[slot] ? "on" : ""}">
+              <strong>${esc(label)}</strong>
+              <small>${W.files[slot] ? esc(W.files[slot]) : "Ainda não escolhido"}</small>
+              <button type="button" class="ds-btn sm" data-pick="${slot}" data-kind="${kind}">${W.files[slot] ? "Trocar" : "Escolher arquivo"}</button></div>`).join("")}
+          </div>
+          <p class="ds-meta">Os arquivos são copiados para a pasta do ${serie ? "episódio" : "projeto"}; os seus originais ficam onde estão.</p>
+        </section>
+
+        <footer class="ds-foot"><small>Vai para: ${esc(dest)}</small>
+          <button type="submit" class="ds-btn primary" id="nt-go">${esc(k.cta)}</button></footer>
+      </form>
+    </div>`;
+  };
+  draw();
+
+  const val = (id) => document.getElementById(id)?.value;
+  const grab = () => {
+    W.client = val("nt-client") ?? W.client;
+    W.season = val("nt-season") ?? W.season;
+    W.episode = val("nt-ep") ?? W.episode;
+    W.name = val("nt-name") ?? W.name;
+    W.newKind = val("nt-newkind") ?? W.newKind;
+    W.src = val("nt-src") ?? W.src;
+    if (document.getElementById("nt-dst")) W.dst = val("nt-dst");
+  };
+  main.onchange = (e) => {
+    grab();
+    if (e.target.id === "nt-proj") { W.proj = e.target.value; pickProj(); draw(); }
+    else if (e.target.id === "nt-client" && W.proj === "new") {
+      const c = (S.projects || []).find((x) => String(x.id) === W.client);
+      if (c) { W.src = c.source_lang || W.src; W.dst = c.target_lang || W.dst; }
+      draw();
+    } else if (["nt-newkind", "nt-season", "nt-ep", "nt-name"].includes(e.target.id)) draw();
+  };
+  main.oninput = (e) => {
+    if (e.target.id !== "nt-name") return;
+    const clean = e.target.value.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "");
+    if (clean !== e.target.value) { e.target.value = clean; toast("O Windows não aceita < > : \" / \\ | ? * em nomes de pasta.", true); }
+  };
   main.onclick = async (e) => {
-    const k = e.target.closest("[data-k]");
-    if (k) {
-      W.kind = k.dataset.k;
-      document.querySelectorAll(".kcard").forEach((x) => x.classList.toggle("on", x === k));
-      $("np-rest").hidden = false; $("np-serie").hidden = W.kind !== "serie";
-      $("np-name").focus(); preview(); upd(); return;
+    const c = e.target.closest("[data-kind]:not([data-pick])");
+    if (c) {
+      grab(); W.kind = c.dataset.kind; W.files = { a: "", b: "" };
+      if (W.kind === "transcrever") W.dst = "";          // legendar: traduzir depois é opcional
+      else if (!W.dst) W.dst = obra()?.target_lang || (S.projects || []).find((x) => String(x.id) === W.client)?.target_lang || "es-419";
+      draw(); return;
     }
-    const b = e.target.closest("[data-a]");
-    if (!b) return;
+    const p = e.target.closest("[data-pick]");
+    if (p) {
+      grab();
+      try {
+        const { paths } = await api("POST", "/api/dialog", { kind: p.dataset.kind });
+        if (paths[0]) { W.files[p.dataset.pick] = paths[0]; draw(); }
+      } catch (err) { toast(err.message, true); }
+    }
+  };
+  main.onsubmit = async (e) => {
+    e.preventDefault();
+    grab();
+    const k = cur();
+    const go = document.getElementById("nt-go");
+    const isNew = W.proj === "new";
+    const serie = isNew ? W.newKind === "serie" : obra()?.kind === "serie";
+    if (k.a && !W.files.a && W.kind !== "traduzir") return toast(`Escolha: ${k.a[1]}.`, true);
+    if (serie && (W.episode === "" || W.season === "")) return toast("Informe a temporada e o episódio.", true);
+    if (isNew && !W.name.trim()) return toast("Dê um nome ao projeto.", true);
+    go.disabled = true;
     try {
-      if (b.dataset.a === "video" || b.dataset.a === "srt") {
-        const { paths } = await api("POST", "/api/dialog", { kind: b.dataset.a === "video" ? "media" : "subtitle" });
-        if (paths[0]) { W[b.dataset.a] = paths[0]; $(`np-${b.dataset.a}`).textContent = paths[0]; }
+      setPref("cnt.cliente", W.client);
+      const clientId = W.client ? Number(W.client) : null;
+      const langs = { source_lang: W.src || "auto", target_lang: W.dst || "es-419" };
+      let o, item;
+      if (isNew) {
+        const body = { kind: serie ? "serie" : "filme", name: W.name.trim(), client_id: clientId, mes, ...langs };
+        if (serie) Object.assign(body, { season: Number(W.season), episodes: String(W.episode) });
+        o = await api("POST", "/api/obras", body);
+        item = o.items[0];
+      } else {
+        o = obra();
+        if (o.mes !== mes) o = await api("POST", `/api/obras/${o.id}/continue`, { mes });
+        await api("PUT", `/api/obras/${o.id}`, { client_id: clientId, ...langs });
+        if (serie) {
+          try { o = await api("POST", `/api/obras/${o.id}/episodes`, { season: Number(W.season), episodes: String(W.episode) }); }
+          catch (err) { o = await api("GET", `/api/obras/${o.id}`); }   // o episódio já existia: usa ele
+          item = o.items.find((it) => it.season === Number(W.season) && it.episode === Number(W.episode));
+        } else item = (await api("GET", `/api/obras/${o.id}`)).items[0];
       }
-      if (b.dataset.a === "create") {
-        b.disabled = true;
-        const body = { kind: W.kind, name: $("np-name").value, client_id: $("np-client").value ? Number($("np-client").value) : null,
-          source_lang: $("np-src").value, target_lang: $("np-dst").value };
-        if (W.kind === "serie") Object.assign(body, { season: Number($("np-season").value), episodes: $("np-eps").value, title: $("np-title").value });
-        setPref("cnt.cliente", $("np-client").value);
-        const o = await api("POST", "/api/obras", body);
-        const files = [W.video, W.srt].filter(Boolean);
-        if (files.length && o.items.length === 1) await copyFiles(o.items[0].id, files);
-        toast(`Projeto “${o.name}” criado.`);
-        location.hash = `#/obra/${o.id}`;
+      const files = [W.files.a, W.files.b].filter(Boolean);
+      if (files.length) await copyFiles(item.id, files);
+      if (W.kind === "transcrever") {
+        const fresh = (await api("GET", `/api/obras/${o.id}`)).items.find((it) => it.id === item.id);
+        const steps = W.dst ? ["transcrever", "traduzir"] : ["transcrever"];
+        const j = await api("POST", "/api/jobs", { inputs: [fresh.video], params: { steps, source_lang: W.src || "auto",
+          target_lang: W.dst || "es-419", profile_key: (S.projects || []).find((x) => x.id === clientId)?.profile_key || "",
+          project_id: clientId, out_dir: fresh.folder } });
+        toast("Legendando o vídeo em segundo plano. Você pode fazer outra coisa enquanto isso.");
+        location.hash = `#/trabalho/${j.id}`;
+        return;
       }
-    } catch (err) { toast(err.message, true); b.disabled = false; }
+      if (!files.length) { toast("Trabalho criado. Ponha os arquivos quando chegarem."); location.hash = `#/obra/${o.id}`; return; }
+      toast(W.kind === "sincronizar" ? "No editor, use Sincronizar › Sincronia precisa pela fala."
+        : `Pronto: ${o.name}${serie ? `, episódio ${W.episode}` : ""}.`);
+      await openItem(item.id);
+    } catch (err) { toast(err.message, true); go.disabled = false; }
   };
 }
 
@@ -334,151 +374,190 @@ async function copyFiles(itemId, paths) {
   return c;
 }
 
-/* ------------------------------------------------------------ projeto */
+/* ------------------------------------------------------------ projeto (passo a passo) */
 
 let OBRA_TAB = "eps";
+const STEP_KEYS = ["arquivos", "traduzir", "revisar", "entregar"];
+const STEP_NOTE = ["Falta o vídeo e a legenda", "Pronto para traduzir", "Traduzido — falta revisar", "Revisado — falta entregar"];
 
+function epNote(it) {
+  const d = (it.finished_at || "").match(/^\d{4}-(\d{2})-(\d{2})/);
+  if (it.step >= 4) return ["Pronto", `Entregue${d ? ` em ${d[2]}/${d[1]}` : ""}`];
+  return ["Agora", STEP_NOTE[it.step]];
+}
+
+function epCard(it, serie, isNow) {
+  const [lab, note] = epNote(it);
+  const track = (window.OBRA_STEPS || ["Arquivos", "Traduzir", "Revisar", "Entregar"]).map((t, k) =>
+    `<li class="${k < it.step ? "done" : ""}" ${k === it.step ? 'aria-current="step"' : ""}>${esc(t)}</li>`).join("");
+  return `<article class="ds-ep ${isNow ? "now" : ""}" data-i="${it.id}">
+    <div class="ds-ep-num">${serie ? `<small>Episódio</small><b>${esc(it.episode)}</b>
+      <input type="text" data-title="${it.id}" value="${esc(it.title || "")}" placeholder="título (opcional)" aria-label="Título do episódio ${esc(it.episode)}">`
+      : `<small>Filme</small><b style="font-size:20px">${ic("film")}</b>`}</div>
+    <ol class="ds-track" aria-label="Passos">${track}</ol>
+    <div class="ds-ep-note"><small>${esc(lab)}</small><span>${esc(note)}</span>${it.exists ? "" : `<span class="ds-err">pasta não encontrada</span>`}</div>
+    <div class="ds-ep-acts">
+      <button type="button" class="ds-btn sm ${isNow ? "primary" : ""}" data-o="${it.step === 0 ? "files" : "edit"}" data-i="${it.id}">${esc(it.action)}</button>
+      <div class="ds-more"><button type="button" class="ds-iconbtn" data-o="more" data-i="${it.id}" aria-haspopup="menu" aria-expanded="false" aria-label="Mais opções">⋯</button></div>
+    </div>
+  </article>`;
+}
+
+function epMenu(it) {
+  return `<div class="ds-menu" role="menu">
+    <button role="menuitem" data-o="edit" data-i="${it.id}">Abrir no editor</button>
+    <button role="menuitem" data-o="files" data-i="${it.id}">Pôr vídeo ou legenda…</button>
+    <button role="menuitem" data-o="ifolder" data-path="${esc(it.folder)}">Abrir a pasta no Windows</button>
+    <a role="menuitem" href="#/item/${it.id}">Números do episódio</a>
+    <hr>
+    ${it.status === "finalizado" ? `<button role="menuitem" data-o="istatus" data-st="andamento" data-i="${it.id}">Reabrir (não está entregue)</button>`
+      : `<button role="menuitem" data-o="istatus" data-st="finalizado" data-i="${it.id}">Marcar como entregue</button>`}
+    <button role="menuitem" data-o="iremove" data-i="${it.id}">Tirar da lista (a pasta fica)</button>
+  </div>`;
+}
+
+let OBRA_LAST = null;
 async function renderObra(id) {
+  if (OBRA_LAST !== id) { OBRA_TAB = "eps"; OBRA_LAST = id; }
   await Promise.all([loadState(), loadProjects()]);
   const o = await api("GET", `/api/obras/${id}`);
-  const m = o.metrics || {};
+  window.OBRA_STEPS = o.steps;
   const serie = o.kind === "serie";
-  setCrumb(`Projetos <span class="muted">/ ${esc(o.name)}</span>`);
+  const m = o.metrics || {};
+  setCrumb(`Início <span class="muted">/ ${esc(o.name)}</span>`);
+  const now = o.items.find((it) => it.step < 4);
+  const prof = (S.projects || []).find((c) => c.id === o.client_id);
+  const lastSeason = o.seasons.length ? o.seasons[o.seasons.length - 1].season : 1;
   main.innerHTML = `
-    <section class="hero">
-      <div><span class="eyebrow">${serie ? "Série" : "Filme"}</span>
-        <h1>${esc(o.name)}</h1>
-        <p class="muted">${o.client_name ? `${esc(o.client_name)} · ` : ""}${esc(shortLang(o.source_lang))} → ${esc(shortLang(o.target_lang))} · criado ${esc(when(o.created_at))}${o.finished_at && o.status === "finalizado" ? ` · finalizado ${esc(when(o.finished_at))}` : ""}</p>
-        <p class="mono small path" style="margin-top:8px">${esc(o.folder)}${o.exists ? "" : ` <span style="color:var(--err)">(pasta não encontrada)</span>`}</p></div>
-      <div class="hero-side">
-        <span class="label">Status</span>
-        <div class="seg" id="ob-status">${["novo", "andamento", "finalizado"].map((s) => `<button data-st="${s}" aria-selected="${o.status === s}">${STATUS_TXT[s]}</button>`).join("")}</div>
-        <div class="row" style="gap:6px">
-          <button class="btn sm" data-o="folder">${ic("open")} Abrir pasta</button>
-          <select id="ob-client" class="sm" aria-label="Cliente"><option value="">Sem cliente</option>${(S.projects || []).map((c) => `<option value="${c.id}" ${c.id === o.client_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>
-        </div>
+  <div class="ds-page">
+    <a class="ds-back" href="#/inicio" data-o="back">‹ ${esc(o.mes_label || "Início")}</a>
+    <header class="ds-head">
+      <div class="ds-head-main">
+        <h1 class="ds-title">${esc(o.name)}</h1>
+        <p class="ds-sub">${serie ? "Série" : "Filme"}${o.client_name ? ` · <b>${esc(o.client_name)}</b>` : " · sem cliente"} · ${esc(shortLang(o.source_lang))} → ${esc(shortLang(o.target_lang))}${prof?.profile_key ? ` · regras: ${esc(profileName(prof.profile_key))}` : ""}${o.status === "finalizado" ? " · <b>entregue</b>" : ""}</p>
       </div>
+      <div class="ds-actions">
+        <button type="button" class="ds-btn" data-o="folder">${ic("open")} Abrir a pasta</button>
+        ${serie ? `<button type="button" class="ds-btn" data-o="addeps">${ic("plus")} Episódios</button>` : ""}
+        <div class="ds-more"><button type="button" class="ds-btn quiet" data-o="omore" aria-haspopup="menu" aria-expanded="false">Mais ▾</button></div>
+      </div>
+    </header>
+
+    ${OBRA_TAB === "eps" ? `
+    <section class="ds-how" aria-label="Como funciona">
+      <span>Cada ${serie ? "episódio" : "trabalho"} passa por</span>
+      ${o.steps.map((t, k) => `<span class="ds-how-step">${esc(t)} ${helpBtn("passo-" + STEP_KEYS[k], `O que é ${t}?`)}${k < 3 ? `<span class="ds-how-arrow" aria-hidden="true">→</span>` : ""}</span>`).join("")}
     </section>
+    ${o.items.length ? (serie ? o.seasons.map((sz) => `
+      <section class="ds-season" aria-label="Temporada ${sz.season}">
+        ${o.seasons.length > 1 || sz.season !== 1 ? `<h2 class="ds-h2">Temporada ${sz.season}</h2>` : ""}
+        ${sz.items.map((it) => epCard(it, true, now && it.id === now.id)).join("")}
+      </section>`).join("") : epCard(o.items[0], false, !!now))
+      : `<div class="ds-empty"><b>Nenhum episódio ainda</b><span>Clique em “Episódios” para pôr o primeiro.</span>
+         <button type="button" class="ds-btn primary" data-o="addeps">${ic("plus")} Episódios</button></div>`}
+    <p class="ds-meta">Números do projeto (legendas, palavras, tempo trabalhado) e o histórico ficam em <button type="button" class="ds-link" data-o="tab-met">Números e histórico</button>.</p>`
+    : `<div class="tabs big" role="tablist" id="ob-tabs">
+        <button role="tab" data-t="eps" aria-selected="false">‹ Episódios</button>
+        <button role="tab" data-t="met" aria-selected="${OBRA_TAB === "met"}">Números</button>
+        <button role="tab" data-t="hist" aria-selected="${OBRA_TAB === "hist"}">Histórico</button>
+      </div><div id="ob-body"></div>`}
+  </div>`;
 
-    <section class="kpis">
-      ${kpi("Legendas", n0(m.legendas), `${n0(m.linhas)} linhas`, "c-accent", "text")}
-      ${kpi("Palavras", n0(m.palavras), `${n0(m.caracteres)} caracteres`, "c-info", "words")}
-      ${kpi("Vídeo", m.duracao_video_s ? fmtHMS(m.duracao_video_s) : "—", `${serie ? `${o.items.length} episódio(s)` : "duração"}`, "c-violet", "film")}
-      ${kpi("Tempo trabalhado", fmtHM(o.seconds), o.productivity.legendas_por_hora ? `${n0(o.productivity.legendas_por_hora)} legendas/hora` : "no editor", "c-ok", "clock")}
-    </section>
-
-    <div class="tabs big" role="tablist" id="ob-tabs">
-      <button role="tab" data-t="eps" aria-selected="${OBRA_TAB === "eps"}">${serie ? "Episódios" : "Arquivos"}</button>
-      <button role="tab" data-t="met" aria-selected="${OBRA_TAB === "met"}">Métricas</button>
-      <button role="tab" data-t="hist" aria-selected="${OBRA_TAB === "hist"}">Histórico</button>
-    </div>
-    <div id="ob-body"></div>`;
-
-  const body = document.getElementById("ob-body");
-  const drawEps = () => {
-    if (!serie) {
-      const it = o.items[0];
-      body.innerHTML = `<section class="panel">${itemCard(it, true)}</section>`;
-      return;
-    }
-    body.innerHTML = `
-      <section class="panel addeps">
-        <span class="label">Adicionar episódios</span>
-        <div class="row" style="margin-top:10px;align-items:end">
-          <label class="field" style="width:120px"><span>Temporada</span><input type="number" id="ae-s" min="0" value="${o.seasons.length ? o.seasons[o.seasons.length - 1].season : 1}"></label>
-          <label class="field" style="width:220px"><span>Episódio(s)</span><input type="text" id="ae-e" placeholder="7  ou  40-45"></label>
-          <label class="field" style="flex:1;min-width:180px"><span>Título <em class="muted small">(se for um só)</em></span><input type="text" id="ae-t"></label>
-          <button class="btn primary" data-o="addeps">${ic("plus")} Adicionar</button>
-        </div>
-        <p class="muted small" id="ae-hint" style="margin-top:6px"></p>
-      </section>
-      ${o.seasons.map((s) => `
-        <section class="panel season">
-          <div class="row" style="justify-content:space-between"><h2>Temporada ${s.season}</h2><span class="label">${s.items.length} episódio(s) · ${s.items.filter((i) => i.status === "finalizado").length} finalizado(s)</span></div>
-          <div class="table-wrap"><table class="table report eps">
-            <thead><tr><th>Ep.</th><th>Título</th><th>Status</th><th>Arquivos</th><th class="num">Legendas</th><th class="num">Palavras</th><th class="num">Tempo</th><th>Atualizado</th><th></th></tr></thead>
-            <tbody>${s.items.map((it) => `<tr data-i="${it.id}">
-              <td class="mono"><b>${it.episode}</b></td>
-              <td><input type="text" class="inline" data-title="${it.id}" value="${esc(it.title)}" placeholder="—" aria-label="Título do episódio ${it.episode}"></td>
-              <td><select class="inline st-sel st-${it.status}" data-ist="${it.id}">${["novo", "andamento", "finalizado"].map((x) => `<option value="${x}" ${x === it.status ? "selected" : ""}>${STATUS_TXT[x]}</option>`).join("")}</select></td>
-              <td class="small">${fileBadges(it)}</td>
-              <td class="num mono">${n0(it.metrics?.legendas)}</td>
-              <td class="num mono">${n0(it.metrics?.palavras)}</td>
-              <td class="num mono">${fmtHM(it.seconds)}</td>
-              <td class="mono small">${esc(when(it.updated_at))}</td>
-              <td class="acts">
-                <button class="btn sm primary" data-o="edit" data-i="${it.id}" title="Abrir no editor">${ic("editor")} Abrir</button>
-                <button class="btn sm" data-o="files" data-i="${it.id}" title="Adicionar vídeo/legenda">${ic("file")}</button>
-                <a class="btn sm" href="#/item/${it.id}" title="Métricas do episódio">${ic("chart")}</a>
-                <button class="btn sm" data-o="ifolder" data-path="${esc(it.folder)}" title="Abrir pasta do episódio">${ic("open")}</button>
-              </td></tr>`).join("")}</tbody></table></div>
-        </section>`).join("") || `<section class="panel"><p class="muted">Nenhum episódio ainda.</p></section>`}`;
-    const hint = () => {
-      const s = document.getElementById("ae-s").value;
-      const nx = o.next_episode[String(s)] || 1;
-      document.getElementById("ae-hint").textContent = `Próximo da temporada ${s}: ${nx}. Pode ser qualquer número (ex.: a temporada começar no 40).`;
-      document.getElementById("ae-e").placeholder = String(nx);
-    };
-    hint();
-    document.getElementById("ae-s").addEventListener("input", hint);
-  };
-  const drawMet = () => { body.innerHTML = metricsPanels(m, o.productivity, o.seconds) + (serie ? epsMetricsTable(o.items) : ""); };
-  const drawHist = async () => {
-    body.innerHTML = `<section class="panel"><p class="muted">Carregando…</p></section>`;
+  if (OBRA_TAB === "met") document.getElementById("ob-body").innerHTML = metricsPanels(m, o.productivity, o.seconds) + (serie ? epsMetricsTable(o.items) : "");
+  if (OBRA_TAB === "hist") {
     const r = await api("GET", `/api/obras/${id}/report`);
-    body.innerHTML = `<div class="split2">
+    document.getElementById("ob-body").innerHTML = `<div class="split2">
       <section class="panel"><h2>Histórico</h2><ul class="timeline">${r.events.map((e) => `<li><span class="mono small muted">${esc(when(e.at))}</span><b>${esc(EVT[e.tipo] || e.tipo)}</b><span>${esc(e.detalhe)}</span></li>`).join("") || `<li class="muted">Nada ainda.</li>`}</ul></section>
       <section class="panel"><h2>Tempo por dia</h2>${dayBars(r.days)}</section></div>`;
-  };
-  const drawTab = () => (OBRA_TAB === "met" ? drawMet() : OBRA_TAB === "hist" ? drawHist() : drawEps());
-  drawTab();
+  }
 
-  document.getElementById("ob-client").addEventListener("change", async (e) => {
-    try { await api("PUT", `/api/obras/${id}`, { client_id: e.target.value ? Number(e.target.value) : null }); toast("Cliente do projeto atualizado."); }
-    catch (err) { toast(err.message, true); }
-  });
+  const closeMenus = () => document.querySelectorAll(".ds-menu").forEach((x) => { x.previousElementSibling?.setAttribute("aria-expanded", "false"); x.remove(); });
+  const toggleMenu = (btn, html) => {
+    const open = btn.getAttribute("aria-expanded") === "true";
+    closeMenus();
+    if (open) return;
+    btn.insertAdjacentHTML("afterend", html);
+    btn.setAttribute("aria-expanded", "true");
+    btn.nextElementSibling.querySelector("button, a")?.focus();
+  };
   main.onchange = async (e) => {
     const t = e.target;
     try {
-      if (t.dataset.ist) { await api("PUT", `/api/itens/${t.dataset.ist}`, { status: t.value }); toast("Status do episódio atualizado."); router(); }
       if (t.dataset.title) { await api("PUT", `/api/itens/${t.dataset.title}`, { title: t.value }); toast("Título salvo."); }
     } catch (err) { toast(err.message, true); }
   };
   main.onclick = async (e) => {
     const tab = e.target.closest("[data-t]");
-    if (tab) { OBRA_TAB = tab.dataset.t; document.querySelectorAll("#ob-tabs [data-t]").forEach((x) => x.setAttribute("aria-selected", String(x === tab))); drawTab(); return; }
-    const st = e.target.closest("[data-st]");
-    if (st) {
-      if (st.dataset.st === o.status) return;
-      try { await api("PUT", `/api/obras/${id}`, { status: st.dataset.st }); toast(o.status === "finalizado" ? "Projeto reaberto." : `Projeto: ${STATUS_TXT[st.dataset.st]}.`); router(); }
-      catch (err) { toast(err.message, true); }
-      return;
-    }
+    if (tab) { OBRA_TAB = tab.dataset.t; renderObra(id); return; }
     const b = e.target.closest("[data-o]");
-    if (!b) return;
+    if (!b) { if (!e.target.closest(".ds-menu")) closeMenus(); return; }
+    const a = b.dataset.o;
+    const itemId = Number(b.dataset.i);
     try {
-      const a = b.dataset.o;
+      if (a === "back") { START_MES = o.mes || null; return; }
+      if (a === "more") { toggleMenu(b, epMenu(o.items.find((x) => x.id === itemId))); return; }
+      if (a === "omore") {
+        toggleMenu(b, `<div class="ds-menu" role="menu">
+          <button role="menuitem" data-o="client">Mudar o cliente…</button>
+          <button role="menuitem" data-o="tab-met">Números e histórico</button>
+          ${o.status === "finalizado" ? `<button role="menuitem" data-o="status" data-st="andamento">Reabrir o projeto</button>`
+            : `<button role="menuitem" data-o="status" data-st="finalizado">Marcar o projeto todo como entregue</button>`}
+          <hr><button role="menuitem" data-o="remove">Tirar da lista (a pasta fica)</button></div>`);
+        return;
+      }
+      closeMenus();
+      if (a === "tab-met") { OBRA_TAB = "met"; renderObra(id); }
       if (a === "folder") await api("POST", "/api/open", { path: o.folder });
       if (a === "ifolder") await api("POST", "/api/open", { path: b.dataset.path });
-      if (a === "edit") await openItem(Number(b.dataset.i));
+      if (a === "edit") await openItem(itemId);
       if (a === "files") {
         const { paths } = await api("POST", "/api/dialog", { kind: "any", multiple: true, title: "Vídeo e/ou legenda deste episódio" });
         if (!paths.length) return;
-        await copyFiles(Number(b.dataset.i), paths);
-        toast("Arquivos copiados para a pasta."); router();
+        await copyFiles(itemId, paths);
+        toast("Arquivos copiados para a pasta do episódio."); renderObra(id);
+      }
+      if (a === "istatus") { await api("PUT", `/api/itens/${itemId}`, { status: b.dataset.st }); toast(b.dataset.st === "finalizado" ? "Marcado como entregue." : "Episódio reaberto."); renderObra(id); }
+      if (a === "iremove") {
+        if (!confirm("Tirar este episódio da lista? A pasta e os arquivos continuam no computador.")) return;
+        await api("DELETE", `/api/itens/${itemId}`); renderObra(id);
+      }
+      if (a === "status") { await api("PUT", `/api/obras/${id}`, { status: b.dataset.st }); toast(b.dataset.st === "finalizado" ? "Projeto marcado como entregue." : "Projeto reaberto."); renderObra(id); }
+      if (a === "remove") {
+        if (!confirm("Tirar este projeto da lista? A pasta e os arquivos continuam no computador; dá para encontrá-lo de novo pela pasta.")) return;
+        await api("DELETE", `/api/obras/${id}`); location.hash = "#/inicio";
+      }
+      if (a === "client") {
+        const md = modal("Cliente do projeto", `<label class="ds-field"><span>Cliente</span><select id="oc-sel"><option value="">Sem cliente</option>${(S.projects || []).map((c) => `<option value="${c.id}" ${c.id === o.client_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>`,
+          `<button class="btn" data-m="x">Cancelar</button><button class="btn primary" data-m="ok">Salvar</button>`);
+        md.ov.onclick = async (ev) => {
+          const k = ev.target.closest("[data-m]")?.dataset.m;
+          if (k === "x") md.close();
+          if (k === "ok") { const v = md.$("#oc-sel").value; await api("PUT", `/api/obras/${id}`, { client_id: v ? Number(v) : null }); md.close(); toast("Cliente atualizado."); renderObra(id); }
+        };
       }
       if (a === "addeps") {
-        const r = await api("POST", `/api/obras/${id}/episodes`, { season: document.getElementById("ae-s").value,
-          episodes: document.getElementById("ae-e").value || document.getElementById("ae-e").placeholder, title: document.getElementById("ae-t").value });
-        toast(`Episódios adicionados. Pastas criadas em ${r.name}.`); router();
-      }
-      if (a === "remove") {
-        if (!confirm("Tirar este projeto da lista? A pasta e os arquivos continuam no computador; dá para reabrir pelo botão Abrir.")) return;
-        await api("DELETE", `/api/obras/${id}`); location.hash = "#/inicio";
+        const nx = o.next_episode[String(lastSeason)] || 1;
+        const md = modal("Pôr episódios", `
+          <div class="ds-fields"><label class="ds-field"><span>Temporada</span><input type="number" id="ae-s" min="0" value="${lastSeason}"></label>
+          <label class="ds-field"><span>Episódio(s)</span><input type="text" id="ae-e" value="${nx}" autofocus></label></div>
+          <p class="ds-meta">Um número (${nx}), vários (${nx}, ${nx + 2}) ou um intervalo (${nx}-${nx + 4}). Cada episódio ganha a sua pasta.</p>`,
+          `<button class="btn" data-m="x">Cancelar</button><button class="btn primary" data-m="ok">Pôr</button>`);
+        md.ov.onclick = async (ev) => {
+          const k = ev.target.closest("[data-m]")?.dataset.m;
+          if (k === "x") md.close();
+          if (k === "ok") {
+            try { await api("POST", `/api/obras/${id}/episodes`, { season: md.$("#ae-s").value, episodes: md.$("#ae-e").value }); md.close(); toast("Episódios criados."); renderObra(id); }
+            catch (err) { toast(err.message, true); }
+          }
+        };
       }
     } catch (err) { toast(err.message, true); }
   };
 }
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  document.querySelectorAll(".ds-menu").forEach((x) => { x.previousElementSibling?.setAttribute("aria-expanded", "false"); x.remove(); });
+});
 
 function fileBadges(it) {
   const v = it.video ? it.video.split(/[\\/]/).pop() : "", s = it.srt ? it.srt.split(/[\\/]/).pop() : "";

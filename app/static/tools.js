@@ -147,7 +147,7 @@ function openPrecise() {
       <li>Quando a fala é emendada (sem pausa entre duas legendas), corta entre as palavras.</li>
     </ol>
     <label class="check"><input type="checkbox" id="pr-words" ${getPref("cnt.precisa.palavras", "1") === "1" ? "checked" : ""}>
-      <span>Transcrever a fala para cortar falas emendadas entre as palavras <em class="muted small">(no computador, sem custo; baixa ~480 MB na primeira vez)</em></span></label>
+      <span>Transcrever a fala para cortar falas emendadas entre as palavras <em class="muted small">(no computador, sem custo; na primeira vez baixa o modelo, ~3 GB)</em></span></label>
     <p class="muted small" style="margin-top:8px">Legendas em que o programa não teve certeza ficam com ⚑ e aparecem no F8 (próximo problema). Ctrl+Z desfaz tudo.</p>`,
     `<button class="btn" data-x="close">Cancelar</button><button class="btn primary" data-x="go">Sincronizar</button>`);
   m.ov.addEventListener("click", async (e) => {
