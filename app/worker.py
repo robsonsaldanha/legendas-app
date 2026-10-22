@@ -132,7 +132,8 @@ class Worker:
     def estimate(self, params: dict, inputs: list[str]) -> dict:
         req, plan_steps = self.build_request(params, inputs)
         st = Settings.load()
-        res = run_job(req, st, estimate_only=True)
+        kw = {"transcriber": self._transcriber_factory()} if self._transcriber_factory else {}
+        res = run_job(req, st, estimate_only=True, **kw)
         from core.translate import provider_label
         return {"minutes": res.audio_minutes, "usd": res.estimated_usd, "steps": plan_steps,
                 "provider": provider_label(st),

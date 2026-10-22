@@ -20,3 +20,14 @@ def test_words_with_times(tmp_path):
     # há uma pausa de 2 s no áudio de teste: a maior distância entre palavras fica perto disso
     gaps = [b[0] - a[1] for a, b in zip(words, words[1:])]
     assert max(gaps) > 1.0
+
+
+@pytest.mark.skipif(not (wl.available() and os.environ.get("WHISPER_TEST_WAV")),
+                    reason="faster-whisper ou áudio de teste ausentes")
+def test_full_transcription_detects_language(tmp_path):
+    """Modo legenda nova: texto em trechos + palavras, idioma detectado pelo áudio."""
+    out = tmp_path / "whisper.json"
+    r = wl.transcribe_words(Path(os.environ["WHISPER_TEST_WAV"]), out, "tiny", "cpu", full=True,
+                            prompt="Transcrição fiel.")
+    assert r["idioma"] == "en" and r["segmentos"] and len(r["palavras"]) >= 8
+    assert all(a <= b and t.strip() for a, b, t in r["segmentos"])

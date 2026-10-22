@@ -442,7 +442,7 @@ function validateDraft() {
   if (steps.includes("sincronizar") && has("subtitle") && has("text")) return "Para sincronizar use a legenda OU o texto, não os dois.";
   if (steps.includes("sincronizar") && !has("subtitle") && !has("text") && !steps.includes("transcrever"))
     return "Para sincronizar, junte ao vídeo a legenda fora do tempo (.srt) ou o texto sem tempo (.txt/.docx).";
-  const needsOpenAI = steps.includes("transcrever") || (steps.includes("sincronizar") && has("text"));
+  const needsOpenAI = !S.state.local_transcribe && (steps.includes("transcrever") || (steps.includes("sincronizar") && has("text")));
   if (needsOpenAI && !S.state.api_key) return "Configure a chave da OpenAI primeiro (Configurações).";
   const prov = (S.state.ai?.providers || []).find((x) => x.id === S.state.ai?.provider);
   if (steps.includes("traduzir") && curMethod() === "api" && prov && !prov.ready)
@@ -1150,11 +1150,16 @@ async function renderSettings() {
             <option value="auto" ${s.use_gpu !== "nao" ? "selected" : ""}>Usar quando houver (recomendado)</option>
             <option value="nao" ${s.use_gpu === "nao" ? "selected" : ""}>Não usar (só o processador)</option>
           </select></label>
-        <label class="field"><span>Transcrição local (tempo das palavras na sincronia precisa)</span>
+        <label class="field"><span>Quem transcreve a fala (legenda nova)</span>
+          <select id="s-engine">
+            <option value="local" ${s.transcribe_engine !== "openai" ? "selected" : ""}>Este computador (Whisper, sem custo)</option>
+            <option value="openai" ${s.transcribe_engine === "openai" ? "selected" : ""}>API da OpenAI (pago, pela internet)</option>
+          </select></label>
+        <label class="field"><span>Modelo de transcrição no computador</span>
           <select id="s-whisper">
-            <option value="small" ${s.whisper_model === "small" || !s.whisper_model ? "selected" : ""}>Rápida (~480 MB)</option>
-            <option value="medium" ${s.whisper_model === "medium" ? "selected" : ""}>Melhor (~1,5 GB)</option>
-            <option value="large-v3" ${s.whisper_model === "large-v3" ? "selected" : ""}>Máxima (~3 GB, use com placa de vídeo)</option>
+            <option value="large-v3" ${s.whisper_model === "large-v3" || !s.whisper_model ? "selected" : ""}>O melhor (~3 GB, recomendado)</option>
+            <option value="medium" ${s.whisper_model === "medium" ? "selected" : ""}>Médio (~1,5 GB)</option>
+            <option value="small" ${s.whisper_model === "small" ? "selected" : ""}>Rápido (~480 MB, menos preciso)</option>
           </select></label>
         <label class="field"><span>Apagar arquivos temporários após (dias)</span><input type="number" min="1" max="365" id="s-days" value="${s.keep_job_days}"></label>
       </div>
@@ -1217,8 +1222,10 @@ async function renderSettings() {
           align: document.getElementById("s-align").value,
           use_gpu: document.getElementById("s-gpu").value,
           whisper_model: document.getElementById("s-whisper").value,
+          transcribe_engine: document.getElementById("s-engine").value,
           keep_job_days: Number(document.getElementById("s-days").value),
         });
+        await loadState();
         toast("Configurações salvas.");
       }
       if (a === "open-data") await api("POST", "/api/open", { path: st.data_dir });

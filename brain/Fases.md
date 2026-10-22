@@ -75,5 +75,7 @@
 - [x] 2.4.0: manuais de clientes fora do código (importar/exportar perfis); repositório público
 - [x] 2.5.0: sincronia pela voz (Silero VAD + acerto de início/fim), áreas do editor fixas e arrastáveis, `<br />`, {\an8}, configurações do editor, revisão no mesmo idioma, origem nunca alterada
 - [x] 2.6.0: sincronia precisa pela fala (separação da voz na placa de vídeo, início/fim pela fala sem esticar pelo CPS, corte entre palavras pela transcrição local)
+- [x] 2.6.2: sincronia precisa ajustada com o episódio inteiro do PC dela
+- [x] 2.7.0: transcrição de vídeo sem legenda no computador (Whisper large-v3, sem custo; OpenAI vira opção)
 - [ ] Calibrar com legendas acertadas à mão por ela (quanto antes da fala ela gosta de entrar)
 - [ ] Janela própria (sem navegador), se ela preferir

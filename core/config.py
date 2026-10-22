@@ -164,7 +164,8 @@ class Settings:
     ai_ipv4: dict = field(default_factory=dict)      # serviço → sair só por IPv4
     editor: dict = field(default_factory=dict)       # preferências do editor (cores, fontes, tamanhos das áreas)
     use_gpu: str = "auto"            # placa de vídeo na separação de voz/transcrição: auto | nao
-    whisper_model: str = "small"     # transcrição local (só tempos das palavras): small | medium | large-v3
+    whisper_model: str = "large-v3"  # transcrição local: sempre o melhor por padrão (small | medium | large-v3)
+    transcribe_engine: str = "local"  # transcrever: local (Whisper no computador, sem custo) | openai (API)
     # Nome para a assinatura no fim da legenda ("Traducción: Nome").
     translator_name: str = ""
     # Pasta onde ficam os projetos (perguntada na primeira abertura).
@@ -184,6 +185,8 @@ class Settings:
                 s = cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
                 if not s.translate_model:
                     s.translate_model = cls.translate_model
+                if "transcribe_engine" not in d:   # vindo da 2.6: Whisper sempre no melhor modelo
+                    s.whisper_model = "large-v3"
                 return s
             except (ValueError, TypeError):
                 pass

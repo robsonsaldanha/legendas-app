@@ -93,6 +93,14 @@ def open_path(path: str, select: bool = False) -> None:
                          stderr=subprocess.DEVNULL)
 
 
+def _local_transcribe() -> bool:
+    try:
+        from core.pipeline import use_local_transcription
+        return use_local_transcription(Settings.load())
+    except Exception:  # noqa: BLE001
+        return False
+
+
 class App:
     """Estado compartilhado pelo servidor."""
 
@@ -145,6 +153,7 @@ class App:
         return {
             "version": __version__,
             "api_key": masked,
+            "local_transcribe": _local_transcribe(),
             "align": {
                 "installed": installed,
                 "models": {lang: ("baixando" if self.downloads.get(lang) == "baixando"
@@ -680,7 +689,8 @@ class Handler(BaseHTTPRequestHandler):
                    "translate_model": str, "translate_usd_per_mtok_in": float,
                    "translate_usd_per_mtok_out": float, "translate_method": str,
                    "parallel_requests": int, "align": str, "keep_job_days": int,
-                   "translator_name": str, "use_gpu": str, "whisper_model": str}
+                   "translator_name": str, "use_gpu": str, "whisper_model": str,
+                   "transcribe_engine": str}
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))
@@ -692,7 +702,9 @@ class Handler(BaseHTTPRequestHandler):
         if s.use_gpu not in ("auto", "nao"):
             s.use_gpu = "auto"
         if s.whisper_model not in ("small", "medium", "large-v3"):
-            s.whisper_model = "small"
+            s.whisper_model = "large-v3"
+        if s.transcribe_engine not in ("local", "openai"):
+            s.transcribe_engine = "local"
         if s.align not in ("auto", "model", "estimate"):
             raise ApiError("Opção de alinhamento inválida.")
         s.parallel_requests = max(1, min(8, s.parallel_requests))

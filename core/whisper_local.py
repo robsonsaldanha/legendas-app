@@ -1,9 +1,10 @@
-"""Transcrição local da fala (Whisper via faster-whisper), só para saber ONDE cada palavra
-começa e termina — serve para cortar falas emendadas no lugar certo na sincronia precisa.
-O texto transcrito não é usado na legenda.
+"""Transcrição local da fala (Whisper via faster-whisper), sem custo.
 
-- Roda no computador, sem internet depois do primeiro uso (o modelo é baixado uma vez,
-  ~480 MB no "small", para a pasta comum de modelos).
+Dois usos: (1) transcrever um vídeo sem legenda (texto + tempo das palavras, `full=True`);
+(2) na sincronia precisa, só saber ONDE cada palavra começa e termina (o texto não é usado).
+
+- Roda no computador, sem internet depois do primeiro uso (o modelo é baixado uma vez para
+  a pasta comum de modelos; o padrão é o melhor, "large-v3", ~3 GB).
 - Usa a placa NVIDIA (CUDA) se houver; senão, o processador.
 - SEMPRE num processo separado (`python -m core.whisper_local …`): ao terminar, cancelar
   ou falhar, o processo acaba e a memória da placa é liberada. Se a placa falhar, repete
@@ -63,17 +64,22 @@ def _cuda_dlls() -> None:
                 os.environ["PATH"] = str(b) + os.pathsep + os.environ.get("PATH", "")
 
 
-def transcribe_words(wav16: Path, out_json: Path, size: str = "small", device: str = "auto",
+def transcribe_words(wav16: Path, out_json: Path, size: str = "large-v3", device: str = "auto",
                      language: str | None = None,
                      progress: Callable[[str, float], None] | None = None,
-                     cancelled: Callable[[], bool] | None = None) -> dict:
-    """Palavras com tempo → out_json. Devolve {"onde", "idioma", "palavras"}."""
+                     cancelled: Callable[[], bool] | None = None,
+                     prompt: str = "", full: bool = False) -> dict:
+    """Transcrição com tempo das palavras → out_json.
+
+    Devolve {"onde", "idioma", "palavras": [[ini, fim, palavra]], "segmentos": [[ini, fim, texto]]}.
+    `full`: transcrição para virar legenda (ignora trechos sem fala, usa o `prompt` de contexto)."""
     if not available():
         raise WhisperError("A transcrição local não está instalada nesta versão.")
     devices = ["cuda", "cpu"] if device == "auto" else [device]
     last = ""
     for dev in devices:
-        cmd = [_python(), "-m", "core.whisper_local", str(wav16), str(out_json), size, dev, language or ""]
+        cmd = [_python(), "-m", "core.whisper_local", str(wav16), str(out_json), size, dev, language or "",
+               "1" if full else "0", prompt or ""]
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                 cwd=str(Path(__file__).resolve().parent.parent), creationflags=_NO_WINDOW)
         try:
@@ -129,6 +135,8 @@ def _main(argv: list[str]) -> int:
     import numpy as np
     src, dst, size, dev = argv[0], argv[1], argv[2], argv[3]
     lang = (argv[4] if len(argv) > 4 else "") or None
+    full = len(argv) > 5 and argv[5] == "1"
+    prompt = (argv[6] if len(argv) > 6 else "") or None
     if dev == "cuda":
         _cuda_dlls()
         import ctranslate2
@@ -153,15 +161,18 @@ def _main(argv: list[str]) -> int:
     if lang is None:   # idioma pela fala de vários trechos (os primeiros 30 s podem ser só música)
         lang = _detect_language(model, audio)
     segments, info = model.transcribe(audio, language=lang, task="transcribe", word_timestamps=True,
-                                      vad_filter=False, beam_size=5, condition_on_previous_text=False)
-    words = []
+                                      vad_filter=full, beam_size=5, condition_on_previous_text=False,
+                                      initial_prompt=prompt if full else None)
+    words, segs = [], []
     for seg in segments:
         for w in seg.words or []:
             words.append([round(w.start, 3), round(w.end, 3), w.word.strip()])
+        if seg.text.strip():
+            segs.append([round(seg.start, 3), round(seg.end, 3), seg.text.strip()])
         say("transcrevendo", min(1.0, seg.end / max(1.0, total)))
     Path(dst).write_text(json.dumps({"onde": "placa de vídeo (CUDA)" if dev == "cuda" else "processador",
-                                     "idioma": info.language, "palavras": words}, ensure_ascii=False),
-                         encoding="utf-8")
+                                     "idioma": info.language, "palavras": words, "segmentos": segs},
+                                    ensure_ascii=False), encoding="utf-8")
     return 0
 
 

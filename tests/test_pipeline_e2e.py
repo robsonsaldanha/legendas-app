@@ -238,3 +238,34 @@ def test_sync_then_translate(env, tmp_path):
     for c, (a, _) in zip(out, SPEECH):
         assert abs(c.start - a) < 0.15
     assert res.outputs["original"].name == "Ep.pt-BR (sincronizada).srt"
+
+
+def test_local_whisper_transcription(env, monkeypatch):
+    """Transcrição no computador (Whisper): sem custo, idioma detectado, tempos por palavra."""
+    import json as _json
+    from core import whisper_local as wl
+    video, glossary, settings = env
+    settings.transcribe_engine, settings.whisper_model = "local", "large-v3"
+    got = {}
+
+    def fake(wav, out, size, device, language=None, progress=None, cancelled=None, prompt="", full=False):
+        got.update(size=size, language=language, full=full, prompt=prompt)
+        words, segs = [], []
+        for k, sent in enumerate(SENTENCES):
+            t0 = k * 5.0
+            toks = sent.split()
+            for j, w in enumerate(toks):
+                words.append([t0 + j * 0.3, t0 + j * 0.3 + 0.25, w])
+            segs.append([t0, t0 + len(toks) * 0.3, sent])
+        r = {"onde": "processador", "idioma": "pt", "palavras": words, "segmentos": segs}
+        Path(out).write_text(_json.dumps(r), encoding="utf-8")
+        return r
+    monkeypatch.setattr(wl, "available", lambda: True)
+    monkeypatch.setattr(wl, "transcribe_words", fake)
+    res = run_job(JobRequest(inputs=[video], steps={TRANSCRIBE}, glossary=glossary), settings)
+    cues = read_srt(res.outputs["srt"])
+    text = " ".join(c.text for c in cues)
+    assert all(s in text for s in SENTENCES)
+    assert got["size"] == "large-v3" and got["full"] and "Narizinho" in got["prompt"]
+    assert res.estimated_usd == 0.0
+    assert res.outputs["srt"].name.endswith(".pt-BR.srt")

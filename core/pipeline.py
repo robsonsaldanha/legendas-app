@@ -23,7 +23,8 @@ from pathlib import Path
 from typing import Callable
 
 from . import __version__
-from .align import align_segments
+from .align import ALIGN_MODELS, align_segments
+from .lang import base_language
 from .chunking import Chunk, plan_chunks
 from .config import Settings, logs_dir
 from .errors import LegendasError, PipelineError
@@ -36,7 +37,7 @@ from .plan import FORMAT, SYNC, TRANSCRIBE, TRANSLATE, Inputs, build_plan, parse
 from .profiles import Profile, default_profile_for, get_profile
 from .qc import AVISO, Issue, check_rules, write_report
 from .subtitle import Cue, Word, read_srt, write_srt
-from .transcribe import OpenAITranscriber, Segment, Transcriber, build_prompt, run_transcription
+from .transcribe import OpenAITranscriber, Segment, Transcriber, build_prompt, clean_text, run_transcription
 from .translate import (OpenAITranslator, make_translator, provider_label, translate_prices, Translator, detect_language, estimate_tokens, is_revision, output_name,
                         translate_cues)
 
@@ -135,9 +136,54 @@ def prepare_audio(job: Job, media: Path, cb: Callbacks, settings: Settings) -> t
     return wav, info, chunks
 
 
-def estimate_cost(chunks: list[Chunk], settings: Settings) -> tuple[float, float]:
+def use_local_transcription(settings: Settings) -> bool:
+    """Transcrever no computador (Whisper, sem custo) quando escolhido e instalado."""
+    if getattr(settings, "transcribe_engine", "local") != "local":
+        return False
+    from .whisper_local import available
+    return available()
+
+
+def estimate_cost(chunks: list[Chunk], settings: Settings, local: bool | None = None) -> tuple[float, float]:
     minutes = sum(c.duration for c in chunks) / 60
+    if use_local_transcription(settings) if local is None else local:
+        return minutes, 0.0
     return minutes, minutes * settings.transcribe_usd_per_min
+
+
+_WHISPER_LANG = {"pt": "pt-BR", "es": "es-419", "en": "en"}
+
+
+def _transcribe_local(job: Job, wav: Path, src_lang: str, req, settings: Settings, cb, glossary):
+    """Transcreve no computador (Whisper). Devolve (segmentos, palavras, idioma)."""
+    from . import whisper_local as wl
+    size = settings.whisper_model or "large-v3"
+    out = job.path("whisper.json")
+    lang = None if req.source_lang in ("", "auto") else base_language(src_lang)
+    labels = {"baixando": f"Baixando o modelo de transcrição {size} (só na primeira vez)…",
+              "transcrevendo": f"Transcrevendo no computador (Whisper {size})…"}
+    cb.status(labels["transcrevendo"])
+    prompt = build_prompt(src_lang, req.context)
+    terms = transcription_keywords(glossary)
+    if terms:
+        prompt = (prompt + " " + ", ".join(terms[:40])).strip()
+    try:
+        r = wl.transcribe_words(wav, out, size, "cpu" if settings.use_gpu == "nao" else "auto",
+                                language=lang, prompt=prompt, full=True,
+                                progress=lambda fase, p: (cb.status(labels.get(fase, "Transcrevendo…")),
+                                                          cb.progress(TRANSCRIBE, int(p * 100), 100)),
+                                cancelled=cb.cancelled)
+    except wl.WhisperError as e:
+        raise PipelineError(str(e)) from e
+    cb.check_cancel()
+    if lang is None and r.get("idioma"):
+        src_lang = _WHISPER_LANG.get(r["idioma"], r["idioma"])
+    segments = [Segment(float(a), float(b), clean_text(t)) for a, b, t in r.get("segmentos", []) if t.strip()]
+    words = [Word(text=w[2], start=float(w[0]), end=float(max(w[1], w[0] + 0.02))) for w in r.get("palavras", [])
+             if str(w[2]).strip()]
+    log.info("Transcrição local (%s, %s): %d trechos, %d palavras, idioma %s",
+             size, r.get("onde"), len(segments), len(words), r.get("idioma"))
+    return segments, words, src_lang
 
 
 def _unique(path: Path, job: Job, key: str) -> Path:
@@ -257,7 +303,8 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         media = inputs.media
         wav, info, chunks = prepare_audio(job, media, cb, settings)
         fps = info.get("fps")
-        result.audio_minutes, result.estimated_usd = estimate_cost(chunks, settings)
+        result.audio_minutes, result.estimated_usd = estimate_cost(
+            chunks, settings, transcriber is None and use_local_transcription(settings))
         log.info("Fala: %.1f min em %d blocos, custo estimado US$ %.2f",
                  result.audio_minutes, len(chunks), result.estimated_usd)
         if estimate_only:
@@ -270,10 +317,17 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
 
         audio = load_wav(wav)
         segs_path = job.path("segmentos.json")
+        local_words: list[Word] | None = None
         if job.is_done("transcrever") and segs_path.exists():
             segments = [Segment(**s) for s in json.loads(segs_path.read_text(encoding="utf-8"))]
+        elif transcriber is None and use_local_transcription(settings):
+            segments, local_words, src_lang = _transcribe_local(job, wav, src_lang, req, settings, cb, glossary)
+            segs_path.write_text(json.dumps([s.to_dict() for s in segments], ensure_ascii=False,
+                                            indent=1), encoding="utf-8")
+            job.mark("transcrever", "ok", segmentos=len(segments), minutos=round(result.audio_minutes, 2),
+                     custo_usd=0.0, local=True)
         else:
-            cb.status("Transcrevendo (OpenAI)…")
+            cb.status("Transcrevendo (API da OpenAI)…")
             transcriber = transcriber or OpenAITranscriber(settings.transcribe_model)
             segments = run_transcription(
                 audio, chunks, transcriber, job.path("blocos"), src_lang,
@@ -292,6 +346,13 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         words_path = job.path("palavras.json")
         if job.is_done("alinhar") and words_path.exists():
             words = [Word.from_dict(w) for w in json.loads(words_path.read_text(encoding="utf-8"))]
+        elif local_words is not None and (settings.align == "estimate"
+                                          or base_language(src_lang) not in ALIGN_MODELS):
+            # idioma sem alinhador próprio (ex.: turco): os tempos do Whisper já são por palavra
+            words = local_words
+            words_path.write_text(json.dumps([w.to_dict() for w in words], ensure_ascii=False),
+                                  encoding="utf-8")
+            job.mark("alinhar", "ok", palavras=len(words), estimadas=0, origem="whisper")
         else:
             cb.status("Calculando o tempo de cada palavra…")
             words = align_segments(segments, audio, src_lang, mode=settings.align,

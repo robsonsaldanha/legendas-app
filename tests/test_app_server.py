@@ -251,3 +251,16 @@ def test_default_out_dir_for_uploads(tmp_path, monkeypatch):
     assert default_out_dir(tmp_path / "videos" / "a.mp4", up) is None
     out = default_out_dir(up / "abc" / "a.mp4", up)
     assert out is not None and out.name == "CNT Legendas"
+
+
+def test_transcribe_engine_setting(server, monkeypatch):
+    from core import whisper_local as wl
+    monkeypatch.setattr(wl, "available", lambda: True)
+    app, port, _ = server
+    st, _ = call(port, "PUT", "/api/settings", {"transcribe_engine": "openai"}, token=app.token)
+    assert st == 200
+    st, s = call(port, "GET", "/api/state", token=app.token)
+    assert s["local_transcribe"] is False
+    call(port, "PUT", "/api/settings", {"transcribe_engine": "xyz", "whisper_model": "?"}, token=app.token)
+    st, s = call(port, "GET", "/api/state", token=app.token)
+    assert s["local_transcribe"] is True and s["settings"]["whisper_model"] == "large-v3"
