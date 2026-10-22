@@ -44,7 +44,7 @@ def _segs():
 
 def test_foreign_segment_is_retranscribed():
     m = FakeModel()
-    out = _other_languages(m, _audio(), _segs(), "tr")
+    out = _other_languages(m, _audio(), _segs(), "tr", speech=[])
     langs = [g["lang"] for g in out]
     assert langs == ["tr", "en", "tr", "tr"] and m.calls == ["en", "tr"]
     en = out[1]
@@ -53,7 +53,7 @@ def test_foreign_segment_is_retranscribed():
 
 
 def test_keeps_original_when_new_is_worse():
-    out = _other_languages(FakeModel(en_lp=-1.5), _audio(), _segs(), "tr")
+    out = _other_languages(FakeModel(en_lp=-1.5), _audio(), _segs(), "tr", speech=[])
     assert [g["lang"] for g in out] == ["tr"] * 4 and out[1]["text"] == "Para nerede"
 
 
@@ -61,6 +61,15 @@ def test_foreign_phrase_inside_a_mixed_segment():
     """Trecho do Whisper com turco e inglês juntos: só a frase em inglês é trocada."""
     seg = {"s": 2.0, "e": 13.5, "text": "Merhaba nasılsın Para nerede", "lp": -0.8, "lang": "tr",
            "words": [[2.0, 3.0, "Merhaba"], [3.1, 5.0, "nasılsın"], [10.0, 11.5, "Para"], [11.6, 13.5, "nerede"]]}
-    out = _other_languages(FakeModel(), _audio(), [seg], "tr")
+    out = _other_languages(FakeModel(), _audio(), [seg], "tr", speech=[])
     assert [(g["lang"], g["text"]) for g in out] == [("tr", "Merhaba nasılsın"), ("en", "Where is the money?")]
     assert out[0]["e"] == 5.0
+
+
+def test_foreign_speech_skipped_by_whisper_is_recovered():
+    """Forçado em turco, o Whisper pulou a fala em inglês (sem texto em 10–14 s): o detector
+    de voz acha a fala sem texto, o idioma é conferido e ela é transcrita em inglês."""
+    segs = [s for s in _segs() if s["text"] != "Para nerede"]
+    out = _other_languages(FakeModel(), _audio(), segs, "tr", speech=[(2.0, 5.0), (10.0, 13.6), (20.0, 22.0)])
+    assert [(g["lang"], g["text"]) for g in out][:3] == [("tr", "Merhaba nasılsın"), ("en", "Where is the money?"),
+                                                        ("tr", "Tamam")]

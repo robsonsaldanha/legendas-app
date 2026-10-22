@@ -158,6 +158,27 @@ def _phrases(segs: list[dict]) -> list[tuple[float, float]]:
     return [(a, b) for a, b in out]
 
 
+def _speech_regions(audio) -> list[tuple[float, float]]:
+    """Onde há fala (detector de voz do próprio faster-whisper), em segundos."""
+    try:
+        from faster_whisper.vad import VadOptions, get_speech_timestamps
+        ts = get_speech_timestamps(audio, VadOptions(min_silence_duration_ms=300, speech_pad_ms=100))
+        return [(t["start"] / 16000, t["end"] / 16000) for t in ts]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _uncovered(regions, phrases) -> list[tuple[float, float]]:
+    """Fala que a transcrição deixou de fora (o Whisper, forçado no idioma principal, às vezes
+    simplesmente pula a fala estrangeira)."""
+    out = []
+    for a, b in regions:
+        cov = sum(max(0.0, min(b, y) - max(a, x)) for x, y in phrases)
+        if b - a >= MIN_FOREIGN and cov < 0.4 * (b - a):
+            out.append((a, b))
+    return out
+
+
 def _decode(model, clip, lang, off):
     segs, _ = model.transcribe(clip, language=lang, task="transcribe", word_timestamps=True,
                                beam_size=5, condition_on_previous_text=False, vad_filter=False)
@@ -168,13 +189,18 @@ def _decode(model, clip, lang, off):
 
 
 def _other_languages(model, audio, segs: list[dict], main: str, progress=None,
-                     diag: list | None = None) -> list[dict]:
+                     diag: list | None = None, speech: list | None = None) -> list[dict]:
     """Falas em outro idioma no meio do episódio: confere o idioma de cada frase e
     retranscreve no idioma dela. Só troca se o Whisper tiver certeza e a nova transcrição
     for mais provável que a do idioma principal no mesmo trecho (senão fica como estava)."""
     from .lang import join_tokens
     sr = 16000
     phrases = _phrases(segs)
+    speech = _speech_regions(audio) if speech is None else speech
+    missing = _uncovered(speech, phrases)
+    if diag is not None:
+        diag += [["sem_texto", round(a, 2), round(b, 2)] for a, b in missing]
+    phrases = sorted(phrases + missing)
     cand = []
     for k, (a, b) in enumerate(phrases):
         if progress and k % 20 == 0:
