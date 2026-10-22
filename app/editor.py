@@ -857,7 +857,9 @@ class EditorManager:
             if prob is None:
                 if vad.available():
                     prob = vad.speech_prob(audio, progress=lambda f: prog("Procurando a fala…", f))
-                else:   # reserva: volume do áudio (música pode contar como fala)
+                    if not clean and float((prob >= 0.5).sum()) * 0.032 < 1.0:
+                        prob = None    # nenhuma fala humana reconhecida: usa o volume
+                if prob is None:   # reserva: volume do áudio (música pode contar como fala)
                     from core.sync import speech_activity
                     m = speech_activity(audio).astype(np.float32)
                     k = int(len(audio) / 512)
@@ -909,8 +911,11 @@ class EditorManager:
             mask = np.zeros(int(len(sp.env)), dtype=np.uint8)
             for a, b in sp.segments:
                 mask[int(a / 0.01):int(b / 0.01)] = 1
-            res = sync.auto_sync(cues, mask, min_gap=prof.min_gap(fps))
-            if res.changed:
+            try:
+                res = sync.auto_sync(cues, mask, min_gap=prof.min_gap(fps))
+            except sync.SyncError:
+                res = None
+            if res is not None and res.changed:
                 base = res.cues
                 notes.append(_sync_msg(res))
         task["message"] = "Acertando início e fim de cada legenda na fala…"
