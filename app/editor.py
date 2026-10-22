@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import logging
 import re
 import shutil
@@ -32,8 +33,9 @@ from core.profiles import Profile, default_profile_for, same_family
 from core.formatter import reflow_cues
 from core.qc import AVISO, Issue, check_rules, write_report
 from core.subtitle import Cue, read_srt, write_srt
-from core.translate import (ChatLot, chat_message, detect_language, opposite_language,
-                            output_name, parse_chat_answer, plan_chat_lots, split_chat_lot)
+from core.translate import (ChatLot, chat_message, detect_language, is_revision, opposite_language,
+                            output_name, parse_chat_answer, plan_chat_lots, restore_pos_tags,
+                            split_chat_lot, strip_pos_tags)
 
 log = logging.getLogger("legendas.editor")
 
@@ -67,6 +69,11 @@ def _cache_key(path: Path) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
+def _vad_ok() -> bool:
+    from core import vad
+    return vad.available()
+
+
 def editor_dir() -> Path:
     p = data_dir() / "editor"
     p.mkdir(parents=True, exist_ok=True)
@@ -92,6 +99,7 @@ class Session:
     media_error: str = ""
     media_path: Path | None = None
     backed_up: bool = False
+    origin: Path | None = None          # legenda de origem: nunca é regravada (salvar cria uma cópia)
     draft: list | None = None           # cópia de trabalho (sobrevive a recarregar a página)
     detected: str | None = None         # idioma detectado na legenda
     chat: "ChatTranslation | None" = None
@@ -119,6 +127,7 @@ class ChatTranslation:
     done: dict[int, str] = field(default_factory=dict)
     original_path: Path | None = None
     out_path: Path | None = None
+    tags: dict = field(default_factory=dict)     # id → {\anN} tirado antes de mandar ao ChatGPT
 
     def lot_status(self, n: int) -> dict:
         lot = self.lots[n - 1]
@@ -220,6 +229,8 @@ class EditorManager:
             except ValueError:
                 s.shots = None
         s.item_id = int(item_id) if item_id else None
+        if srt_path is not None and job_id is None and not self._generated(srt_path):
+            s.origin = srt_path
         self.sessions[sid] = s
         if s.item_id and self.projects is not None:
             try:
@@ -241,6 +252,8 @@ class EditorManager:
         return {**extra,
             "sid": s.sid, "name": name,
             "srt": str(s.srt) if s.srt else "", "video": str(s.video) if s.video else "",
+            "origin": str(s.origin) if s.origin else "",
+            "protected": bool(s.origin and s.srt and _same(s.origin, s.srt)),
             "fps": s.info.get("fps"), "duration": s.info.get("duration"),
             "has_video": bool(s.info.get("vcodec")), "has_audio": bool(s.info.get("acodec")),
             "language": s.language, "detected": s.detected,
@@ -323,10 +336,6 @@ class EditorManager:
                     extract_audio(s.video, wav)
                 audio = load_wav(wav)
                 f.write_bytes(compute_peaks(audio))
-                fala = s.cache / "fala.u8"
-                if not fala.exists():   # já deixa pronto para a sincronização automática
-                    from core.sync import speech_activity
-                    fala.write_bytes(speech_activity(audio).tobytes())
                 wav.unlink(missing_ok=True)
         return f.read_bytes(), PEAKS_PER_SECOND
 
@@ -344,6 +353,13 @@ class EditorManager:
             out.append(Cue(start=max(0.0, start), end=max(0.0, end), lines=lines))
         return out
 
+    def _generated(self, path: Path) -> bool:
+        return self.db is not None and hasattr(self.db, "is_generated") and self.db.is_generated(path)
+
+    def _mark(self, path: Path) -> None:
+        if self.db is not None and hasattr(self.db, "mark_generated"):
+            self.db.mark_generated(path)
+
     def save(self, sid: str, raw: list[dict], path: str | None = None) -> dict:
         s = self._get(sid)
         target = Path(path) if path else s.srt
@@ -351,6 +367,13 @@ class EditorManager:
             raise EditorError("Escolha onde salvar a legenda.", 409)
         if target.suffix.lower() != ".srt":
             target = target.with_suffix(target.suffix + ".srt") if target.suffix else target.with_suffix(".srt")
+        redirected = False
+        if s.origin is not None and _same(target, s.origin):
+            if path:   # "Salvar como" escolhendo o próprio original
+                raise EditorError(f"{s.origin.name} é a legenda de origem e não é alterada. Escolha outro nome.")
+            # primeiro "Salvar" de uma legenda de origem: cria a cópia de trabalho ao lado
+            target = _unique(s.origin.with_name(f"{_clean_stem(s.origin.stem)} (editada).srt"))
+            redirected = True
         cues = sorted(self._cues(raw), key=lambda c: c.start)
         empty = [i for i, c in enumerate(cues, start=1) if not c.lines]
         if empty:
@@ -364,10 +387,12 @@ class EditorManager:
             shutil.copy2(target, bdir / f"{target.stem}.{stamp}.srt")
             s.backed_up = True
         write_srt(cues, target)
+        self._mark(target)
         s.srt = target
         self._record(s, cues, "salvar", target, raw)
         return {"path": str(target), "name": target.name, "count": len(cues),
-                "saved_at": time.strftime("%H:%M:%S")}
+                "saved_at": time.strftime("%H:%M:%S"), "redirected": redirected,
+                "origin": str(s.origin) if s.origin else ""}
 
     def qc(self, sid: str, raw: list[dict], profile_key: str | None = None) -> dict:
         s = self._get(sid)
@@ -421,8 +446,7 @@ class EditorManager:
             raise EditorError(f"A legenda {empty[0]} está sem texto. Escreva algo ou apague-a antes de traduzir.")
         source = opts.get("source_lang") or s.detected or "pt-BR"
         target = opts.get("target_lang") or opposite_language(source)
-        if source == target:
-            raise EditorError("O idioma de origem e o de destino são iguais.")
+        # mesmo idioma = revisão (corrige e aplica as regras, sem traduzir)
         key = opts.get("profile_key") or _auto_key(target, s.profile_key, self._keys())
         profile = self._profile(key, target)
         base = s.srt or s.video
@@ -430,13 +454,14 @@ class EditorManager:
         folder.mkdir(parents=True, exist_ok=True)
         original = folder / (base.stem + ".srt")
         write_srt(cues, original)
+        cues, tags = strip_pos_tags(cues)       # {\anN} não vai para o ChatGPT; volta no fim
         size = int(opts.get("batch_size") or 0) or None
         s.chat = ChatTranslation(
             cues=cues, source=source, target=target, profile_key=key, profile=profile,
             glossary=glossary, instructions=(project or {}).get("instructions", ""),
             context=" ".join(x for x in [(project or {}).get("context", ""), opts.get("context", "")] if x),
             lots=plan_chat_lots(len(cues), size) if size else plan_chat_lots(len(cues)),
-            original_path=original)
+            original_path=original, tags=tags)
         return s.chat.summary()
 
     def _chat(self, sid: str) -> ChatTranslation:
@@ -514,10 +539,11 @@ class EditorManager:
             else:
                 out.append(Cue(cue.start, cue.end, list(cue.lines)))
                 missing.append(i)
+        out = restore_pos_tags(out, c.tags)
         cues = reflow_cues(out, c.profile, c.target, s.info.get("fps"))
         base = s.srt or s.video
         if c.out_path is None:
-            target = base.parent / output_name(base, c.target, c.profile)
+            target = base.parent / output_name(base, c.target, c.profile, revision=is_revision(c.source, c.target))
             if s.srt is not None and target.resolve() == s.srt.resolve():
                 target = target.with_name(target.name[:-4] + " (tradução).srt")
             n = 2
@@ -527,6 +553,7 @@ class EditorManager:
                 n += 1
             c.out_path = cand
         write_srt(cues, c.out_path)
+        self._mark(c.out_path)
         issues = check_rules(cues, c.profile, s.info.get("fps"), language=c.target)
         if s.item_id and self.projects is not None:
             try:
@@ -689,29 +716,33 @@ class EditorManager:
 
     # tarefas demoradas (sincronia automática, cortes de cena)
 
-    def _speech(self, s: Session):
-        from core.sync import speech_activity
+    def _speech(self, s: Session, progress=None) -> tuple[np.ndarray, str]:
+        """Onde há voz no vídeo (100 por segundo) e o método ("voz" ou "energia"). Fica guardado."""
+        from core.sync import detect_voice
         if s.video is None or not s.info.get("acodec"):
             raise EditorError("Abra o vídeo (com áudio) junto da legenda para sincronizar pela fala.", 409)
-        f = s.cache / "fala.u8"
+        f, how = s.cache / "voz.u8", s.cache / "voz.txt"
         with s.lock:
-            if not f.exists():
+            if not f.exists() or (how.exists() and how.read_text() == "energia" and _vad_ok()):
                 wav = s.cache / "audio.wav"
                 if not wav.exists():
                     extract_audio(s.video, wav)
                 audio = load_wav(wav)
-                f.write_bytes(speech_activity(audio).tobytes())
+                mask, method = detect_voice(audio, progress=progress)
+                f.write_bytes(mask.tobytes())
+                how.write_text(method)
                 pk = s.cache / "picos.u8"
                 if not pk.exists():
                     pk.write_bytes(compute_peaks(audio))
                 wav.unlink(missing_ok=True)
-        return np.frombuffer(f.read_bytes(), dtype=np.uint8)
+        method = how.read_text() if how.exists() else "energia"
+        return np.frombuffer(f.read_bytes(), dtype=np.uint8), method
 
     def task_start(self, sid: str, kind: str, raw: list[dict], p: dict) -> dict:
         from core import sync
         s = self._get(sid)
         prof = self._profile_obj(s)
-        if kind in ("audio", "ref"):
+        if kind in ("audio", "ref", "fit"):
             if not raw:
                 raise EditorError("Não há legendas para sincronizar.")
             raw, cues = self._sorted_raw(raw)
@@ -747,15 +778,30 @@ class EditorManager:
                     (s.cache / "cortes.json").write_text(json.dumps(shots), encoding="utf-8")
                     task["result"] = {"shots": shots}
                     task["message"] = f"{len(shots)} cortes de cena encontrados."
+                elif kind == "fit":
+                    task["message"] = "Procurando a voz no vídeo (ignora música e ruído)…"
+                    voice, method = self._speech(s, progress=lambda f: prog(0.9 * f))
+                    new, rep_ = sync.fit_to_voice(cues, voice, prof, s.info.get("fps"))
+                    msg = rep_.summary()
+                    if method != "voz":
+                        msg += " Atenção: o detector de voz não está disponível; usei o volume do áudio."
+                    task["result"] = {"cues": self._apply_times(raw, new), "changed": rep_.changed > 0,
+                                      "fit": rep_.__dict__}
+                    task["message"] = msg
                 else:
+                    fit = None
                     if kind == "audio":
-                        task["message"] = "Lendo a fala do vídeo…"
-                        speech = self._speech(s)
+                        task["message"] = "Procurando a voz no vídeo (ignora música e ruído)…"
+                        speech, method = self._speech(s, progress=lambda f: prog(0.5 * f))
                     else:
-                        speech = sync.subtitle_activity(ref)
+                        speech, method = sync.subtitle_activity(ref), "ref"
                     task["message"] = "Encaixando as legendas…"
+                    base = 0.5 if kind == "audio" else 0.0
                     res = sync.auto_sync(cues, speech, min_gap=prof.min_gap(s.info.get("fps")),
-                                         progress=prog)
+                                         progress=lambda f: prog(base + (1 - base) * 0.95 * f))
+                    if kind == "audio" and p.get("fit", True):
+                        res.cues, fit = sync.fit_to_voice(res.cues, speech, prof, s.info.get("fps"))
+                        res.changed = res.changed or fit.changed > 0
                     parts = []
                     if res.changed:
                         parts.append(f"Deslocamento de {res.offset:+.2f} s".replace(".", ","))
@@ -765,6 +811,10 @@ class EditorManager:
                             parts.append(f"{res.parts} trechos com ajustes diferentes")
                         parts.append(f"concordância com a fala {res.before:.0%} → {res.after:.0%}")
                     msg = (", ".join(parts) + ".") if parts else " ".join(res.notes)
+                    if fit is not None:
+                        msg += " " + fit.summary()
+                    if kind == "audio" and method != "voz":
+                        msg += " Atenção: o detector de voz não está disponível; usei o volume do áudio (música pode atrapalhar)."
                     task["result"] = {"cues": self._apply_times(raw, res.cues), "changed": res.changed,
                                       "offset": res.offset, "ratio": res.ratio, "parts": res.parts,
                                       "before": res.before, "after": res.after}
@@ -823,9 +873,14 @@ class EditorManager:
         name = output_name(base, s.language, prof) if prof.naming else base.with_suffix(".srt").name
         if not prof.naming and s.srt is not None:
             name = s.srt.name
+        folder = base.parent
+        if s.origin is not None and _same(folder / name, s.origin):
+            # mesmo nome da origem (ex.: revisão de um _sub_spa): o nome do cliente é mantido,
+            # numa subpasta "Entrega", para não gravar por cima da origem
+            folder = folder / "Entrega"
         lang = (s.language or prof.language).lower()
         label = "Traducción" if lang.startswith("es") else "Tradução" if lang.startswith("pt") else "Translation"
-        return {"folder": str(base.parent), "name": name, "signature_label": label,
+        return {"folder": str(folder), "name": name, "signature_label": label,
                 "profile": prof.name, "naming": prof.naming}
 
     def deliver(self, sid: str, raw: list[dict], opts: dict) -> dict:
@@ -836,6 +891,9 @@ class EditorManager:
         if not name.lower().endswith(".srt"):
             name += ".srt"
         target = folder / name
+        if s.origin is not None and _same(target, s.origin):
+            raise EditorError(f"{target.name} é a legenda de origem e não é alterada. Escolha outro nome ou outra pasta.")
+        folder.mkdir(parents=True, exist_ok=True)
         cues = sorted(self._cues(raw), key=lambda c: c.start)
         empty = [i for i, c in enumerate(cues, start=1) if not c.lines]
         if empty:
@@ -849,13 +907,14 @@ class EditorManager:
             cues.append(Cue(start=round(start, 3), end=round(start + max(prof.min_duration, 2.0), 3),
                             lines=[sig]))
         if target.exists() and not opts.get("overwrite"):
-            if s.srt is None or target.resolve() != s.srt.resolve():
+            if (s.srt is None or not _same(target, s.srt)) and not self._generated(target):
                 raise EditorError(f"Já existe um arquivo {target.name} nesta pasta. Confirme para substituir.", 409)
         if target.exists():
             bdir = data_dir() / "editor" / "copias"
             bdir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(target, bdir / f"{target.stem}.{time.strftime('%Y%m%d-%H%M%S')}.srt")
         write_srt(cues, target)
+        self._mark(target)
         issues = check_rules(cues, prof, s.info.get("fps"), language=s.language)
         self._record(s, cues, "entrega", target, raw, issues)
         errs = sum(1 for i in issues if i.severity == "erro")
@@ -889,3 +948,24 @@ def compute_peaks(audio: np.ndarray, rate: int = PEAKS_PER_SECOND) -> bytes:
 
 
 _SAFE = re.compile(r'[\\/:*?"<>|]+')
+
+
+def _same(a: Path, b: Path) -> bool:
+    try:
+        ra, rb = Path(a).resolve(), Path(b).resolve()
+    except OSError:
+        return str(a) == str(b)
+    return str(ra).lower() == str(rb).lower() if os.name == "nt" else ra == rb
+
+
+def _clean_stem(stem: str) -> str:
+    """Tira sufixos que o programa já pôs ("(editada)", "(2)"…) para não acumular."""
+    return re.sub(r"(\s\((editada|revisada|entrega|tradução|\d+)\))+$", "", stem).strip() or stem
+
+
+def _unique(target: Path) -> Path:
+    cand, n = target, 2
+    while cand.exists():
+        cand = target.with_name(f"{target.stem} ({n}){target.suffix}")
+        n += 1
+    return cand

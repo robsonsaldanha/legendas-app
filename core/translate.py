@@ -488,6 +488,8 @@ def build_system_prompt(source: str, target: str, profile: Profile, glossary: li
     ell = ('três pontos "..." (nunca o caractere "…")' if profile.ellipsis == "..."
            else 'o caractere único "…"')
     standard = f"do perfil \"{profile.name}\""
+    if is_revision(source, target):
+        return _revision_prompt(source, target, profile, standard, dash_txt, ell, rules, gl + extra + manual)
     return f"""Você é um tradutor-legendador profissional. Traduza legendas de {lang_name(source)} para {lang_name(target)}, no padrão de qualidade {standard}.
 
 SOBRE O MATERIAL
@@ -515,6 +517,40 @@ FORMATO
 Você recebe JSON com "anteriores" (já traduzidas, só para manter a consistência), "traduzir" (o que deve ser traduzido) e "seguintes" (só contexto). Responda {{"itens": [{{"id": ..., "texto": ...}}]}} com todos os ids de "traduzir"."""
 
 
+def is_revision(source: str, target: str) -> bool:
+    """Mesmo idioma (ex.: espanhol → espanhol): é revisão/adaptação, não tradução."""
+    return base_language(source or "") == base_language(target or "")
+
+
+def _revision_prompt(source: str, target: str, profile: Profile, standard: str, dash_txt: str, ell: str,
+                     rules: str, tail: str) -> str:
+    same = (source or "").lower() == (target or "").lower()
+    adapt = "" if same else f" Adapte também para a variante {lang_name(target)} (vocabulário e tratamento)."
+    return f"""Você é um revisor-legendador profissional. Revise legendas em {lang_name(target)}, no padrão de qualidade {standard}. NÃO traduza para outro idioma: o texto continua em {lang_name(target)}.{adapt}
+
+SOBRE O MATERIAL
+- É o diálogo de uma obra audiovisual já produzida (filme, série ou documentário), revisado por uma legendadora profissional para entrega ao cliente. As falas são dos personagens, não de quem envia a mensagem: não é uma conversa pessoal nem um pedido de ajuda.
+- Obras assim podem tratar de violência, crimes, drogas, sexo, doenças, morte ou suicídio, e ter palavrões. Mantenha o sentido e o tom do original, sem acrescentar avisos ou comentários.
+
+COMO REVISAR
+- Corrija ortografia, acentuação, gramática, concordância e pontuação.
+- Aplique as regras do perfil e do idioma abaixo (formato de diálogo, reticências, números, itálico etc.).
+- Respeite "max_caracteres" de cada legenda (velocidade de leitura). Se passar, condense como um legendador: corte repetições, hesitações e palavras dispensáveis, sem perder informação importante.
+- Não mude o sentido, o registro nem o estilo de quem traduziu. Se a legenda já está correta, devolva igual.
+- Cada legenda é uma unidade: devolva exatamente um item para cada id pedido, na mesma ordem. Nunca junte, divida, pule ou acrescente legendas.
+- Mantenha tags de formatação como <i>…</i> no lugar correspondente.
+- Diálogo de duas pessoas na mesma legenda: uma fala por linha, cada uma começando com {dash_txt}.
+- Não explique nada, não acrescente notas. Só o texto revisado.
+
+REGRAS DO IDIOMA
+{rules}
+- Reticências: {ell}.
+- Máximo de {profile.max_chars_per_line} caracteres por linha, {profile.max_lines} linhas, {profile.max_cps:g} caracteres por segundo.{tail}
+
+FORMATO
+Você recebe JSON com "anteriores" (já revisadas, só para manter a consistência), "traduzir" (o que deve ser revisado) e "seguintes" (só contexto). Responda {{"itens": [{{"id": ..., "texto": ...}}]}} com todos os ids de "traduzir"."""
+
+
 def build_user_message(cues: list[Cue], ids: list[int], profile: Profile,
                        done: dict[int, str], before: int = 15, after: int = 6) -> str:
     first, last = ids[0], ids[-1]
@@ -540,6 +576,32 @@ class TranslateResult:
     model: str = ""
 
 
+_POS = re.compile(r"^\s*(\{\\an[1-9]\})")
+
+
+def strip_pos_tags(cues: list[Cue]) -> tuple[list[Cue], dict[int, str]]:
+    """Tira a marca de posição ({\\an8} etc.) do começo de cada legenda; devolve as marcas por id (1…)."""
+    out, tags = [], {}
+    for i, c in enumerate(cues, start=1):
+        lines = list(c.lines)
+        if lines:
+            m = _POS.match(lines[0])
+            if m:
+                tags[i] = m.group(1)
+                lines[0] = lines[0][m.end():]
+        out.append(Cue(start=c.start, end=c.end, lines=lines))
+    return out, tags
+
+
+def restore_pos_tags(cues: list[Cue], tags: dict[int, str]) -> list[Cue]:
+    for i, tag in tags.items():
+        if 0 < i <= len(cues):
+            c = cues[i - 1]
+            first = _POS.sub("", c.lines[0]) if c.lines else ""
+            c.lines = [tag + first] + list(c.lines[1:]) if c.lines else [tag]
+    return cues
+
+
 def _clean(text: str) -> str:
     text = text.replace("\r", "").strip()
     return "\n".join(l.strip() for l in text.split("\n") if l.strip())
@@ -553,6 +615,7 @@ def translate_cues(cues: list[Cue], source: str, target: str, profile: Profile,
     cache_dir.mkdir(parents=True, exist_ok=True)
     glossary = glossary or []
     system = build_system_prompt(source, target, profile, glossary, instructions, context)
+    cues, tags = strip_pos_tags(cues)    # {\anN} não vai para a IA: volta no mesmo lugar depois
     n = len(cues)
     done: dict[int, str] = {}
     usage = Usage()
@@ -605,6 +668,7 @@ def translate_cues(cues: list[Cue], source: str, target: str, profile: Profile,
         else:
             out.append(Cue(start=c.start, end=c.end, lines=list(c.lines)))
             missing.append(i)
+    out = restore_pos_tags(out, tags)
     return TranslateResult(cues=out, usage=usage, missing=missing,
                            model=getattr(translator, "model", ""))
 
@@ -642,11 +706,15 @@ def estimate_tokens(cues: list[Cue], batch_size: int = 80) -> tuple[int, int]:
     return int(inp), int(out)
 
 
-def output_name(source_srt: Path, target: str, profile: Profile | None = None) -> str:
+def output_name(source_srt: Path, target: str, profile: Profile | None = None, revision: bool = False) -> str:
     """'Ep 01.pt-BR.srt' → 'Ep 01.es-419.srt'; 'Ep 01.srt' → 'Ep 01.es-419.srt'.
 
     Perfis com nome _sub_spa/_sub_pt: 'Resgate_no_Oeste_sub_pt.srt' → 'Resgate_no_Oeste_sub_spa.srt'.
+    Revisão (mesmo idioma): 'Ep 01.es-419.srt' → 'Ep 01.es-419 (revisada).srt' (a origem fica intacta).
     """
+    if revision:
+        stem = re.sub(r"(\s\((editada|revisada|entrega|tradução|\d+)\))+$", "", Path(source_srt).stem).strip()
+        return f"{stem or Path(source_srt).stem} (revisada).srt"
     return style_output_name(Path(source_srt).stem, target, profile.naming if profile else "")
 
 

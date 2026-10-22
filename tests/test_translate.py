@@ -176,10 +176,11 @@ def test_pipeline_reverse_direction(tmp_path, monkeypatch):
     assert res.source_lang == "es-419" and res.outputs["srt"].name == "capitulo.pt-BR.srt"
 
 
-def test_pipeline_same_language_rejected(srt):
-    with pytest.raises(PipelineError, match="iguais"):
-        run_job(JobRequest(inputs=[srt], steps={TRANSLATE}, source_lang="auto", target_lang="pt-BR"),
-                Settings(), translator=FakeTranslator())
+def test_pipeline_same_language_is_revision(srt):
+    before = srt.read_bytes()
+    res = run_job(JobRequest(inputs=[srt], steps={TRANSLATE}, source_lang="auto", target_lang="pt-BR"),
+                  Settings(), translator=FakeTranslator())
+    assert res.outputs["srt"].name == f"{srt.stem} (revisada).srt" and srt.read_bytes() == before
 
 
 def test_pipeline_does_not_overwrite_foreign_file(srt):

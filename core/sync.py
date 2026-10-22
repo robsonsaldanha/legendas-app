@@ -138,6 +138,111 @@ def speech_activity(audio: np.ndarray, sr: int = SAMPLE_RATE) -> np.ndarray:
     return mask.astype(np.uint8)
 
 
+def detect_voice(audio: np.ndarray, progress: Callable[[float], None] | None = None) -> tuple[np.ndarray, str]:
+    """Onde há voz humana (0/1, 100 por segundo) e qual método foi usado.
+
+    "voz": detector de fala (Silero VAD) — ignora música e ruído.
+    "energia": reserva, quando o detector não está disponível (música alta conta como fala)."""
+    from . import vad
+    if vad.available():
+        try:
+            mask = vad.voice_mask(audio, hop=HOP, progress=progress)
+            if mask.sum() >= 100:      # pelo menos 1 s de voz; senão (sem fala humana) usa a energia
+                return mask, "voz"
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception("Detector de voz falhou; usando a energia do áudio")
+    return speech_activity(audio), "energia"
+
+
+@dataclass
+class FitReport:
+    starts: int = 0          # entradas puxadas para o começo da voz
+    ends: int = 0            # saídas encurtadas (a voz acabou antes)
+    extended: int = 0        # saídas esticadas (a voz continuava)
+    reading: int = 0         # mantidas mais tempo por causa da leitura (CPS/duração mínima)
+    no_voice: int = 0        # sem voz por perto (texto de tela, música…): não mexidas
+
+    @property
+    def changed(self) -> int:
+        return self.starts + self.ends + self.extended
+
+    def summary(self) -> str:
+        if not self.changed:
+            return "Os inícios e fins já acompanham a voz."
+        parts = []
+        if self.starts:
+            parts.append(f"{self.starts} início(s) acertado(s) na voz")
+        if self.ends:
+            parts.append(f"{self.ends} fim(ns) encurtado(s) onde a voz acaba")
+        if self.extended:
+            parts.append(f"{self.extended} fim(ns) esticado(s) até o fim da fala")
+        txt = ", ".join(parts) + "."
+        if self.reading:
+            txt += f" {self.reading} ficaram um pouco mais na tela para dar tempo de ler (CPS/duração mínima)."
+        if self.no_voice:
+            txt += f" {self.no_voice} sem voz por perto (texto de tela ou música) ficaram como estavam."
+        return txt
+
+
+def fit_to_voice(cues: list[Cue], voice: np.ndarray, profile: Profile, fps: float | None = None,
+                 max_move: float = 0.8) -> tuple[list[Cue], FitReport]:
+    """Acerta o início e o fim de cada legenda na voz, sem deslocar a legenda inteira.
+
+    - início: vai para o começo da fala, se estiver a até `max_move` s (não invade a anterior);
+    - fim: termina `profile.linger` s depois que a voz acaba; se a voz continua um pouco
+      além, estica até ela (sem invadir a próxima);
+    - nunca fica mais curta do que a leitura exige (CPS máximo e duração mínima do perfil)
+      nem mais longa do que a duração máxima;
+    - legenda sem voz por perto (texto de tela, letreiro, música) não é mexida."""
+    out = sorted(_copy(cues), key=lambda c: c.start)
+    rep = FitReport()
+    runs = [(a * HOP, b * HOP) for a, b in _runs(np.asarray(voice, dtype=bool))]
+    if not runs:
+        return out, rep
+    starts = np.array([r[0] for r in runs])
+    gap = profile.min_gap(fps)
+    linger = max(0.0, profile.linger)
+    tol = 0.12                                   # diferença menor que isto não vale mexer
+    prev_end = -1.0
+    for i, c in enumerate(out):
+        nxt = out[i + 1].start if i + 1 < len(out) else float("inf")
+        lo = int(np.searchsorted(starts, c.start - max_move - 60))
+        hi = int(np.searchsorted(starts, c.end))
+        mine = [r for r in runs[lo:hi] if r[0] < c.end - 0.1 and r[1] > c.start - 0.05 and r[0] < nxt - 0.05]
+        if not mine:
+            rep.no_voice += 1
+            prev_end = c.end
+            continue
+        s, e = c.start, c.end
+        v0 = mine[0][0]
+        if abs(v0 - c.start) > tol and c.start - max_move <= v0 <= c.start + max_move \
+                and v0 >= prev_end + gap - 1e-6:
+            s = v0
+            rep.starts += 1
+        v1 = max(r[1] for r in mine)
+        if v1 + linger < c.end - tol:
+            e = v1 + linger
+            rep.ends += 1
+        elif v1 > c.end + tol and v1 - c.end <= max_move:
+            new = min(v1 + linger * 0.5, nxt - gap)
+            if new > c.end + tol:
+                e = new
+                rep.extended += 1
+        count = visible_len(c.text) if profile.cps_count_spaces else visible_len(c.text.replace(" ", ""))
+        need = max(profile.min_duration, count / profile.max_cps if profile.max_cps else 0)
+        if e - s < need - 1e-3:
+            want = min(s + need, max(c.end, nxt - gap), s + profile.max_duration)
+            if want > e + 1e-3:
+                if e < c.end - tol:
+                    rep.reading += 1
+                e = want
+        e = min(e, s + profile.max_duration)
+        c.start, c.end = _r(s), _r(max(s + 0.04, e))
+        prev_end = c.end
+    return _no_overlap(out, gap), rep
+
+
 LINGER = 0.4   # as legendas ficam na tela um pouco depois da fala; não conta para encaixar
 
 

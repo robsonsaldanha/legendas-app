@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -35,6 +36,10 @@ CREATE TABLE IF NOT EXISTS glossary (
 CREATE TABLE IF NOT EXISTS profiles (
     key TEXT PRIMARY KEY,
     data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS gerados (
+    path TEXT PRIMARY KEY,          -- legendas que o próprio programa criou (podem ser regravadas)
+    created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS recent (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -163,6 +168,23 @@ class Database:
                       ON CONFLICT(srt, video) DO UPDATE SET opened_at = excluded.opened_at,
                       client_id = excluded.client_id""", (srt, video, client_id, _now()))
         self._exec("DELETE FROM recent WHERE id NOT IN (SELECT id FROM recent ORDER BY opened_at DESC, id DESC LIMIT 30)")
+
+    # ------------------------------------------------- arquivos do programa
+    # Regra: a legenda de origem (que ela abriu) nunca é alterada. O que o programa cria
+    # (cópia de trabalho, tradução, revisão, entrega) fica registrado aqui e pode ser regravado.
+
+    @staticmethod
+    def _norm(path) -> str:
+        try:
+            return str(Path(path).resolve()).lower() if os.name == "nt" else str(Path(path).resolve())
+        except OSError:
+            return str(path)
+
+    def mark_generated(self, path) -> None:
+        self._exec("INSERT OR REPLACE INTO gerados (path, created_at) VALUES (?, ?)", (self._norm(path), _now()))
+
+    def is_generated(self, path) -> bool:
+        return bool(self._q("SELECT 1 FROM gerados WHERE path = ?", (self._norm(path),)))
 
     def list_recent(self, limit: int = 12) -> list[dict]:
         rows = self._q("SELECT * FROM recent ORDER BY opened_at DESC, id DESC LIMIT ?", (limit,))

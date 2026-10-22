@@ -102,6 +102,18 @@ def main(wav: str, text: str) -> None:
     sr = auto_sync(late, speech)
     check("sincronia pela fala", abs(sr.cues[0].start - t0) < 0.35,
           f"esperado {t0:.2f}, veio {sr.cues[0].start:.2f} (deslocamento {sr.offset:+.2f})")
+    # detector de voz: fala sintetizada no meio de música + ruído (a música não pode contar como fala)
+    from core import vad
+    from core.sync import detect_voice
+    t = np.arange(16000 * 6) / 16000
+    musica = (0.15 * np.sin(2 * np.pi * 220 * t) + 0.15 * np.sin(2 * np.pi * 330 * t)
+              + (np.mod(t, 0.5) < 0.05) * np.random.default_rng(1).normal(0, 0.3, len(t))).astype(np.float32)
+    mix = np.concatenate([musica, audio, musica]).astype(np.float32)
+    voice, how = detect_voice(mix)
+    fala_ok = voice[600:600 + int(len(audio) / 160)].mean()
+    musica_ok = max(voice[:550].mean(), voice[-550:].mean())
+    check("detector de voz", vad.available() and how == "voz" and fala_ok > 0.5 and musica_ok < 0.1,
+          f"{how}: fala {fala_ok:.0%}, música {musica_ok:.0%}")
     cuts = tmp / "cortes.mp4"
     subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=160x90:r=24:d=2",
                     "-f", "lavfi", "-i", "color=c=blue:s=160x90:r=24:d=2",

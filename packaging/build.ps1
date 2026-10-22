@@ -93,6 +93,14 @@ Copy-Item (Join-Path $Root "app") (Join-Path $App "app") -Recurse
 Get-ChildItem $App -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
 & python -m compileall -q -f (Join-Path $App "core") (Join-Path $App "app") | Out-Null
 
+# ---------------------------------------------------------------- detector de voz
+$Stage = "detector de voz"
+$VadUrl = "https://raw.githubusercontent.com/snakers4/silero-vad/v6.2.3/src/silero_vad/data/silero_vad.onnx"
+New-Item -ItemType Directory -Force -Path (Join-Path $App "models") | Out-Null
+Get-File $VadUrl (Join-Path $Dl "silero_vad-6.2.3.onnx")
+Copy-Item (Join-Path $Dl "silero_vad-6.2.3.onnx") (Join-Path $App "models\silero_vad.onnx")
+if ((Get-Item (Join-Path $App "models\silero_vad.onnx")).Length -lt 1MB) { throw "modelo do detector de voz incompleto" }
+
 # ---------------------------------------------------------------- ffmpeg
 $Stage = "ffmpeg"
 $ffZip = Join-Path $Dl "ffmpeg.zip"

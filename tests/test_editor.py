@@ -101,13 +101,25 @@ def test_save_draft_backup_and_save_as(files):
     st, _ = call(port, "PUT", f"/api/editor/{d['sid']}/draft", {"cues": cues}, token=app.token)
     st, again = call(port, "GET", f"/api/editor/{d['sid']}?full=1", token=app.token)
     assert again["cues"][0]["text"] == "Olá, tudo bem?"
+    assert d["protected"] and d["origin"] == str(srt)
+    before = srt.read_bytes()
     st, r = call(port, "POST", f"/api/editor/{d['sid']}/save", {"cues": cues}, token=app.token)
-    assert st == 200 and r["count"] == 2
+    assert st == 200 and r["count"] == 2 and r["redirected"]
     from core.subtitle import read_srt
-    saved = read_srt(srt)
+    assert srt.read_bytes() == before                                   # a origem nunca muda
+    copy = Path(r["path"])
+    assert copy.name == "Episódio 1 (editada).srt" and copy.parent == srt.parent
+    saved = read_srt(copy)
     assert saved[0].lines == ["Olá, tudo bem?"] and saved[0].end == 2.2
-    backups = list((tmp / "home" / "editor" / "copias").glob("Episódio 1.*.srt"))
-    assert len(backups) == 1 and "Olá.\n" in backups[0].read_text(encoding="utf-8-sig")
+    # o próximo Salvar vai para a mesma cópia
+    cues[0]["text"] = "Oi."
+    st, r2 = call(port, "POST", f"/api/editor/{d['sid']}/save", {"cues": cues}, token=app.token)
+    assert r2["path"] == str(copy) and not r2["redirected"] and read_srt(copy)[0].lines == ["Oi."]
+    # reabrir a cópia: é do programa, pode ser regravada; a origem continua protegida
+    d2 = open_editor(app, port, srt=str(copy), video=str(video))
+    assert not d2["protected"]
+    st, err = call(port, "POST", f"/api/editor/{d['sid']}/save", {"cues": cues, "path": str(srt)}, token=app.token)
+    assert st == 400 and "origem" in err["error"] and srt.read_bytes() == before
     # salvar como
     other = tmp / "saida" / "nova"
     st, r = call(port, "POST", f"/api/editor/{d['sid']}/save", {"cues": cues, "path": str(other)}, token=app.token)
@@ -288,7 +300,9 @@ def test_editor_chat_requires_start(tserver):
     assert st == 409 and "não foi iniciada" in err["error"]
     st, err = call(port, "POST", f"/api/editor/{d['sid']}/chat/start",
                    {"cues": d["cues"], "source_lang": "pt-BR", "target_lang": "pt-BR"}, token=app.token)
-    assert st == 400 and "iguais" in err["error"]
+    assert st == 200, err                                  # mesmo idioma = revisão
+    st, msg = call(port, "GET", f"/api/editor/{d['sid']}/chat/1", token=app.token)
+    assert "revisor" in msg["text"] and "NÃO traduza" in msg["text"]
 
 
 # ------------------------------------------------- clientes, sincronia, entrega
@@ -367,6 +381,22 @@ def test_auto_sync_task_by_audio_and_reference(files):
     assert [round(c["start"]) for c in t["result"]["cues"]] == [0, 5, 10, 15]
 
 
+def test_fit_to_voice_task(files, monkeypatch):
+    import numpy as np
+    app, port, tmp, video, srt = files
+    d = open_editor(app, port, srt=str(srt), video=str(video), profile_key="netflix-pt-br")
+    sid = d["sid"]
+    voice = np.zeros(2000, dtype=np.uint8)
+    voice[100:250] = 1                                    # voz de 1,0 a 2,5 s; depois só música
+    monkeypatch.setattr(app.editor, "_speech", lambda s, progress=None: (voice, "voz"))
+    cues = [{"start": 1.0, "end": 6.0, "text": "Oi, tudo bem?"}]
+    st, t = call(port, "POST", f"/api/editor/{sid}/task", {"kind": "fit", "cues": cues}, token=app.token)
+    t = _wait_task(app, port, sid, t["id"])
+    assert t["status"] == "pronto", t
+    c = t["result"]["cues"][0]
+    assert c["start"] == 1.0 and 2.5 <= c["end"] <= 3.2 and "encurtado" in t["message"]
+
+
 def test_shots_task_and_snap(files):
     app, port, tmp, video, srt = files
     v = tmp / "cortes.mp4"
@@ -396,12 +426,15 @@ def test_deliver_with_signature_and_naming(files):
     sid = d["sid"]
     st, info = call(port, "GET", f"/api/editor/{sid}/deliver", token=app.token)
     assert info["name"] == "Resgate_no_Oeste_sub_spa.srt" and info["signature_label"] == "Traducción"
+    assert Path(info["folder"]).name == "Entrega"           # mesmo nome da origem: vai para a subpasta
     body = {"cues": d["cues"], "name": info["name"], "folder": info["folder"],
             "signature": "Traducción: Ana", "report": True}
     st, r = call(port, "POST", f"/api/editor/{sid}/deliver", body, token=app.token)
     assert st == 200 and r["signature_added"] and r["count"] == 2
     from core.subtitle import read_srt
-    out = read_srt(enc_srt)
+    assert read_srt(enc_srt)[-1].text == "Hola."                    # a origem não muda
+    out = read_srt(Path(r["path"]))
+    assert Path(r["path"]).parent.name == "Entrega"
     assert out[-1].text == "Traducción: Ana" and out[-1].start >= 2.0
     assert Path(r["report"]).exists()
     # segunda entrega não duplica a assinatura
@@ -409,7 +442,7 @@ def test_deliver_with_signature_and_naming(files):
     st, r = call(port, "POST", f"/api/editor/{sid}/deliver", body, token=app.token)
     assert r["count"] == 2 and not r["signature_added"]
     # arquivo de outra pessoa com o mesmo nome: pede confirmação
-    other = tmp / "outro.srt"
+    other = Path(info["folder"]) / "outro.srt"
     other.write_text("1\n00:00:00,000 --> 00:00:01,000\nX\n", encoding="utf-8")
     st, r = call(port, "POST", f"/api/editor/{sid}/deliver", {**body, "name": "outro.srt"}, token=app.token)
     assert st == 409 and other.read_text(encoding="utf-8").endswith("X\n")

@@ -115,7 +115,10 @@ async function save(asNew = false) {
     ED.srt = r.path; ED.name = r.name; ED.dirty = false; ED.savedAt = r.saved_at;
     document.getElementById("ed-name").textContent = r.name;
     drawStatus();
-    toast(`Legenda salva (${r.count} legendas).`);
+    if (r.redirected) {
+      const orig = (r.origin || "").split(/[\\/]/).pop();
+      toast(`Salvo em “${r.name}”. A legenda de origem (${orig}) não foi alterada; os próximos “Salvar” vão para esta cópia.`);
+    } else toast(`Legenda salva (${r.count} legendas).`);
   } catch (e) { toast(e.message, true); }
 }
 function sortedCues() {
@@ -151,6 +154,7 @@ async function renderEditor(sid) {
   await loadState();
   if (!S.projects?.length) { try { await loadProjects(); } catch {} }
   const clients = S.projects || [];
+  loadEdPrefs();
 
   main.innerHTML = `
   <div class="ed">
@@ -165,10 +169,12 @@ async function renderEditor(sid) {
       <span class="splitbtn">
         <button class="btn primary" data-ed="translate-quick" id="ed-trq" title="Traduzir a legenda inteira">Traduzir para ${esc(shortLang(ED.suggested || "es-419"))}</button><button class="btn primary caret" data-ed="translate" title="Opções da tradução (idiomas, método)" aria-label="Opções da tradução">▾</button>
       </span>
+      <button class="btn" data-ed="revise" title="Revisão no mesmo idioma pela IA: ortografia, regras do perfil e velocidade de leitura. Gera um arquivo novo.">Revisar</button>
       <span class="menuwrap">
         <button class="btn" data-ed="syncmenu" aria-haspopup="true" aria-expanded="false">Sincronizar ▾</button>
         <div class="menu" id="ed-syncmenu" role="menu" hidden>
-          <button role="menuitem" data-sy="audio"><b>Automática pela fala do vídeo</b><span>Encaixa a legenda inteira no áudio. Sem custo.</span></button>
+          <button role="menuitem" data-sy="audio"><b>Automática pela fala do vídeo</b><span>Encaixa a legenda no áudio e acerta início e fim de cada uma na voz (ignora música e ruído). Sem custo.</span></button>
+          <button role="menuitem" data-sy="fit"><b>Acertar início e fim na voz</b><span>Não desloca a legenda: só ajusta cada uma à fala, respeitando a leitura (CPS).</span></button>
           <button role="menuitem" data-sy="ref"><b>Pela legenda de referência…</b><span>Usa outra legenda com o tempo certo (outro idioma serve).</span></button>
           <button role="menuitem" data-sy="copy"><b>Copiar os tempos de outra legenda…</b><span>Mesma quantidade de legendas, tempo a tempo.</span></button>
           <hr>
@@ -193,7 +199,8 @@ async function renderEditor(sid) {
       <label class="ed-inline muted">Regras
         <select id="ed-profile">${S.state.profiles.map((p) => `<option value="${esc(p.key)}" ${p.key === ED.profile.key ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
       </label>
-      <button class="btn ghost ed-help" data-ed="help" title="Atalhos">?</button>
+      <button class="btn ghost icon ed-help" data-ed="prefs" title="Configurações do editor (cores, fonte, forma de onda, tamanhos)" aria-label="Configurações do editor">⚙︎</button>
+      <button class="btn ghost" data-ed="help" title="Atalhos">?</button>
     </header>
 
     <section class="ed-list" id="ed-list" tabindex="0" aria-label="Legendas">
@@ -292,6 +299,7 @@ async function renderEditor(sid) {
     <footer class="ed-status" id="ed-status"></footer>
   </div>`;
 
+  applyEdPrefs();
   bindEditor();
   if (ED.itemId) {   // tempo trabalhado no episódio: conta a cada minuto com atividade
     every(60000, () => {
@@ -403,7 +411,7 @@ function fitVideo() {
   let w = W, h = W / ar;
   if (h > H) { h = H; w = H * ar; }
   fit.style.width = `${w}px`; fit.style.height = `${h}px`;
-  fit.style.setProperty("--subsize", `${Math.max(12, h * 0.055)}px`);
+  fit.style.setProperty("--subsize", `${Math.max(10, h * 0.055 * (EDP.sub.size || 100) / 100)}px`);
 }
 
 function loop() {
@@ -452,7 +460,8 @@ function tick(fromVideo = false) {
   const rendered = active.map((c) => renderSubHtml(c.text));
   const html = rendered.map((r) => `<div class="cue">${r.html}</div>`).join("");
   if (sub.innerHTML !== html) sub.innerHTML = html;
-  sub.classList.toggle("top", rendered.some((r) => r.top));
+  const pos = rendered.find((r) => r.pos !== 2)?.pos || 2;
+  sub.className = `vsub an${pos}`;
   // seguir a reprodução
   const v = vid();
   if (fromVideo && v && !v.paused) {
@@ -489,18 +498,19 @@ function selectCue(i, opts = {}) {
 
 function rowHtml(c, i) {
   const st = cueStats(c), iss = ED.issues[i] || [];
-  const durBad = iss.some(([, m]) => m === "curta" || m === "longa");
-  const cpsBad = st.cps > ED.profile.max_cps + 0.05;
-  const txtBad = iss.some(([k, m]) => k === "e" && /linha|sem texto/.test(m));
-  const timeBad = iss.some(([, m]) => /sobrepõe|fim antes|intervalo/.test(m));
+  const C = EDP.color;
+  const durBad = iss.some(([, m]) => (C.short && m === "curta") || (C.long && m === "longa"));
+  const cpsBad = C.cps && st.cps > ED.profile.max_cps + 0.05;
+  const txtBad = iss.some(([k, m]) => (k === "e" && /sem texto/.test(m)) || (C.len && /^linha com/.test(m)) || (C.lines && /^\d+ linhas$/.test(m)));
+  const timeBad = iss.some(([, m]) => (C.overlap && /sobrepõe|fim antes/.test(m)) || (C.gap && /intervalo/.test(m)));
   return `<tr data-i="${i}" class="${i === ED.sel ? "on" : ""}">
     <td class="c-n">${i + 1}</td>
     <td class="c-t tnum">${fmtTC(c.start)}</td>
     <td class="c-t tnum ${timeBad ? "bad" : ""}">${fmtTC(c.end)}</td>
     <td class="c-d tnum ${durBad ? "bad" : ""}">${fmtSec(st.dur)}</td>
     <td class="c-c tnum ${cpsBad ? "bad" : ""}">${st.cps.toFixed(1).replace(".", ",")}</td>
-    <td class="c-x ${txtBad ? "bad" : ""}">${st.lines.map(esc).join('<i class="br"> | </i>') || '<i class="muted">vazia</i>'}</td>
-    ${ED.hasOrig ? `<td class="c-o">${c.orig != null ? c.orig.split("\n").map(esc).join('<i class="br"> | </i>') : ""}</td>` : ""}
+    <td class="c-x ${txtBad ? "bad" : ""}">${st.lines.map(esc).join('<i class="br">&lt;br /&gt;</i>') || '<i class="muted">vazia</i>'}</td>
+    ${ED.hasOrig ? `<td class="c-o">${c.orig != null ? c.orig.split("\n").map(esc).join('<i class="br">&lt;br /&gt;</i>') : ""}</td>` : ""}
   </tr>`;
 }
 function drawRows() {
@@ -698,8 +708,10 @@ function act(name) {
     case "zin": setZoom(Math.min(400, zoomPct() * 1.5)); break;
     case "zout": setZoom(Math.max(25, zoomPct() / 1.5)); break;
     case "help": showHelp(); break;
+    case "prefs": openEdPrefs(); break;
     case "translate": openTranslate({ project_id: ED.clientId }); break;
     case "translate-quick": openTranslate({ quick: true, project_id: ED.clientId }); break;
+    case "revise": openTranslate({ target: ED.detected || ED.language || "es-419", source: ED.detected || ED.language, project_id: ED.clientId }); break;
     case "syncmenu": toggleSyncMenu(); break;
     case "verify": openVerify(); break;
     case "deliver": openDeliver(); break;
@@ -754,7 +766,7 @@ async function openTranslate(opts = {}) {
     <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="tr-title">
       <h2 id="tr-title">Traduzir esta legenda</h2>
       <div id="tr-setup" class="stack">
-        <p class="muted small">${ED.cues.length} legendas. Os tempos ficam iguais e a legenda original não é alterada: a tradução vira um arquivo novo, ao lado dela.</p>
+        <p class="muted small">${ED.cues.length} legendas. Os tempos ficam iguais e a legenda de origem não é alterada: o resultado vira um arquivo novo, ao lado dela.</p>
         <div class="methods" role="radiogroup" aria-label="Como traduzir">
           <label class="method"><input type="radio" name="tr-m" value="chat" ${method === "chat" ? "checked" : ""}>
             <strong>Pelo meu ChatGPT</strong><span class="muted small">Sem custo. Você cola cada parte no ChatGPT e cola a resposta aqui.</span></label>
@@ -767,6 +779,7 @@ async function openTranslate(opts = {}) {
           <label class="field"><span>Para</span><select id="tr-dst">${langOptions(dst)}</select></label>
         </div>
         <p class="muted small">${ED.detected ? `Idioma detectado na legenda: ${esc(shortLang(ED.detected))}.` : ""}</p>
+        <p class="note" id="tr-rev" hidden><b>Mesmo idioma: revisão.</b> A IA corrige ortografia, gramática e pontuação, aplica as regras do perfil e condensa o que passar da velocidade de leitura, sem traduzir. O resultado sai como “… (revisada).srt”.</p>
         <div class="grid-2">
           <label class="field"><span>Cliente (regras, glossário e instruções)</span>
             <select id="tr-project"><option value="">Sem cliente</option>${(S.projects || []).map((p) => `<option value="${p.id}" ${String(p.id) === String(opts.project_id || "") ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
@@ -792,8 +805,9 @@ async function openTranslate(opts = {}) {
 
   const estimate = async () => {
     const c = $("#tr-cost"); if (!c) return;
-    if ($("#tr-src").value === $("#tr-dst").value) { $('[data-tr="go"]').disabled = true; return; }
-    $('[data-tr="go"]').disabled = false;
+    const rev = $("#tr-src").value.slice(0, 2) === $("#tr-dst").value.slice(0, 2);
+    $("#tr-rev").hidden = !rev;
+    $("#tr-title").textContent = rev ? "Revisar esta legenda" : "Traduzir esta legenda";
     try {
       const r = await api("POST", `/api/editor/${ED.sid}/translate`, { ...opt(), estimate: true });
       c.innerHTML = `Sem trabalho manual · ${esc(r.provider || "OpenAI")}. Custo estimado: <b>${fmtUSD(r.usd)}</b>.`;
@@ -983,7 +997,7 @@ async function openTranslate(opts = {}) {
 }
 
 function showHelp() {
-  toast("Espaço: tocar/pausar · ←/→: quadro · Shift+←/→: 1 s · Alt+↑/↓: legenda anterior/próxima · F11 ou [: início · F12 ou ]: fim · Insert: nova · Ctrl+S: salvar · Ctrl+Z/Y: desfazer/refazer · F8: próximo problema · Ctrl+F: localizar e substituir");
+  toast("Espaço: tocar/pausar · ←/→: quadro · Shift+←/→: 1 s · Alt+↑/↓: legenda anterior/próxima · F11 ou [: início · F12 ou ]: fim · Insert: nova · Ctrl+S: salvar · Ctrl+Z/Y: desfazer/refazer · F8: próximo problema · Ctrl+F: localizar e substituir · Enter na caixa de texto: nova linha (fora dela: vai para o texto) · Ctrl+I: itálico · Botão direito na legenda: subir para o topo ({\\an8}), alinhamento e mais");
 }
 
 /* ========================================================== forma de onda */
@@ -1041,7 +1055,7 @@ function drawWave() {
   g.font = "11px Segoe UI, system-ui, sans-serif"; g.textBaseline = "middle";
   for (let s = Math.floor(t0 / stepS) * stepS; s <= t1; s += stepS) {
     const x = Math.round(xOf(s)) + 0.5;
-    g.strokeStyle = C.grid; g.beginPath(); g.moveTo(x, top); g.lineTo(x, bot); g.stroke();
+    if (EDP.wave.grid) { g.strokeStyle = C.grid; g.beginPath(); g.moveTo(x, top); g.lineTo(x, bot); g.stroke(); }
     if (Math.abs(s - Math.round(s)) < 1e-6) { g.fillStyle = C.text; g.globalAlpha = .7; g.fillText(String(Math.round(s)), x + 3, H - RULER / 2); g.globalAlpha = 1; }
   }
 
@@ -1091,7 +1105,7 @@ function drawWave() {
     g.fillStyle = C.text; g.font = (i === ED.sel ? "600 " : "") + "12px Segoe UI, system-ui, sans-serif"; g.textBaseline = "top";
     g.fillText(c.text.replace(/\n/g, " "), x0 + 4, top + 4);
     g.textBaseline = "bottom"; g.globalAlpha = .85; g.font = "11px Segoe UI, system-ui, sans-serif";
-    g.fillText(`#${i + 1}  ${fmtSec(c.end - c.start)}`, x0 + 4, bot - 3);
+    g.fillText(`#${i + 1}  ${fmtSec(c.end - c.start)}${EDP.wave.cps ? `  ${cueStats(c).cps.toFixed(1).replace(".", ",")} CPS` : ""}`, x0 + 4, bot - 3);
     g.globalAlpha = 1; g.restore();
   });
 
@@ -1153,7 +1167,8 @@ function bindWave() {
   cv.addEventListener("wheel", (e) => {
     e.preventDefault();
     if (e.ctrlKey) { setZoom(zoomPct() * (e.deltaY < 0 ? 1.25 : 0.8)); return; }
-    ED.wave.start = Math.max(0, Math.min(Math.max(0, ED.duration - waveSpan() * 0.5), ED.wave.start + (e.deltaY + e.deltaX) / ED.wave.pps));
+    const dir = EDP.wave.invertWheel ? -1 : 1;
+    ED.wave.start = Math.max(0, Math.min(Math.max(0, ED.duration - waveSpan() * 0.5), ED.wave.start + dir * (e.deltaY + e.deltaX) / ED.wave.pps));
     drawWave();
   }, { passive: false });
   new ResizeObserver(() => drawWave()).observe(cv);
@@ -1167,7 +1182,13 @@ function bindWave() {
     if (!d.moved) { snapshot(true); d.moved = true; }
     const c = ED.cues[d.i], prev = ED.cues[d.i - 1], next = ED.cues[d.i + 1], gap = minGap();
     const lo = prev ? prev.end + gap : 0, hi = next ? next.start - gap : (ED.duration || Infinity);
-    const snap = (t) => (ED.fps && !e.altKey ? Math.round(t * ED.fps) / ED.fps : t);
+    const snap = (t) => {
+      if (EDP.wave.snapShots && ED.shots && !e.shiftKey) {     // perto de um corte de cena: encaixa nele
+        const near = ED.shots.find((sc) => Math.abs(sc - t) * ED.wave.pps <= 8);
+        if (near != null) return near;
+      }
+      return ED.fps && !e.altKey ? Math.round(t * ED.fps) / ED.fps : t;
+    };
     if (d.mode === "start") c.start = r3(Math.min(c.end - 0.04, Math.max(lo, snap(d.start + dt))));
     if (d.mode === "end") c.end = r3(Math.max(c.start + 0.04, Math.min(hi, snap(d.end + dt))));
     if (d.mode === "move") {
@@ -1266,7 +1287,9 @@ function bindEditor() {
     ED.wave.start = (Number(e.target.value) / 1000) * Math.max(0, ED.duration - waveSpan()); drawWave();
   });
   bindWave();
-  window.onresize = () => { fitVideo(); drawWave(); };
+  window.onresize = () => relayout();
+  initSplitters();
+  new ResizeObserver(() => placeSplitters()).observe(document.querySelector(".ed"));
 }
 
 ["keydown", "mousedown", "wheel"].forEach((ev) => document.addEventListener(ev, () => { ED.lastAct = Date.now(); }, { passive: true }));
@@ -1281,6 +1304,7 @@ function editorKeys(e) {
   if (ctrl && (k.toLowerCase() === "y" || (e.shiftKey && k.toLowerCase() === "z")) && !typing) return go("redo");
   if (ctrl && k === " ") return go("play");
   if (ctrl && (k.toLowerCase() === "f" || k.toLowerCase() === "h")) return go("find");
+  if (ctrl && k.toLowerCase() === "i") { e.preventDefault(); return toggleItalic(ED.sel); }
   if (k === "F11") return go("setstart");
   if (k === "F12") return go("setend");
   if (k === "F8") return go("nextissue");

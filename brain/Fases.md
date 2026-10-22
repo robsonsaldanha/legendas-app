@@ -73,3 +73,4 @@
 ## Fase 6 — Refinamentos com uso real
 - [x] 2.3.2: GhostCLI por IPv4, erro real do serviço e IP de saída no "Testar"
 - [x] 2.4.0: manuais de clientes fora do código (importar/exportar perfis); repositório público
+- [x] 2.5.0: sincronia pela voz (Silero VAD + acerto de início/fim), áreas do editor fixas e arrastáveis, `<br />`, {\an8}, configurações do editor, revisão no mesmo idioma, origem nunca alterada

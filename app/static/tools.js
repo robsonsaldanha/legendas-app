@@ -98,6 +98,13 @@ async function runSync(kind) {
       if (t.result.changed) applyCues(t.result.cues, `Sincronizada. ${t.message}`);
       else toast(t.message || "A legenda já estava sincronizada.");
     }
+    if (kind === "fit") {
+      if (!ED.video || !ED.hasAudio) { toast("Abra o vídeo (com áudio) junto da legenda para acertar na voz.", true); return; }
+      const t = await runTask("fit", {}, "Acertando início e fim na voz");
+      if (!t) return;
+      if (t.result.changed) applyCues(t.result.cues, t.message);
+      else toast(t.message);
+    }
     if (kind === "ref") {
       const path = await pickPath("subtitle");
       if (!path) return;

@@ -55,7 +55,8 @@ function esc(s) {
    antes, então só as tags conhecidas viram HTML. */
 function renderSubHtml(text) {
   let s = esc(String(text).replace(/\r/g, ""));
-  const top = /\{\\an[789]\}/.test(text);
+  const m = /^\s*\{\\an([1-9])\}/.exec(String(text));
+  const pos = m ? Number(m[1]) : 2, top = pos >= 7;
   s = s.replace(/\{\\[^}]*\}/g, "");
   s = s.replace(/&lt;(\/?)(i|b|u)&gt;/gi, (m, slash, tag) => `<${slash}${tag.toLowerCase()}>`);
   s = s.replace(/&lt;font\s+color=(?:&quot;|&#39;)?(#[0-9a-f]{3,8}|[a-z]+)(?:&quot;|&#39;)?\s*&gt;/gi, (m, c) => `<span style="color:${c}">`);
@@ -63,7 +64,7 @@ function renderSubHtml(text) {
   s = s.replace(/&lt;\/?[a-z][^&]*?&gt;/gi, "");
   const tmp = document.createElement("div");
   tmp.innerHTML = s;  // o navegador fecha tags que ficaram abertas
-  return { html: tmp.innerHTML, top };
+  return { html: tmp.innerHTML, top, pos };
 }
 
 let toastTimer;
@@ -432,7 +433,6 @@ function validateDraft() {
   if (!steps.length) return "Marque pelo menos uma etapa.";
   if (steps.includes("traduzir") && !steps.includes("transcrever") && !has("subtitle"))
     return "Para traduzir, escolha a legenda (.srt). Ou marque Transcrever para começar pelo vídeo.";
-  if (steps.includes("traduzir") && d.source_lang === d.target_lang) return "O idioma de origem e o de destino são iguais.";
   if (ready.filter((f) => f.kind === "subtitle").length > 1) return "Uma legenda por trabalho. Remova as outras.";
   if ((steps.includes("transcrever") || steps.includes("sincronizar")) && !has("media")) return "Para transcrever ou sincronizar é preciso o vídeo ou o áudio.";
   if (ready.some((f) => f.kind === "media" && f.has_audio === false)) return "O vídeo escolhido não tem áudio.";
@@ -1124,6 +1124,8 @@ async function renderSettings() {
     <section class="panel">
       <div class="row" style="justify-content:space-between"><h2>Perfis de regras</h2><a class="btn" href="#/perfis">Abrir perfis de regras</a></div>
       <p class="muted small">Limites técnicos e regras do que pode e do que não pode, por cliente.</p>
+      <div class="row" style="justify-content:space-between;margin-top:18px"><h2>Editor</h2><button class="btn" data-action="edprefs">Configurações do editor</button></div>
+      <p class="muted small">Cores dos problemas na lista, legenda sobre o vídeo, forma de onda, fontes e tamanhos das áreas. Também pelo botão ⚙ dentro do editor.</p>
       <h2 style="margin-top:18px">Pasta dos projetos</h2>
       <div class="row" style="margin-top:8px"><span class="mono small">${esc(st.projects_root || "não escolhida")}</span><a class="btn sm" href="#/bemvindo">Trocar</a></div>
     </section>
@@ -1165,6 +1167,7 @@ async function renderSettings() {
     const showKeyMsg = (r) => { msg.hidden = false; msg.className = "note " + (r.ok ? "ok" : "err"); msg.textContent = r.message; };
     try {
       if (a.startsWith("ai-")) { await aiAction(a, b); return; }
+      if (a === "edprefs") { openEdPrefs(); return; }
       if (a === "save-key") {
         const v = document.getElementById("key-in").value.trim();
         if (!v) { toast("Cole a chave no campo.", true); return; }

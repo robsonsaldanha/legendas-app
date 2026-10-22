@@ -28,7 +28,7 @@ from .chunking import Chunk, plan_chunks
 from .config import Settings, logs_dir
 from .errors import LegendasError, PipelineError
 from .formatter import FormatResult, format_words, reflow_cues
-from .sync import auto_sync, read_script, speech_activity, sync_script
+from .sync import auto_sync, detect_voice, fit_to_voice, read_script, sync_script
 from .glossary import Entry, load_glossary, transcription_keywords
 from .jobs import Job, job_id_for
 from .media import detect_silences, extract_audio, load_wav, probe
@@ -37,7 +37,7 @@ from .profiles import Profile, default_profile_for, get_profile
 from .qc import AVISO, Issue, check_rules, write_report
 from .subtitle import Cue, Word, read_srt, write_srt
 from .transcribe import OpenAITranscriber, Segment, Transcriber, build_prompt, run_transcription
-from .translate import (OpenAITranslator, make_translator, provider_label, translate_prices, Translator, detect_language, estimate_tokens, output_name,
+from .translate import (OpenAITranslator, make_translator, provider_label, translate_prices, Translator, detect_language, estimate_tokens, is_revision, output_name,
                         translate_cues)
 
 log = logging.getLogger("legendas")
@@ -185,9 +185,7 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
     if src_lang in ("", "auto"):
         sample = [c.text for c in source_cues] if source_cues else script.splitlines()
         src_lang = (detect_language(sample) if sample else None) or "pt-BR"
-    if translating and src_lang == req.target_lang:
-        raise PipelineError("O idioma de origem e o de destino são iguais. Escolha outro idioma "
-                            "para a tradução.")
+    # mesmo idioma (ex.: espanhol → espanhol) = revisão: o prompt muda (core.translate.is_revision)
 
     final_profile = req.profile or default_profile_for(req.target_lang if translating else src_lang)
     source_profile = (dataclasses.replace(final_profile, language=src_lang)
@@ -220,11 +218,11 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
                 _add_translate_estimate(result, source_cues, settings)
             return result
         cb.status("Sincronizando a legenda com a fala do vídeo…")
-        speech = speech_activity(load_wav(wav))
+        speech, _how = detect_voice(load_wav(wav))
         sr = auto_sync(source_cues, speech, min_gap=final_profile.min_gap(fps),
                        progress=lambda f: cb.progress(SYNC, int(f * 100), 100))
         cb.check_cancel()
-        source_cues = sr.cues
+        source_cues, _fit = fit_to_voice(sr.cues, speech, source_profile, fps) if _how == "voz" else (sr.cues, None)
         job.mark(SYNC, "ok", deslocamento=sr.offset, proporcao=sr.ratio, trechos=sr.parts,
                  antes=round(sr.before, 3), depois=round(sr.after, 3))
         log.info("Sincronia: deslocamento %.2f s, proporção %.5f, %d trecho(s), %.0f%% → %.0f%%",
@@ -366,12 +364,13 @@ def run_job(req: JobRequest, settings: Settings | None = None, cb: Callbacks | N
         cues = reflow_cues(tr.cues, final_profile, req.target_lang, fps)
         if needs_words:
             mb = _output_base(inputs.media, req.out_dir)
-            target = mb.parent / output_name(Path(f"{mb}.srt"), req.target_lang, final_profile)
+            target = mb.parent / output_name(Path(f"{mb}.srt"), req.target_lang, final_profile,
+                                             revision=is_revision(src_lang, req.target_lang))
         else:
             folder = req.out_dir or inputs.subtitle.parent
             stem = req.output_stem
             name = output_name(Path(f"{stem}.srt") if stem else inputs.subtitle, req.target_lang,
-                               final_profile)
+                               final_profile, revision=is_revision(src_lang, req.target_lang))
             target = folder / name
         if target.resolve() == Path(result.outputs["original"]).resolve():
             target = target.with_name(target.name[:-4] + " (tradução).srt")

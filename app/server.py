@@ -684,6 +684,11 @@ class Handler(BaseHTTPRequestHandler):
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))
+        if "editor" in data:
+            ed = data["editor"]
+            if not isinstance(ed, dict) or len(json.dumps(ed)) > 8000:
+                raise ApiError("Preferências do editor inválidas.")
+            s.editor = {k: v for k, v in ed.items() if isinstance(k, str) and len(k) < 40}
         if s.align not in ("auto", "model", "estimate"):
             raise ApiError("Opção de alinhamento inválida.")
         s.parallel_requests = max(1, min(8, s.parallel_requests))

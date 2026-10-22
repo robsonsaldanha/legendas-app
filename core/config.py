@@ -162,6 +162,7 @@ class Settings:
     ai_urls: dict = field(default_factory=dict)
     ai_names: dict = field(default_factory=dict)
     ai_ipv4: dict = field(default_factory=dict)      # serviço → sair só por IPv4
+    editor: dict = field(default_factory=dict)       # preferências do editor (cores, fontes, tamanhos das áreas)
     # Nome para a assinatura no fim da legenda ("Traducción: Nome").
     translator_name: str = ""
     # Pasta onde ficam os projetos (perguntada na primeira abertura).

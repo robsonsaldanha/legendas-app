@@ -19,7 +19,15 @@ jobs:
         run: choco install ffmpeg -y --no-progress
       - name: Instalar dependências
         run: pip install -r requirements-dev.txt
+      - name: Detector de voz e áudio de teste (Silero VAD, MIT)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://raw.githubusercontent.com/snakers4/silero-vad/v6.2.3/src/silero_vad/data/silero_vad.onnx -OutFile "$env:RUNNER_TEMP\silero_vad.onnx"
+          Invoke-WebRequest https://raw.githubusercontent.com/snakers4/silero-vad/v6.2.3/tests/data/test.wav -OutFile "$env:RUNNER_TEMP\vad_test.wav"
       - name: Rodar testes
+        env:
+          CNT_VAD_MODEL: ${{ runner.temp }}\silero_vad.onnx
+          CNT_VAD_TEST_WAV: ${{ runner.temp }}\vad_test.wav
         run: python -m pytest -q
 
   alinhamento-real:
