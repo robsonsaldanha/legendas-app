@@ -167,7 +167,8 @@ def _decode(model, clip, lang, off):
     return segs, lp
 
 
-def _other_languages(model, audio, segs: list[dict], main: str, progress=None) -> list[dict]:
+def _other_languages(model, audio, segs: list[dict], main: str, progress=None,
+                     diag: list | None = None) -> list[dict]:
     """Falas em outro idioma no meio do episódio: confere o idioma de cada frase e
     retranscreve no idioma dela. Só troca se o Whisper tiver certeza e a nova transcrição
     for mais provável que a do idioma principal no mesmo trecho (senão fica como estava)."""
@@ -185,6 +186,8 @@ def _other_languages(model, audio, segs: list[dict], main: str, progress=None) -
             lang, prob, _ = model.detect_language(clip)
         except Exception:  # noqa: BLE001
             continue
+        if diag is not None:
+            diag.append(["frase", round(a, 2), round(b, 2), lang, round(float(prob), 3)])
         if lang != main and prob >= FOREIGN_PROB:
             cand.append((k, lang, prob))
     groups: list[list] = []          # frases seguidas no mesmo idioma: transcritas juntas
@@ -207,6 +210,9 @@ def _other_languages(model, audio, segs: list[dict], main: str, progress=None) -
             _, old_lp = _decode(model, clip, main, off)
         except Exception:  # noqa: BLE001
             continue
+        if diag is not None:
+            diag.append(["troca", round(a, 2), round(b, 2), lang, round(new_lp, 3), round(old_lp, 3),
+                         " ".join(x.text.strip() for x in new)[:80]])
         if not new:
             continue
         # forçado no idioma principal, o Whisper às vezes *traduz* a fala estrangeira (texto
@@ -286,8 +292,9 @@ def _main(argv: list[str]) -> int:
         segs.append({"s": seg.start, "e": seg.end, "text": seg.text.strip(), "lp": seg.avg_logprob,
                      "lang": main, "words": [[w.start, w.end, w.word.strip()] for w in seg.words or []]})
         say("transcrevendo", min(1.0, seg.end / max(1.0, total)))
+    diag: list = []
     if multi:
-        segs = _other_languages(model, audio, segs, main, lambda p: say("idiomas", p))
+        segs = _other_languages(model, audio, segs, main, lambda p: say("idiomas", p), diag)
     words, out_segs, others = [], [], []
     for g in segs:
         words += [[round(a, 3), round(b, 3), w] for a, b, w in g["words"] if w]
@@ -297,7 +304,7 @@ def _main(argv: list[str]) -> int:
                 others.append({"ini": round(g["s"], 3), "fim": round(g["e"], 3), "idioma": g["lang"]})
     Path(dst).write_text(json.dumps({"onde": "placa de vídeo (CUDA)" if dev == "cuda" else "processador",
                                      "idioma": main, "palavras": words, "segmentos": out_segs,
-                                     "outros": others}, ensure_ascii=False), encoding="utf-8")
+                                     "outros": others, "diagnostico": diag[:400]}, ensure_ascii=False), encoding="utf-8")
     return 0
 
 

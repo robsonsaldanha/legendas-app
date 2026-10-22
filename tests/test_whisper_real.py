@@ -39,8 +39,10 @@ def test_foreign_speech_in_its_own_language(tmp_path):
     """Português com uma fala em inglês no meio: o inglês sai em inglês, marcado."""
     out = tmp_path / "misto.json"
     r = wl.transcribe_words(Path(os.environ["WHISPER_MIXED_WAV"]), out, "small", "cpu", full=True, multi=True)
-    import json
-    print("::warning::misto " + json.dumps({"seg": r["segmentos"], "outros": r["outros"]}, ensure_ascii=True))
+    for g in r["segmentos"]:
+        print(f"::warning::seg {g[0]}-{g[1]} {g[3]} {g[2][:60]}", flush=True)
+    for d in r.get("diagnostico", []):
+        print(f"::warning::diag {d}", flush=True)
     assert r["idioma"] == "pt"
     en = [s for s in r["segmentos"] if s[3] == "en"]
     assert en and any("station" in s[2].lower() for s in en)
