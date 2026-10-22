@@ -139,63 +139,108 @@ SURE_PROB = 0.92        # com esta certeza, aceita mesmo sem melhora clara
 BETTER_LP = 0.15        # a transcrição no outro idioma tem de ser claramente mais provável
 
 
+PHRASE_GAP = 0.35       # s: pausa entre palavras que separa duas frases (onde o idioma pode mudar)
+
+
+def _phrases(segs: list[dict]) -> list[tuple[float, float]]:
+    """Frases pelas palavras: o Whisper às vezes põe uma fala em português e a resposta em
+    inglês no mesmo trecho; o idioma é conferido por frase, cortando nas pausas."""
+    out: list[list[float]] = []
+    for g in segs:
+        ws = [w for w in g["words"] if w[2]] or [[g["s"], g["e"], g["text"]]]
+        first = True
+        for a, b, _ in ws:
+            if out and not first and a - out[-1][1] < PHRASE_GAP:
+                out[-1][1] = max(out[-1][1], b)
+            else:
+                out.append([a, b])
+            first = False
+    return [(a, b) for a, b in out]
+
+
+def _decode(model, clip, lang, off):
+    segs, _ = model.transcribe(clip, language=lang, task="transcribe", word_timestamps=True,
+                               beam_size=5, condition_on_previous_text=False, vad_filter=False)
+    segs = [x for x in segs if x.text.strip()]
+    dur = sum(x.end - x.start for x in segs) or 1.0
+    lp = sum(x.avg_logprob * (x.end - x.start) for x in segs) / dur if segs else -9.0
+    return segs, lp
+
+
 def _other_languages(model, audio, segs: list[dict], main: str, progress=None) -> list[dict]:
-    """Falas em outro idioma no meio do episódio: detecta o idioma de cada trecho e
-    retranscreve no idioma dele. Só troca se o Whisper tiver certeza e a nova transcrição
-    for claramente mais provável que a primeira (senão fica como estava)."""
+    """Falas em outro idioma no meio do episódio: confere o idioma de cada frase e
+    retranscreve no idioma dela. Só troca se o Whisper tiver certeza e a nova transcrição
+    for mais provável que a do idioma principal no mesmo trecho (senão fica como estava)."""
+    from .lang import join_tokens
     sr = 16000
+    phrases = _phrases(segs)
     cand = []
-    for k, g in enumerate(segs):
+    for k, (a, b) in enumerate(phrases):
         if progress and k % 20 == 0:
-            progress(k / max(1, len(segs)) * 0.7)
-        if g["e"] - g["s"] < MIN_FOREIGN or not g["text"]:
+            progress(k / max(1, len(phrases)) * 0.7)
+        if b - a < MIN_FOREIGN:
             continue
-        clip = audio[max(0, int((g["s"] - 0.1) * sr)): int((g["e"] + 0.1) * sr)]
+        clip = audio[max(0, int((a - 0.1) * sr)): int((b + 0.1) * sr)]
         try:
             lang, prob, _ = model.detect_language(clip)
         except Exception:  # noqa: BLE001
             continue
         if lang != main and prob >= FOREIGN_PROB:
             cand.append((k, lang, prob))
-    groups: list[list] = []          # trechos seguidos no mesmo idioma: transcritos juntos
+    groups: list[list] = []          # frases seguidas no mesmo idioma: transcritas juntas
     for k, lang, prob in cand:
         if groups and groups[-1][1] == lang and groups[-1][0][-1] == k - 1 \
-                and segs[k]["s"] - segs[k - 1]["e"] < 1.5:
+                and phrases[k][0] - phrases[k - 1][1] < 1.5:
             groups[-1][0].append(k)
             groups[-1][2] = min(groups[-1][2], prob)
         else:
             groups.append([[k], lang, prob])
-    replace: dict[int, list[dict]] = {}
+    regions = []                     # (início, fim, idioma, novos trechos)
     for n, (ks, lang, prob) in enumerate(groups):
         if progress:
             progress(0.7 + 0.3 * n / max(1, len(groups)))
-        a, b = segs[ks[0]]["s"], segs[ks[-1]]["e"]
+        a, b = phrases[ks[0]][0], phrases[ks[-1]][1]
         off = max(0.0, a - 0.2)
         clip = audio[int(off * sr): int((b + 0.2) * sr)]
         try:
-            new, _ = model.transcribe(clip, language=lang, task="transcribe", word_timestamps=True,
-                                      beam_size=5, condition_on_previous_text=False, vad_filter=False)
-            new = list(new)
+            new, new_lp = _decode(model, clip, lang, off)
+            _, old_lp = _decode(model, clip, main, off)
         except Exception:  # noqa: BLE001
             continue
-        new = [x for x in new if x.text.strip()]
         if not new:
             continue
-        dur = lambda xs, f: sum((x.end - x.start if f else x["e"] - x["s"]) for x in xs) or 1.0  # noqa: E731
-        old_lp = sum(segs[k]["lp"] * (segs[k]["e"] - segs[k]["s"]) for k in ks) / dur([segs[k] for k in ks], False)
-        new_lp = sum(x.avg_logprob * (x.end - x.start) for x in new) / dur(new, True)
         # forçado no idioma principal, o Whisper às vezes *traduz* a fala estrangeira (texto
         # plausível); com detecção muito certa basta a nova não ser pior
         if not (new_lp >= old_lp + BETTER_LP or (prob >= SURE_PROB and new_lp >= old_lp - 0.1)):
             continue
-        replace[ks[0]] = [{"s": x.start + off, "e": x.end + off, "text": x.text.strip(), "lp": x.avg_logprob,
-                           "lang": lang, "words": [[w.start + off, w.end + off, w.word.strip()]
-                                                   for w in x.words or []]} for x in new]
-        for k in ks[1:]:
-            replace[k] = []
+        regions.append((a, b, lang, [{"s": x.start + off, "e": x.end + off, "text": x.text.strip(),
+                                      "lp": x.avg_logprob, "lang": lang,
+                                      "words": [[w.start + off, w.end + off, w.word.strip()]
+                                                for w in x.words or []]} for x in new]))
+    if not regions:
+        if progress:
+            progress(1.0)
+        return segs
+
+    def inside(t0, t1):
+        m = (t0 + t1) / 2
+        return any(a - 0.05 <= m <= b + 0.05 for a, b, *_ in regions)
+
     out = []
-    for k, g in enumerate(segs):
-        out += replace.get(k, [g])
+    for g in segs:                    # tira dos trechos originais as palavras das regiões trocadas
+        if not g["words"]:
+            if not inside(g["s"], g["e"]):
+                out.append(g)
+            continue
+        keep = [w for w in g["words"] if not inside(w[0], w[1])]
+        if len(keep) == len(g["words"]):
+            out.append(g)
+        elif keep:
+            out.append({**g, "s": keep[0][0], "e": keep[-1][1], "words": keep,
+                        "text": join_tokens(w[2] for w in keep)})
+    for *_, new in regions:
+        out += new
+    out.sort(key=lambda g: g["s"])
     if progress:
         progress(1.0)
     return out
