@@ -61,8 +61,10 @@ def test_continuous_speech_cut_between_words():
     # fala contínua de 1 a 5 s com duas legendas; a transcrição mostra a pausa entre palavras em 3,02
     sp = make([(1.0, 5.0)])
     sp.env[int(3.0 / EHOP):int(3.05 / EHOP)] -= 30                 # vale de energia entre as palavras
-    words = [(1.0, 1.6, "a"), (1.7, 2.9, "b"), (3.05, 4.0, "c"), (4.1, 5.0, "d")]
-    cues = [Cue(1.0, 3.3, ["Primera parte"]), Cue(3.3, 5.5, ["segunda parte."])]
+    words = [(1.0, 1.3, "a"), (1.35, 1.6, "b"), (1.7, 2.0, "c"), (2.05, 2.4, "d"), (2.45, 2.9, "e"),
+             (3.05, 3.3, "f"), (3.35, 3.7, "g"), (3.75, 4.0, "h"), (4.1, 4.4, "i"), (4.45, 4.7, "j"),
+             (4.72, 5.0, "k")]
+    cues = [Cue(1.0, 3.12, ["Primera parte"]), Cue(3.12, 5.5, ["segunda parte."])]
     out, rep = precise_times(cues, sp, NETFLIX_ES_419, 25, words=words)
     assert 2.9 <= out[0].end <= 3.1 and 2.95 <= out[1].start <= 3.2
     assert out[1].start >= out[0].end + NETFLIX_ES_419.min_gap(25) - 1e-6
@@ -79,3 +81,10 @@ def test_already_synced_file_barely_moves():
     out, _ = precise_times(cues, sp, NETFLIX_ES_419, 25)
     for o, (a, b) in zip(out, spans):
         assert abs(o.start - a) <= 0.05 and abs(o.end - b) <= 0.06
+
+
+def test_bad_transcript_is_ignored():
+    from core.precise import words_usable
+    good = [(i * 0.4, i * 0.4 + 0.3, "w") for i in range(20)]
+    bad = [(i * 0.4, i * 0.4 + (0.0 if i % 2 else 0.3), "w") for i in range(20)]   # metade com duração zero
+    assert words_usable(good) and not words_usable(bad) and not words_usable(good[:5])

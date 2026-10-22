@@ -64,8 +64,12 @@ def _session():
 
 
 def speech_prob(audio: np.ndarray, progress: Callable[[float], None] | None = None,
-                streams: int = 64, warmup: float = 1.0) -> np.ndarray:
-    """Probabilidade de fala a cada 32 ms (0–1). `audio`: mono, 16 kHz, float."""
+                streams: int = 1, warmup: float = 1.0) -> np.ndarray:
+    """Probabilidade de fala a cada 32 ms (0–1). `audio`: mono, 16 kHz, float.
+
+    Um fluxo só (streams=1): processar trechos em paralelo no mesmo lote muda o resultado
+    do modelo em alguns pontos (visto num episódio real: fala inteira "sumiu" com 64 fluxos).
+    Um episódio de 45 min leva ~15 s assim."""
     x = np.asarray(audio, dtype=np.float32)
     n_steps = int(np.ceil(len(x) / CHUNK))
     if n_steps == 0:

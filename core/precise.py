@@ -72,7 +72,7 @@ class Speech:
             body = self.env[i0:i1]
             if len(body) < 5:
                 continue
-            ref = float(np.percentile(body, 90))
+            ref = max(float(np.percentile(body, 90)), getattr(self, "_loud_hint", -120.0) - 4.0)
             if float(self.env[i0:i0 + 25].max()) >= ref - 6.0:
                 out.append(a)
         return sorted(set(round(x, 3) for x in out))
@@ -97,6 +97,7 @@ class Speech:
             floor = float(np.percentile(self.env, 10))
             loud_ref = float(np.percentile(self.env[mask], 75)) if mask.any() else float(np.percentile(self.env, 90))
             mask = mask | (self.env > max(floor + 12.0, loud_ref - 9.0))
+        self._loud_hint = float(np.percentile(self.env[mask], 75)) if n and mask.any() else 0.0
         m = np.concatenate([[False], mask, [False]]).astype(np.int8)
         d = np.flatnonzero(np.diff(m))
         segs = [[a * EHOP, b * EHOP] for a, b in zip(d[0::2], d[1::2])]
@@ -110,12 +111,57 @@ class Speech:
         for a, b in merged:
             # sem nenhum sinal do detector (efeito sonoro que sobrou na voz separada): não é fala
             pa, pb = int(a / STEP), max(int(a / STEP) + 1, int(np.ceil(b / STEP)))
-            if len(P) and float(P[pa:pb].max(initial=0.0)) < 0.3:
-                continue
+            if len(P) and float(P[pa:pb].max(initial=0.0)) < 0.45:
+                # grito/fala forte que o detector não reconhece (voz separada): fica, se for alto
+                if not (self.clean and float(self.env[int(a / EHOP):max(int(a / EHOP) + 1, int(b / EHOP))].max())
+                        >= self._loud_hint + 2.0):
+                    continue
+            # a fala acaba no máximo 0,2 s depois do último sinal claro do detector
+            # (o resto é cauda de chiado/efeito que sobrou na voz separada)
+            act = np.flatnonzero(P[pa:pb] >= 0.35)
+            if len(act):
+                b = min(b, (pa + act[-1] + 1) * STEP + 0.2)
+                a = max(a, (pa + act[0]) * STEP - 0.2)
+            level = max(self._level(a, b), self._level(max(0.0, a - 2.5), b + 2.5))   # fala ao redor também
             for a2, b2 in self._split_by_energy(a, b):
                 if b2 - a2 >= min_len:
-                    out.append((self.refine_start(a2), self.refine_end(b2)))
+                    t = self._trim(a2, b2, level)
+                    if t and t[1] - t[0] >= min_len:
+                        out.append(t)
         return out
+
+    def _level(self, a: float, b: float) -> float:
+        """Nível da fala forte no trecho (dB)."""
+        i0 = min(int(a / EHOP), max(0, len(self.env) - 1))
+        i1 = min(len(self.env), max(i0 + 1, int(b / EHOP)))
+        seg = self.env[i0:i1]
+        if not len(seg):
+            return 0.0
+        pidx = np.minimum(((np.arange(i0, i1) * EHOP) / STEP).astype(int), max(0, len(self.prob) - 1))
+        strong = seg[self.prob[pidx] >= 0.8] if len(self.prob) else seg
+        return float(np.percentile(strong, 75)) if len(strong) >= 5 else float(np.percentile(seg, 85))
+
+    def _trim(self, a: float, b: float, level: float | None = None) -> tuple | None:
+        """Bordas pela energia RELATIVA à própria fala: o fim é onde a voz cai mais de 12 dB
+        abaixo do nível da fala (o chiado/respiração que sobra depois fica de fora); o
+        começo aceita consoantes mais fracas (até 18 dB abaixo)."""
+        i0, i1 = int(a / EHOP), max(int(a / EHOP) + 1, int(b / EHOP))
+        seg = self.env[i0:i1]
+        if len(seg) < 3:
+            return a, b
+        if level is None:
+            level = max(self._level(a, b), self._level(max(0.0, a - 2.5), b))   # fala ao redor também
+        on = np.flatnonzero(seg >= level - 18.0)
+        # fim: voz forte, ou voz mais baixa que o detector ainda reconhece como fala com
+        # confiança (finais de frase mais baixos); chiado/respiração não passam em nenhum dos dois
+        pidx = np.minimum(((np.arange(i0, i1) * EHOP) / STEP).astype(int), max(0, len(self.prob) - 1))
+        pv = self.prob[pidx] if len(self.prob) else np.zeros(len(seg))
+        off = np.flatnonzero((seg >= level - 12.0) | ((pv >= 0.75) & (seg >= level - 22.0)))
+        if not len(off):
+            return None                      # só chiado/respiração: não é fala
+        if not len(on):
+            return a, b
+        return (i0 + on[0]) * EHOP, (i0 + off[-1] + 2) * EHOP
 
     def _split_by_energy(self, a: float, b: float, min_pause: float = 0.08) -> list:
         """O detector "segura" a fala por cima de pausas curtas; a energia da voz mostra a pausa."""
@@ -231,6 +277,8 @@ def precise_times(cues: list[Cue], speech: Speech, profile: Profile, fps: float 
     onsets = np.array(speech.onsets or [s[0] for s in segs])
     starts = np.array([s[0] for s in segs]) if segs else np.zeros(0)
     ends = np.array([s[1] for s in segs]) if segs else np.zeros(0)
+    if words and not words_usable(words):
+        words = None          # transcrição ruim (ex.: idioma errado): não corta pelas palavras
     wgaps = _word_gaps(words) if words else []
     orig = [(c.start, c.end) for c in out]
 
@@ -274,7 +322,10 @@ def precise_times(cues: list[Cue], speech: Speech, profile: Profile, fps: float 
                 rep.unsure[i] = "sem fala por perto (texto de tela, música?)"
         # ---------------- fim
         e = o_end
-        mine = [(a, b) for a, b in segs if a < max(o_end, s + 0.3) - 0.1 and b > s + 0.05 and a < nxt - 0.05]
+        mine = [(a, b) for a, b in segs if a < max(o_end, s + 0.3) + 0.05 and b > s + 0.05 and a < nxt - 0.2]
+        # som curto e mais fraco depois da fala (suspiro, respiração, chiado) não é fala da legenda
+        while len(mine) > 1 and _is_tail(speech, mine[-2], mine[-1], loud):
+            mine.pop()
         if mine:
             a, b = mine[-1]
             if b <= nxt + 0.05 or not np.isfinite(nxt):
@@ -306,6 +357,27 @@ def precise_times(cues: list[Cue], speech: Speech, profile: Profile, fps: float 
         if b.start < a.end + gap - 1e-6:
             a.end = round(max(a.start + fr, b.start - gap), 3)
     return out, rep
+
+
+def _is_tail(speech: "Speech", prev: tuple, seg: tuple, loud: float) -> bool:
+    a, b = seg
+    if b - a > 0.6 or a - prev[1] < 0.25:
+        return False
+    i0, i1 = int(a / EHOP), max(int(a / EHOP) + 1, int(b / EHOP))
+    j0, j1 = int(prev[0] / EHOP), max(int(prev[0] / EHOP) + 1, int(prev[1] / EHOP))
+    peak = float(speech.env[i0:i1].max(initial=-120.0))
+    prev_peak = float(np.percentile(speech.env[j0:j1], 90)) if j1 > j0 else loud
+    pmax = float(speech.prob[int(a / STEP):int(np.ceil(b / STEP))].max(initial=0.0))
+    return pmax < 0.85 and peak < max(prev_peak, loud) + 3.0
+
+
+def words_usable(words) -> bool:
+    """Tempos de palavra confiáveis? Muitas palavras com duração zero = transcrição que não
+    acompanhou a fala (idioma errado, tradução em vez de transcrição)."""
+    if len(words) < 10:
+        return False
+    d = np.array([w[1] - w[0] for w in words])
+    return float((d < 0.02).mean()) < 0.15
 
 
 def _word_gaps(words) -> list[tuple[float, float]]:

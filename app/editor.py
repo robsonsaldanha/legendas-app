@@ -849,9 +849,9 @@ class EditorManager:
                     (s.cache / "voz16.txt").write_text(where, encoding="utf-8")
                 elif (s.cache / "voz16.txt").exists():
                     where = (s.cache / "voz16.txt").read_text(encoding="utf-8")
-                src, pfile = voz, s.cache / "voz16_prob.npy"
+                src, pfile = voz, s.cache / "voz16_prob_v2.npy"
             else:
-                src, pfile = self._audio16(s), s.cache / "audio16_prob.npy"
+                src, pfile = self._audio16(s), s.cache / "audio16_prob_v2.npy"
             audio = load_wav(src)
             prob = np.load(pfile) if pfile.exists() else None
             if prob is None:
@@ -869,7 +869,7 @@ class EditorManager:
 
     def _words(self, s: Session, prog, cancelled) -> list | None:
         from core import whisper_local as wl
-        f = s.cache / "palavras.json"
+        f = s.cache / "palavras_v2.json"
         if not f.exists():
             if not wl.available():
                 return None

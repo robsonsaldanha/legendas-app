@@ -103,6 +103,27 @@ def _python() -> str:
     return str(exe)
 
 
+def _detect_language(model, audio) -> str | None:
+    """Vota o idioma em até 8 trechos de 30 s com som, espalhados pelo áudio."""
+    import numpy as np
+    from collections import Counter
+    sr, n = 16000, len(audio)
+    step = max(30 * sr, n // 9)
+    votes = Counter()
+    for a in range(step // 2, max(1, n - 30 * sr), step):
+        piece = audio[a:a + 30 * sr]
+        if len(piece) < 5 * sr or float(np.sqrt((piece ** 2).mean())) < 0.01:
+            continue
+        try:
+            lang, prob, _ = model.detect_language(piece)
+        except Exception:  # noqa: BLE001
+            continue
+        votes[lang] += prob
+        if sum(votes.values()) > 5:
+            break
+    return votes.most_common(1)[0][0] if votes else None
+
+
 def _main(argv: list[str]) -> int:
     import wave
     import numpy as np
@@ -129,8 +150,10 @@ def _main(argv: list[str]) -> int:
         from .separate import to16k_mono
         audio = to16k_mono(audio, sr)
     total = len(audio) / 16000
-    segments, info = model.transcribe(audio, language=lang, word_timestamps=True, vad_filter=False,
-                                      beam_size=5, condition_on_previous_text=False)
+    if lang is None:   # idioma pela fala de vários trechos (os primeiros 30 s podem ser só música)
+        lang = _detect_language(model, audio)
+    segments, info = model.transcribe(audio, language=lang, task="transcribe", word_timestamps=True,
+                                      vad_filter=False, beam_size=5, condition_on_previous_text=False)
     words = []
     for seg in segments:
         for w in seg.words or []:
