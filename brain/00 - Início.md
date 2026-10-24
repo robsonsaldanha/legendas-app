@@ -6,6 +6,8 @@ Vault Obsidian com toda a documentação. **Quem for desenvolver (pessoa ou IA) 
 Programa Windows com instalador para legendagem profissional (a usuária traduz PT-BR ↔ espanhol e outros idiomas, padrão Netflix). Gera `.srt`. Tudo roda no PC: transcrição local (Whisper), tradução pela API escolhida ou pelo ChatGPT dela. Um servidor na VPS cuida só de licenças, atualizações, site/área do cliente e (2.13) do perfil sincronizado.
 
 ## Mapa
+- [[Tarefas]] — **o kanban**: feito / fazendo / a fazer (comece por aqui para saber o que fazer)
+- [[Pendências]] — especificação de cada tarefa (família CNT: hub, Legendas, Dubla, API; e o que já estava pendente)
 - [[Arquitetura]] — módulos, fluxo de dados, pastas
 - [[Decisões]] — escolhas técnicas e por quê (registro por data)
 - [[Fases]] — o que está pronto e o que vem

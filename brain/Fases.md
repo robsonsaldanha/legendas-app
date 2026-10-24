@@ -1,5 +1,7 @@
 # Fases
 
+> Histórico por versão. **O que falta fazer agora fica em [[Tarefas]]** (kanban) e a explicação de cada item em [[Pendências]].
+
 ## ✅ Fase 1 — Transcrever + Formatar (linha de comando)
 - [x] Estrutura, `brain/`, testes, CI em Windows
 - [x] Extração de áudio, blocos nas pausas, transcrição paralela com cache
@@ -84,11 +86,6 @@
 - [x] 2.14.0: glossário em três níveis — geral (Configurações), cliente e projeto (menu ⋯ do projeto); o mais específico vale
 - [x] 2.15.0: memória de tradução, formato de entrega (srt padrão; vtt/ttml/ass por global/equipe/cliente/projeto), prazo de entrega (topo e editor), histórico de versões, corretor ortográfico, aviso de trabalho concluído na bandeja, "Relatar um problema" (servidor 1.3, painel Suporte)
 - [x] 2.16.0: status da conexão no topo (pings alinhados servidor/Google), ⚠ de atualização no lugar da janela, códigos de erro ER-RS/ER-RA, modo de depuração e diagnóstico (zip em Documentos); servidor 1.4 com modo manutenção
-- [ ] **Futuro:** PIX automático + nota fiscal pelo **Mercado Pago** quando o Róbson tiver conta PJ (substitui a aprovação manual do PIX)
-- [ ] **Futuro:** lembrete de renovação (e-mail e aviso no programa alguns dias antes do vencimento, com o link do pagamento)
-- [ ] Apagar cliente/glossário no Workspace propagar para os colegas (hoje apagar não se propaga, de propósito)
-- [ ] Ligar a produção (nginx + certificado de legendas.cntoficial.com.br, variável CNT_PROD_ATIVO) quando o Róbson aprovar; termos revisados por advogado
-- [ ] Nuitka nos módulos de licença; repositório privado + runner próprio
-- [ ] Calibrar com legendas acertadas à mão por ela (quanto antes da fala ela gosta de entrar)
+- Próximos passos (família CNT, Mac/Linux, ao vivo, audiodescrição, dublagem, API e pendências antigas): ver [[Tarefas]] e [[Pendências]]
 - [x] 2.11.0: janela própria (WebView2), sem abas nem barra de endereço; o X pergunta antes de fechar
 - [x] 2.12.0: bandeja do sistema (menu Exibir/Reabrir último/Novo projeto/Atualizar/Reiniciar/Sair), aviso de versão nova com o programa aberto (salvar antes, reabrir onde estava); X encerra o processo de vez
