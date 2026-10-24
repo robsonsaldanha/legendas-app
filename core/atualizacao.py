@@ -203,9 +203,10 @@ def rodar_instalador(exe: Path) -> None:
                                "na próxima vez que abrir o programa.")
 
 
-def reabrir(port: int, token: str) -> None:
+def reabrir(port: int, token: str, janela: bool = False) -> None:
     """Abre uma nova instância (pela partida, que escolhe a versão mais nova) com a mesma porta e
-    sessão: a página aberta só recarrega."""
+    sessão. No navegador a página aberta só recarrega; na janela própria, a nova instância abre
+    a janela dela (a antiga fecha junto com o processo)."""
     env = {**os.environ, "CNT_REUSE_PORT": str(port), "CNT_REUSE_TOKEN": token}
     exe = Path(sys.executable)
     if sys.platform == "win32" and exe.name.lower() == "python.exe" and (exe.parent / "pythonw.exe").exists():
@@ -213,5 +214,6 @@ def reabrir(port: int, token: str) -> None:
     root = Path(__file__).resolve().parent.parent
     install_root = Path(os.environ.get("CNT_INSTALL_ROOT") or root)
     flags = 0x00000008 if sys.platform == "win32" else 0
-    subprocess.Popen([str(exe), "-m", "cntboot", "--no-browser", "--depois-de", str(os.getpid())], cwd=str(install_root), env=env,
+    args = [str(exe), "-m", "cntboot"] + ([] if janela else ["--no-browser"]) + ["--depois-de", str(os.getpid())]
+    subprocess.Popen(args, cwd=str(install_root), env=env,
                      close_fds=True, creationflags=flags)

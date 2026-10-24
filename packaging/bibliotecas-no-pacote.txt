@@ -1,0 +1,8 @@
+# Bibliotecas em Python puro que vão na pasta lib do pacote de atualização (patch), para
+# chegarem sem reinstalar o programa. Instaladas com --no-deps: liste todas as dependências.
+# Bibliotecas com partes compiladas (numpy, torch...) continuam exigindo o instalador.
+pywebview==6.2.1
+pythonnet==3.2.1
+clr_loader==0.3.1
+proxy_tools==0.1.0
+bottle==0.13.4

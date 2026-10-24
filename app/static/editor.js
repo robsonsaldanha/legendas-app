@@ -727,8 +727,10 @@ function act(name) {
 
 /* ============================================================ tradução */
 
-/* Abre (ou só traz para frente) a aba do ChatGPT, sem recarregar a conversa aberta. */
+/* Abre (ou só traz para frente) a aba do ChatGPT, sem recarregar a conversa aberta.
+   Na janela própria do programa, o ChatGPT abre no navegador do computador (onde ela já está conectada). */
 function openChatGPT() {
+  if (S.state?.janela) { window.open("https://chatgpt.com/", "_blank"); return; }
   let w = null;
   try { w = window.open("", "legendas-chatgpt"); } catch {}
   let blank = true;
@@ -736,6 +738,15 @@ function openChatGPT() {
   if (blank) w = window.open("https://chatgpt.com/", "legendas-chatgpt");
   try { w && w.focus(); } catch {}
 }
+
+/* Na janela própria, o X pergunta antes de fechar: avisa se há alterações não salvas no editor. */
+let edSujoInformado = false;
+setInterval(() => {
+  const sujo = !!ED.dirty;
+  if (!S.state?.janela || sujo === edSujoInformado) return;
+  edSujoInformado = sujo;
+  api("POST", "/api/janela/sujo", { sujo }).catch(() => { edSujoInformado = !sujo; });
+}, 1000);
 
 function getPref(k, d) { try { return localStorage.getItem(k) || d; } catch { return d; } }
 function setPref(k, v) { try { localStorage.setItem(k, v); } catch {} }

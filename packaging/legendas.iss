@@ -56,8 +56,8 @@ Source: "{#BuildDir}\CNTLegendas\*"; DestDir: "{app}"; Flags: ignoreversion recu
 Source: "{#BuildDir}\redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: VCRedistNeeded
 
 [Icons]
-Name: "{commonprograms}\CNT Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m cntboot"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"
-Name: "{commondesktop}\CNT Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m cntboot"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"; Tasks: desktopicon
+Name: "{commonprograms}\CNT Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m cntboot"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"; AppUserModelID: "CNT.Legendas"
+Name: "{commondesktop}\CNT Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m cntboot"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"; AppUserModelID: "CNT.Legendas"; Tasks: desktopicon
 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Instalando componentes do Windows (Visual C++)..."; Flags: waituntilterminated; Check: VCRedistNeeded

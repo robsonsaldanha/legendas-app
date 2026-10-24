@@ -11,3 +11,6 @@ onnxruntime-directml>=1.18; sys_platform == "win32"
 scipy>=1.11
 # Licença e atualização: assinatura Ed25519 do servidor
 cryptography>=42
+# Janela própria (WebView2 do Windows). Em Python puro: também vai no pacote de atualização
+# (packaging/bibliotecas-no-pacote.txt — manter as versões iguais)
+pywebview==6.2.1; sys_platform == "win32"

@@ -233,3 +233,12 @@
 - Instalador pela atualização: roda com o aviso de administrador do Windows (`ShellExecute runas`), em silêncio, e reabre o programa (`/ABRIR`).
 - Testes: `tests/test_licenca.py`, `tests/test_atualizacao.py`; os demais testes rodam com uma licença de teste com tudo liberado (`tests/conftest.py`). No CI, o programa instalado tem de mostrar a versão completa e o canal certos.
 - 2.10.0.x: o rodapé do menu mostra a versão completa (com o número da montagem), para conferir se a atualização entrou.
+
+## 2026-10-23 — Janela própria (2.11.0)
+- Pedido do Róbson: abrir como programa de PC, não numa aba do Chrome; o X pergunta antes de fechar. Escolha: **WebView2** (motor do Edge que vem no Windows) via `pywebview` — poucos MB, nada muda nas telas. Electron foi descartado (≈150 MB a mais); `msedge --app` só como quebra-galho.
+- `app/janela.py`: janela maximizada, ícone do CNT e id "CNT.Legendas" na barra de tarefas (o instalador põe o mesmo id nos atalhos). Sem WebView2, sem a biblioteca ou se a janela falhar: abre no navegador como antes (`CNT_NAVEGADOR=1` força o navegador).
+- Fechar no X: pergunta sempre; avisa se há trabalhos em segundo plano (contagem no banco) ou alterações não salvas no editor (a página avisa o servidor por `/api/janela/sujo`). O botão "Fechar o programa" já pergunta na página e fecha a janela sem perguntar de novo.
+- Atalho clicado com o programa aberto: traz a janela para a frente (`/janela?k=`). Depois de uma atualização, a nova instância abre a janela dela (a antiga fecha junto).
+- O pywebview desliga o menu do botão direito e atalhos como F5 fora da depuração; religados (ela tinha no navegador). Links externos e o ChatGPT abrem no navegador do computador (onde ela está conectada). Dados da janela (localStorage) em `<dados>/janela`.
+- **Bibliotecas no pacote de atualização**: bibliotecas em Python puro listadas em `packaging/bibliotecas-no-pacote.txt` vão na pasta `lib` do patch (`<versão>/lib`, no fim do `sys.path`). Assim a janela chega à 2.10 instalada sem o instalador de 1,2 GB. Bibliotecas compiladas continuam pedindo o instalador (`[instalador]` no commit).
+- CI: o programa instalado abre a janela de verdade (`--teste-janela`), espera a tela desenhar e fecha.

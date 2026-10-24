@@ -1267,7 +1267,7 @@ async function renderSettings() {
       if (a === "open-data") await api("POST", "/api/open", { path: st.data_dir });
       if (a === "quit") {
         if (!confirm("Fechar o programa? Trabalhos em andamento serão interrompidos (dá para retomar depois).")) return;
-        await api("POST", "/api/shutdown");
+        await api("POST", "/api/shutdown");     // na janela própria, ela fecha sozinha
         main.innerHTML = `<div class="panel empty"><p>O programa foi fechado. Pode fechar esta aba.</p></div>`;
       }
     } catch (err) { toast(err.message, true); }

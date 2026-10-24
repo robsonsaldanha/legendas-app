@@ -109,12 +109,22 @@ $canalJson = @{ canal = $Canal; build = $BuildNum } | ConvertTo-Json -Compress
 [IO.File]::WriteAllText((Join-Path $App "core\canal.json"), $canalJson, (New-Object Text.UTF8Encoding $false))
 & python -m compileall -q -f (Join-Path $App "core") (Join-Path $App "app") | Out-Null
 
-# pacote de atualização (patch): só app\ e core\, para o programa já instalado baixar e aplicar
+# pacote de atualização (patch): app\ e core\, para o programa já instalado baixar e aplicar
 New-Item -ItemType Directory -Force -Path (Join-Path $Build "Output") | Out-Null
 $patch = Join-Path $Build "Output\Atualizacao_CNT_Legendas_$FullVersion.zip"
 Remove-Item $patch -ErrorAction SilentlyContinue
+# + lib\ com as bibliotecas em Python puro (packaging\bibliotecas-no-pacote.txt)
+$PatchRoot = Join-Path $Build "pacote"
+Remove-Item $PatchRoot -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $PatchRoot | Out-Null
+Copy-Item (Join-Path $App "app") (Join-Path $PatchRoot "app") -Recurse
+Copy-Item (Join-Path $App "core") (Join-Path $PatchRoot "core") -Recurse
+& python -m pip install --disable-pip-version-check --no-warn-script-location --no-deps --target (Join-Path $PatchRoot "lib") `
+    -r (Join-Path $PSScriptRoot "bibliotecas-no-pacote.txt")
+if ($LASTEXITCODE) { throw "falha ao instalar as bibliotecas do pacote" }
+Get-ChildItem (Join-Path $PatchRoot "lib") -Directory | Where-Object { $_.Name -eq "bin" } | Remove-Item -Recurse -Force
 # (zip pelo Python: nomes com "/", que funcionam em qualquer descompactador)
-& python -c "import sys, zipfile, pathlib; r = pathlib.Path(sys.argv[1]); z = zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED, compresslevel=9); [z.write(f, f.relative_to(r).as_posix()) for d in ('app', 'core') for f in sorted((r / d).rglob('*')) if f.is_file()]; z.close()" $App $patch
+& python -c "import sys, zipfile, pathlib; r = pathlib.Path(sys.argv[1]); z = zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED, compresslevel=9); [z.write(f, f.relative_to(r).as_posix()) for d in ('app', 'core', 'lib') for f in sorted((r / d).rglob('*')) if f.is_file()]; z.close()" $PatchRoot $patch
 if ($LASTEXITCODE) { throw "falha ao gerar o pacote de atualização" }
 Write-Host "Pacote de atualização: $([math]::Round((Get-Item $patch).Length / 1MB, 1)) MB"
 

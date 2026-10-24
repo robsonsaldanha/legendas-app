@@ -383,6 +383,10 @@ class Database:
     def delete_job(self, jid: int) -> None:
         self._exec("DELETE FROM jobs WHERE id = ?", (jid,))
 
+    def count_active_jobs(self) -> int:
+        """Trabalhos rodando ou na fila (para a confirmação ao fechar a janela)."""
+        return int(self._q("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('rodando', 'fila')")[0]["n"])
+
     def mark_interrupted(self) -> list[int]:
         """Na abertura: trabalhos que estavam rodando quando o programa fechou."""
         rows = self._q("SELECT id FROM jobs WHERE status IN ('rodando', 'fila')")

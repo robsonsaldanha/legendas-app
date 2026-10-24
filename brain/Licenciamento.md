@@ -77,7 +77,7 @@ Coleta (hash do computador, MAC em hash, IPs, nome do computador) só para contr
 - `producao`: só quando o Róbson aprovar (PR `dev` → `main`). O cliente recebe só `producao`.
 
 ### Pacote
-- **Patch de código** (`Atualizacao_CNT_Legendas_<versão>.zip`): pastas `app/` e `core/` (com `core/canal.json` = `{canal, build}`). O servidor devolve um manifesto assinado com Ed25519 (url, sha256, tamanho); o programa confere assinatura e SHA-256. Pequeno.
+- **Patch de código** (`Atualizacao_CNT_Legendas_<versão>.zip`): pastas `app/`, `core/` e `lib/` (bibliotecas em Python puro de `packaging/bibliotecas-no-pacote.txt`) (com `core/canal.json` = `{canal, build}`). O servidor devolve um manifesto assinado com Ed25519 (url, sha256, tamanho); o programa confere assinatura e SHA-256. Pequeno.
 - **Instalador completo** quando muda Python, bibliotecas, modelos ou o `cntboot.py`: commit com `[instalador]` na mensagem → o servidor marca `requer_instalador` e manda o instalador a quem atualizar.
 - Versão completa = `<core.__version__>.<número da montagem do CI>` (ex.: 2.10.0.57). O CI (`.github/workflows/instalador.yml`): ramo `dev` → canal desenvolvimento, pré-versão "desenvolvimento" no GitHub (trocada a cada montagem) e envio ao servidor dev (segredo `CNT_TOKEN_DEV`); ramo `main` → canal produção, versão `v<versão completa>` no GitHub e, quando a variável `CNT_PROD_ATIVO` = 1, envio ao servidor de produção (segredo `CNT_TOKEN_PROD`).
 - O servidor só oferece atualização a computadores que ele já conhece (com avaliação ou licença).

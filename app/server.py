@@ -135,6 +135,8 @@ class App:
         self.server: ThreadingHTTPServer | None = None
         from core.atualizacao import Atualizador
         self.updater = Atualizador()
+        self.janela = None          # app.janela.Janela quando aberto na janela própria
+        self.editor_sujo = False    # o editor avisa quando há alterações não salvas (confirmação ao fechar)
 
     # ---------------------------------------------------------- sessão
 
@@ -187,6 +189,7 @@ class App:
             "home_dir": str(Path.home()),
             "licenca": self.license_state(),
             "atualizacao": self.updater.to_dict(),
+            "janela": self.janela is not None,
         }
 
     # ---------------------------------------------------------- licença e atualização
@@ -208,7 +211,7 @@ class App:
             if pacote == "instalador":
                 atualizacao.rodar_instalador(exe)
             else:
-                atualizacao.reabrir(port, self.token)
+                atualizacao.reabrir(port, self.token, janela=self.janela is not None)
             _t.Timer(1.5, lambda: os._exit(0)).start()   # a página vê "reiniciando" e espera a nova instância
 
         def run():
@@ -542,6 +545,13 @@ class Handler(BaseHTTPRequestHandler):
     def _static(self, path: str) -> None:
         if path == "/ping":
             self._send(200, b"legendas-ok" if self._key_ok() else b"legendas", "text/plain")
+            return
+        if path == "/janela":       # o atalho foi clicado de novo: traz a janela aberta para a frente
+            if self._key_ok() and self.app.janela is not None:
+                self.app.janela.mostrar()
+                self._send(200, b"ok", "text/plain")
+            else:
+                self._send(200, b"sem-janela", "text/plain")
             return
         if path == "/open":
             if not self._key_ok():
@@ -1236,6 +1246,11 @@ class Handler(BaseHTTPRequestHandler):
         b = self._body()
         return self.app.editor.rewrap(b.get("text", ""), b.get("profile_key") or None,
                                       b.get("language") or None)
+
+    @route("POST", r"/api/janela/sujo")
+    def api_janela_sujo(self):
+        self.app.editor_sujo = bool(self._body().get("sujo"))
+        return {"ok": True}
 
     @route("POST", r"/api/shutdown")
     def api_shutdown(self):

@@ -83,4 +83,4 @@
 - [ ] Ligar a produção (nginx + certificado de legendas.cntoficial.com.br, variável CNT_PROD_ATIVO) quando o Róbson aprovar; termos revisados por advogado
 - [ ] Nuitka nos módulos de licença; repositório privado + runner próprio
 - [ ] Calibrar com legendas acertadas à mão por ela (quanto antes da fala ela gosta de entrar)
-- [ ] Janela própria (sem navegador), se ela preferir
+- [x] 2.11.0: janela própria (WebView2), sem abas nem barra de endereço; o X pergunta antes de fechar

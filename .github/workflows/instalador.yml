@@ -83,6 +83,23 @@ jobs:
           $esperado = "$((& $py -c 'import core; print(core.__version__)').Trim()).$env:CNT_BUILD"
           if ($info -notmatch [regex]::Escape("$esperado $env:CNT_CANAL $esperado")) { throw "versão/canal errados: $info (esperado $esperado $env:CNT_CANAL)" }
           "::notice title=Partida::$info"
+          # janela própria (WebView2): abre pelo atalho de verdade, espera a tela desenhar e fecha
+          $res = "$env:RUNNER_TEMP\janela.txt"
+          $wv = Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" -ErrorAction SilentlyContinue
+          if (-not $wv) {
+            "::warning title=Janela::WebView2 não instalado nesta máquina de teste; a janela não foi testada"
+          } else {
+            $env:CNT_SEM_ATUALIZACAO = "1"
+            $p = Start-Process "$env:ProgramFiles\CNT Legendas\python\pythonw.exe" -ArgumentList "-m","cntboot","--port","0","--teste-janela",$res `
+              -WorkingDirectory "$env:ProgramFiles\CNT Legendas" -PassThru
+            if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "a janela não fechou sozinha em 2 minutos" }
+            $r = if (Test-Path $res) { Get-Content $res -Raw } else { "sem resultado" }
+            if ($r -notmatch '^ok') {
+              Get-ChildItem "$env:APPDATA\CNT Legendas\logs" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 30 }
+              throw "janela própria falhou: $r"
+            }
+            "::notice title=Janela::WebView2 $($wv.pv) — $r"
+          }
 
       - name: Desinstalar
         shell: pwsh
