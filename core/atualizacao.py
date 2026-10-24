@@ -103,7 +103,8 @@ class Atualizador:
         self.estado = "verificando"
         try:
             device = self._device or licenca.atual().device["id"]
-            r = self._http()(f"{licenca.servidor()}/v1/atualizacao", params={"versao": versao_atual(), "device": device})
+            from .plataforma import nome as _sistema
+            r = self._http()(f"{licenca.servidor()}/v1/atualizacao", params={"versao": versao_atual(), "device": device, "sistema": _sistema()})
             data = r.json()
         except Exception as e:  # noqa: BLE001
             log.info("Atualização: não consegui consultar (%s)", e)
@@ -119,6 +120,9 @@ class Atualizador:
             return self.to_dict()
         self.info = m
         self.estado = "disponivel"
+        if m.get("pacote") != "patch" and sys.platform != "win32":
+            # versão que pede o instalador do Windows: no Mac/Linux, baixa-se o pacote novo no site
+            self.estado = "manual"
         return self.to_dict()
 
     # ---------------------------------------------------------------- baixar e aplicar

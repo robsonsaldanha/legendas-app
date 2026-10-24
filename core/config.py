@@ -40,7 +40,8 @@ def data_dir() -> Path:
         p = root / APP_NAME
         _migrate(root / OLD_APP_NAME, p)
     else:
-        p = Path.home() / ".legendas"
+        from .plataforma import pasta_dados   # Mac: Application Support; Linux: ~/.local/share (2.17)
+        p = pasta_dados()
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -67,11 +68,14 @@ def shared_dir() -> Path | None:
     override = os.environ.get("LEGENDAS_SHARED")
     if override:
         return Path(override)
-    if sys.platform == "win32" and not os.environ.get("LEGENDAS_HOME"):
+    if os.environ.get("LEGENDAS_HOME"):
+        return None
+    if sys.platform == "win32":
         root = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
         _migrate(root / OLD_APP_NAME, root / APP_NAME)   # o instalador já tenta antes
         return root / APP_NAME
-    return None
+    from .plataforma import pasta_comum        # Mac: /Users/Shared/CNT Legendas; Linux: nenhuma
+    return pasta_comum()
 
 
 def models_dir() -> Path:

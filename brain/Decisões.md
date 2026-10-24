@@ -319,3 +319,11 @@
 ## 2026-10-24 — Hub CNT no ar (P-01) substituindo o CNT System
 - Repositório novo `cnt-hub` (PC: `DESENVOLVIMENTO\CNT Hub`; VPS: `~/git/cnt-hub.git`, ramo `main`, deploy automático em `/var/www/html`). Vitrine, `/entrar`, páginas legais e painel `/admin`. Detalhes no `brain/` do hub.
 - O CNT System foi desligado a pedido do Róbson, com cópia completa em `/home/robson/backups/cnt-system-20261024-160700/` e a pasta em `/var/www/html_cntsystem_parado` (dá para voltar).
+
+## 2026-10-24 — 2.17: Mac e Linux (P-04, etapa 1)
+- `core/plataforma.py` (só biblioteca padrão): pastas por sistema — dados do usuário (Windows `%APPDATA%`; Mac `~/Library/Application Support/CNT Legendas`; Linux `$XDG_DATA_HOME/cnt-legendas`; quem já tinha `~/.legendas` continua nela), pasta comum (Windows `%ProgramData%`; Mac `/Users/Shared/CNT Legendas`; Linux nenhuma), Documentos (Linux pelo `xdg-user-dir`), identificador da máquina (Mac pelo `IOPlatformUUID`) e "abrir/mostrar no gerenciador de arquivos" (Explorer, Finder, `xdg-open`). `config`, `licenca`, `depuracao`, `server` e `cntboot` usam ele.
+- No Mac e no Linux o programa abre no **navegador padrão** (a janela própria e o ícone ao lado do relógio continuam só no Windows).
+- Atualização: o pacote (patch) é o mesmo nos três sistemas. A consulta manda `sistema`; versão que exige instalador vira estado `manual` fora do Windows (o ⚠ leva ao site para baixar).
+- Montagem: `packaging/build_unix.sh linux|mac` — Python 3.12 relocável (com tkinter), bibliotecas (torch CPU no Linux), programa, modelos e ffmpeg estático. Linux: `.tar.gz` + `.AppImage`; Mac (Apple Silicon): `.app` em `.dmg`, assinatura local (sem conta de desenvolvedor: na primeira vez, botão direito → Abrir).
+- CI: testes também em Linux e Mac; job "Montar para Linux/Mac" depois do Windows: monta, testa o programa montado (abre e responde, ffprobe e modelos do pacote, corretor) e publica na pré-versão `desenvolvimento` (ou na versão, no `main`).
+- Falta (T-023): o site oferecer os downloads de Mac/Linux e o servidor registrar os pacotes por sistema.

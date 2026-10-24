@@ -10,8 +10,6 @@ import os
 import re
 import secrets
 import shutil
-import subprocess
-import sys
 import threading
 import time
 import uuid
@@ -98,15 +96,8 @@ def open_path(path: str, select: bool = False) -> None:
     p = Path(path)
     if not p.exists():
         raise ApiError("Arquivo não encontrado. Ele pode ter sido movido ou apagado.", 404)
-    if sys.platform == "win32":
-        if select:
-            subprocess.Popen(["explorer", "/select,", str(p)])
-        else:
-            os.startfile(str(p))  # type: ignore[attr-defined]
-    else:
-        target = p.parent if select else p
-        subprocess.Popen(["xdg-open", str(target)], stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL)
+    from core import plataforma
+    plataforma.abrir(p, select)            # Explorer, Finder ou o gerenciador de arquivos do Linux
 
 
 def _local_transcribe() -> bool:
@@ -1353,7 +1344,8 @@ class Handler(BaseHTTPRequestHandler):
         if not c["online"] and est.modo == "licenciada" and est.renovar_ate:
             c["licenca_offline_ate"] = est.renovar_ate
         info = self.app.updater.to_dict() if getattr(self.app, "updater", None) is not None else {}
-        c["atualizacao"] = {"disponivel": info.get("estado") == "disponivel", "versao": info.get("versao") or ""}
+        c["atualizacao"] = {"disponivel": info.get("estado") in ("disponivel", "manual"), "manual": info.get("estado") == "manual",
+                            "versao": info.get("versao") or ""}
         c["depuracao"] = depuracao.DEP.estado()
         return c
 

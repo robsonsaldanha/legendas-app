@@ -53,7 +53,13 @@ def versoes_dir() -> Path | None:
         cands.append(Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "CNT Legendas" / "versoes")
         cands.append(Path(os.environ.get("APPDATA", Path.home())) / "CNT Legendas" / "versoes")
     else:
-        cands.append(Path.home() / ".legendas" / "versoes")
+        try:   # mesma regra de core/plataforma.py (Mac: pasta comum e Application Support; Linux: ~/.local/share)
+            from core.plataforma import pasta_comum, pasta_dados
+            if pasta_comum():
+                cands.append(pasta_comum() / "versoes")
+            cands.append(pasta_dados() / "versoes")
+        except Exception:  # noqa: BLE001
+            cands.append(Path.home() / ".legendas" / "versoes")
     for c in cands:
         if c.is_dir():
             return c

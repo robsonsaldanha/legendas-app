@@ -26,10 +26,10 @@ _(nada no momento)_
 - [ ] T-010 · P-03 · Conta única CNT (entrar uma vez) + migração das contas do Legendas
 
 ### CNT Legendas — novas funções
-- [ ] T-020 · P-04 · Tirar dependências do Windows (licença, cofre, bandeja, janela, diálogos) atrás de uma camada por sistema
-- [ ] T-021 · P-04 · Pacote para Linux (`.AppImage`/`.deb`) + CI
-- [ ] T-022 · P-04 · Pacote para Mac (`.dmg` assinado) + CI
-- [ ] T-023 · P-04 · Atualização automática com canal por sistema
+- [x] T-020 · P-04 · Camada por sistema (`core/plataforma.py`): pastas, id da máquina, abrir no gerenciador, Documentos — 2.17
+- [x] T-021 · P-04 · Pacote para Linux (`.tar.gz` + `.AppImage`) + testes e montagem no CI — 2.17
+- [x] T-022 · P-04 · Pacote para Mac Apple Silicon (`.dmg`, assinatura local) + testes e montagem no CI — 2.17 (assinatura oficial depende de conta de desenvolvedor)
+- [ ] T-023 · P-04 · Atualização por sistema: feito o `sistema` na consulta e o estado `manual`; falta o site oferecer os downloads de Mac/Linux e o servidor registrar os pacotes por sistema
 - [ ] T-024 · P-04 · Legendas no navegador (nuvem), com envio opcional do vídeo — depende de T-060
 - [ ] T-030 · P-05 · Captura de áudio ao vivo (microfone, sistema, placa) e transcrição contínua com atraso ≤ 3 s
 - [ ] T-031 · P-05 · Saídas ao vivo: janela com fundo sólido/transparente e página local de legenda

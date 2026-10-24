@@ -184,3 +184,56 @@ jobs:
           $r = Invoke-RestMethod -Method Put -Uri "$env:CNT_URL/v1/admin/versoes/$full/patch" -Headers $h `
             -ContentType "application/octet-stream" -InFile $zip
           "::notice title=Servidor::pacote $full publicado ({0:N1} MB, sha256 $($r.sha256.Substring(0,12))…)" -f ($r.tamanho / 1MB)
+
+  unix:
+    name: Montar para ${{ matrix.nome }}
+    needs: instalador          # a pré-versão "desenvolvimento" é recriada pelo job do Windows; aqui só se acrescenta
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, sistema: linux, nome: Linux }
+          - { os: macos-14, sistema: mac, nome: "Mac (Apple Silicon)" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: build/downloads
+          key: downloads-${{ matrix.sistema }}-v1
+      - name: Montar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then sudo apt-get update -q && sudo apt-get install -y -q jq libfuse2 >/dev/null; fi
+          bash packaging/build_unix.sh ${{ matrix.sistema }}
+      - name: Testar o programa montado (abre, responde, ffprobe e modelos do pacote)
+        env:
+          CNT_SEM_ATUALIZACAO: "1"
+          LEGENDAS_HOME: ${{ runner.temp }}/cnt-home
+        run: |
+          "$PROG/python/bin/python3" - <<'EOS'
+          import os, sys
+          sys.path.insert(0, os.environ["PROG"]); os.environ["CNT_INSTALL_ROOT"] = os.environ["PROG"]
+          from core import media, vad, plataforma, ortografia
+          print("ffprobe:", media.ffprobe()); assert os.environ["PROG"] in str(media.ffprobe())
+          assert any(p.exists() for p in vad.model_paths()), "detector de voz"
+          print("sistema:", plataforma.nome(), "id:", bool(plataforma.id_maquina()))
+          assert ortografia.verificar("A legnda", "pt-BR"), "corretor"
+          EOS
+          "$PROG/cnt-legendas" --no-browser --port 8766 > "$RUNNER_TEMP/app.log" 2>&1 &
+          for i in $(seq 60); do curl -fs http://127.0.0.1:8766/ping && break; sleep 1; done
+          curl -fs http://127.0.0.1:8766/ping | grep -q legendas || { cat "$RUNNER_TEMP/app.log"; exit 1; }
+          echo "::notice title=${{ matrix.nome }}::programa montado abriu e respondeu"
+          kill %1 || true
+      - name: Publicar (pré-versão de desenvolvimento ou versão)
+        if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER=$(python3 -c "import core; print(core.__version__)").${{ github.run_number }}
+          TAG=$([ "$GITHUB_REF" = "refs/heads/dev" ] && echo desenvolvimento || echo "v$VER")
+          gh release upload "$TAG" build/Output/CNT_Legendas_* --clobber
+          for f in build/Output/CNT_Legendas_*; do echo "::notice title=Publicado::$(basename "$f") ($(du -h "$f" | cut -f1))"; done
+

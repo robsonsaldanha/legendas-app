@@ -38,16 +38,8 @@ def documentos() -> Path:
     o = os.environ.get("CNT_DOCUMENTOS")
     if o:
         return Path(o)
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            from ctypes import wintypes
-            buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
-            if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf) == 0 and buf.value:   # CSIDL_PERSONAL
-                return Path(buf.value)
-        except Exception:  # noqa: BLE001
-            pass
-    return Path.home() / "Documents"
+    from .plataforma import documentos as _docs
+    return _docs()
 
 
 def logs_dir() -> Path:

@@ -86,6 +86,7 @@
 - [x] 2.14.0: glossário em três níveis — geral (Configurações), cliente e projeto (menu ⋯ do projeto); o mais específico vale
 - [x] 2.15.0: memória de tradução, formato de entrega (srt padrão; vtt/ttml/ass por global/equipe/cliente/projeto), prazo de entrega (topo e editor), histórico de versões, corretor ortográfico, aviso de trabalho concluído na bandeja, "Relatar um problema" (servidor 1.3, painel Suporte)
 - [x] 2.16.0: status da conexão no topo (pings alinhados servidor/Google), ⚠ de atualização no lugar da janela, códigos de erro ER-RS/ER-RA, modo de depuração e diagnóstico (zip em Documentos); servidor 1.4 com modo manutenção
+- [x] 2.17.0: Mac e Linux — camada por sistema, pacotes `.dmg` (Apple Silicon) e `.tar.gz`/`.AppImage` montados e testados no CI; abre no navegador padrão
 - Próximos passos (família CNT, Mac/Linux, ao vivo, audiodescrição, dublagem, API e pendências antigas): ver [[Tarefas]] e [[Pendências]]
 - [x] 2.11.0: janela própria (WebView2), sem abas nem barra de endereço; o X pergunta antes de fechar
 - [x] 2.12.0: bandeja do sistema (menu Exibir/Reabrir último/Novo projeto/Atualizar/Reiniciar/Sair), aviso de versão nova com o programa aberto (salvar antes, reabrir onde estava); X encerra o processo de vez

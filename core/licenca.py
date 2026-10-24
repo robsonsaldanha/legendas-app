@@ -91,20 +91,8 @@ def verificar(env: dict, chave_b64: str | None = None) -> dict | None:
 # ------------------------------------------------------------ computador
 
 def _machine_guid() -> str:
-    if sys.platform == "win32":
-        try:
-            import winreg
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography", 0,
-                                winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
-                return str(winreg.QueryValueEx(k, "MachineGuid")[0])
-        except OSError:
-            return ""
-    for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
-        try:
-            return Path(p).read_text().strip()
-        except OSError:
-            continue
-    return ""
+    from .plataforma import id_maquina      # Windows: MachineGuid; Mac: IOPlatformUUID; Linux: machine-id
+    return id_maquina()
 
 
 def _bios() -> str:

@@ -40,7 +40,13 @@ document.addEventListener("click", async (e) => {
   const b = e.target.closest("[data-net]");
   if (!b) return;
   const k = b.dataset.net;
-  if (k === "upd") return checkUpdate(true);
+  if (k === "upd") {
+    if (NET.info?.atualizacao?.manual) {   // Mac/Linux: versão que pede instalador novo — baixa no site
+      window.open(`${(S.state?.licenca?.site || "https://legendas.cntoficial.com.br").replace(/\/$/, "")}/#baixar`, "_blank");
+      return;
+    }
+    return checkUpdate(true);
+  }
   if (k === "dep") { location.hash = "#/configuracoes"; return; }
   if (k === "rec") { NET.recuperadoVisto = true; api("POST", "/api/depuracao/abrir").catch((err) => toast(err.message, true)); atualizarStatus(); }
 });
