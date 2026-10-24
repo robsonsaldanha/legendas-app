@@ -39,13 +39,13 @@ def pasta_dados(app: str = APP) -> Path:
     return base / app.lower().replace(" ", "-")
 
 
-def pasta_comum() -> Path | None:
+def pasta_comum(app: str = APP) -> Path | None:
     """Pasta de todos os usuários do computador (licença, versões baixadas, modelos), ou None."""
     s = nome()
     if s == "windows":
-        return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / APP
+        return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / app
     if s == "mac":
-        return Path("/Users/Shared") / APP
+        return Path("/Users/Shared") / app
     return None                                   # Linux: cada usuário na sua pasta (sem permissão em /var/lib)
 
 

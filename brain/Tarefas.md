@@ -55,7 +55,7 @@ _(nada no momento)_
 - [x] T-056 · P-07 · M&E (do cliente ou separado no computador), mixagem e entregas (mix, faixas por personagem, vídeo dublado, roteiro .docx, anéis por dublador) — Dubla 0.1
 - [ ] T-057 · P-07 · Vozes por IA: ~~voz do sistema~~, ~~serviço pago (chave do cliente)~~, ~~registro do termo de consentimento~~ (Dubla 0.1); falta instalar o motor de clonagem local e testar numa placa de vídeo
 - [x] T-058 · P-07 · Integração: botão "Dublagem" no editor do Legendas manda vídeo + legenda (+ original) para "Recebidos" da Dubla; a Dubla entrega a legenda com o texto dublado (.srt) — Dubla 0.2 / Legendas 2.22
-- [ ] T-059 · P-07 · Instalador próprio, licença própria (produto "dubla" no servidor e na conta CNT), site `dubla.`
+- [x] T-059 · P-07 · Instalador próprio, licença própria (produto "dubla" no servidor e na conta CNT), site `dubla.` — Dubla 0.3 / servidor 1.10 / hub 1.2 (preços dos planos: sob consulta até o Róbson definir)
 
 ### API CNT
 - [x] ~~T-060 · P-08 · Fila de processamento no servidor~~ — descartado em 24/10/2026: a API é só de integração

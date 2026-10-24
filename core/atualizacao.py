@@ -24,8 +24,6 @@ import threading
 import zipfile
 from pathlib import Path
 
-from . import __version__
-
 log = logging.getLogger(__name__)
 
 
@@ -46,8 +44,15 @@ def build_info() -> dict:
 
 def versao_atual() -> str:
     """'2.10.0' (produção) ou '2.10.0.57' (desenvolvimento: número da compilação no CI)."""
+    from .produto import versao
+    v = versao()
     b = build_info().get("build")
-    return f"{__version__}.{b}" if b else __version__
+    return f"{v}.{b}" if b else v
+
+
+def _agente() -> str:
+    from .produto import nome
+    return nome().replace(" ", "-")
 
 
 def cmp_versao(a: str, b: str) -> int:
@@ -94,7 +99,7 @@ class Atualizador:
         import httpx
 
         def get(url, **kw):
-            return httpx.get(url, timeout=kw.pop("timeout", 15), follow_redirects=True, headers={"User-Agent": "CNT-Legendas"}, **kw)
+            return httpx.get(url, timeout=kw.pop("timeout", 15), follow_redirects=True, headers={"User-Agent": _agente()}, **kw)
         return get
 
     def verificar(self) -> dict:
@@ -133,7 +138,7 @@ class Atualizador:
         h = hashlib.sha256()
         total = int(m.get("tamanho") or 0)
         got = 0
-        with httpx.stream("GET", m["url"], timeout=60, follow_redirects=True, headers={"User-Agent": "CNT-Legendas"}) as r:
+        with httpx.stream("GET", m["url"], timeout=60, follow_redirects=True, headers={"User-Agent": _agente()}) as r:
             if r.status_code != 200:
                 from .erros import de_http
                 raise AtualizacaoError(f"O download da atualização falhou ({r.status_code}).", de_http(r.status_code))
@@ -162,7 +167,9 @@ class Atualizador:
                 if p.is_absolute() or ".." in p.parts:
                     raise AtualizacaoError("Pacote de atualização inválido.", "ER-RS-604")
             z.extractall(tmp)
-        if not (tmp / "app" / "__main__.py").exists() or not (tmp / "core" / "__init__.py").exists():
+        from .produto import atual as _produto
+        exigidos = ["app/__main__.py", "core/__init__.py"] + (["dubla/__main__.py"] if _produto() == "dubla" else [])
+        if not all((tmp / x).exists() for x in exigidos):
             shutil.rmtree(tmp, ignore_errors=True)
             raise AtualizacaoError("Pacote de atualização incompleto.", "ER-RS-604")
         shutil.rmtree(final, ignore_errors=True)
@@ -190,7 +197,7 @@ class Atualizador:
                 self.estado = "reiniciando"
                 reiniciar("patch")
             else:
-                destino = Path(tempfile.gettempdir()) / f"Instalador_CNT_Legendas_{self.info['versao']}.exe"
+                destino = Path(tempfile.gettempdir()) / f"Instalador_{_agente().replace('-', '_')}_{self.info['versao']}.exe"
                 self.baixar(destino)
                 self.estado = "instalando"
                 reiniciar("instalador", destino)
@@ -225,6 +232,10 @@ def reabrir(port: int, token: str, janela: bool = False, retomar: dict | None = 
     root = Path(__file__).resolve().parent.parent
     install_root = Path(os.environ.get("CNT_INSTALL_ROOT") or root)
     flags = 0x00000008 if sys.platform == "win32" else 0
-    args = [str(exe), "-m", "cntboot"] + ([] if janela else ["--no-browser"]) + ["--depois-de", str(os.getpid())]
+    from .produto import atual as _produto
+    if _produto() == "dubla":
+        args = [str(exe), "-m", "cntboot", "--produto", "dubla", "--depois-de", str(os.getpid())]   # a Dubla reabre a sua janela/aba
+    else:
+        args = [str(exe), "-m", "cntboot"] + ([] if janela else ["--no-browser"]) + ["--depois-de", str(os.getpid())]
     subprocess.Popen(args, cwd=str(install_root), env=env,
                      close_fds=True, creationflags=flags)

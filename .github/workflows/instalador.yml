@@ -117,6 +117,41 @@ jobs:
           if (Test-Path "$env:PUBLIC\Desktop\CNT Legendas.lnk") { throw "desinstalação deixou o atalho" }
           "::notice title=Desinstalação::programa e atalhos removidos"
 
+      - name: CNT Dubla — instalar, abrir e desinstalar
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          $exe = Get-ChildItem build\Output\Instalador_CNT_Dubla_*.exe | Select-Object -First 1
+          $p = Start-Process $exe.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-","/TASKS=desktopicon","/LOG=$env:RUNNER_TEMP\setup-dubla.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\setup-dubla.log" -Tail 40; throw "instalação da Dubla falhou ($($p.ExitCode))" }
+          $dir = "$env:ProgramFiles\CNT Dubla"
+          if (-not (Test-Path "$dir\dubla\__main__.py")) { throw "Dubla não instalada" }
+          if (-not (Test-Path "$env:PUBLIC\Desktop\CNT Dubla.lnk")) { throw "atalho da Dubla ausente" }
+          $env:PATH = ($env:PATH -split ";" | Where-Object { $_ -notmatch "Python|hostedtoolcache|ffmpeg" }) -join ";"
+          $py = "$dir\python\python.exe"
+          Push-Location $dir
+          $env:CNT_PRODUTO = "dubla"
+          $info = & $py -c "import cntboot, core.licenca as L, core.atualizacao as A; print(A.versao_atual(), L.canal(), cntboot.versao_instalada(), L.servidor())"
+          Remove-Item Env:\CNT_PRODUTO
+          Pop-Location
+          if ($LASTEXITCODE) { throw "partida/licença da Dubla não carregam" }
+          Push-Location $dir; $dv = (& $py -c "import dubla; print(dubla.VERSAO)").Trim(); Pop-Location
+          $esperado = "$dv.$env:CNT_BUILD"
+          if ($info -notmatch [regex]::Escape("$esperado $env:CNT_CANAL $esperado")) { throw "versão/canal da Dubla errados: $info (esperado $esperado)" }
+          "::notice title=Dubla::$info"
+          $env:CNT_SEM_ATUALIZACAO = "1"; $env:CNT_SEM_REDE = "1"
+          $srv = Start-Process $py -ArgumentList "-m","cntboot","--produto","dubla","--sem-navegador","--porta","8767" -WorkingDirectory $dir -PassThru -RedirectStandardError "$env:RUNNER_TEMP\dubla.err"
+          $ok = $false
+          for ($i = 0; $i -lt 60 -and -not $ok; $i++) { Start-Sleep 1; try { $ok = ((Invoke-WebRequest "http://127.0.0.1:8767/ping" -UseBasicParsing).Content -match "dubla") } catch { } }
+          Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { Get-Content "$env:RUNNER_TEMP\dubla.err" -Tail 30; throw "a Dubla instalada não abriu" }
+          "::notice title=Dubla::programa instalado abriu e respondeu"
+          Start-Sleep 2
+          Start-Process "$dir\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
+          for ($i = 0; $i -lt 90 -and (Test-Path "$dir\python"); $i++) { Start-Sleep -Seconds 2 }
+          if (Test-Path "$dir\python") { throw "desinstalação da Dubla deixou arquivos" }
+
       - name: Versão
         id: versao
         shell: pwsh
@@ -124,6 +159,8 @@ jobs:
           $v = (python -c "import core; print(core.__version__)").Trim()
           "v=$v" >> $env:GITHUB_OUTPUT
           "full=$v.$env:CNT_BUILD" >> $env:GITHUB_OUTPUT
+          $dv = (python -c "import dubla; print(dubla.VERSAO)").Trim()
+          "dubla=$dv.$env:CNT_BUILD" >> $env:GITHUB_OUTPUT
           $msg = git log -1 --format=%B
           "requer=$(if ($msg -match '\[instalador\]') { '1' } else { '0' })" >> $env:GITHUB_OUTPUT
           $notas = (($msg -split "`n") | Where-Object { $_ -notmatch '^(Co-Authored-By|Claude-Session):' }) -join "`n"
@@ -140,8 +177,8 @@ jobs:
           name: CNT Legendas ${{ steps.versao.outputs.full }}
           make_latest: true
           body: |
-            Baixe o **Instalador_CNT_Legendas** abaixo e dê dois cliques. Ele instala tudo
-            (não precisa de Python nem de mais nada) para todos os perfis do Windows.
+            Baixe o **Instalador_CNT_Legendas** (ou o **Instalador_CNT_Dubla**, versão ${{ steps.versao.outputs.dubla }})
+            abaixo e dê dois cliques. Ele instala tudo (não precisa de Python nem de mais nada) para todos os perfis do Windows.
             Depois de instalado, o programa se atualiza sozinho.
 
       - name: Publicar pré-versão de desenvolvimento
@@ -153,7 +190,8 @@ jobs:
           # uma só pré-versão "desenvolvimento", trocada a cada montagem (o instalador tem ~1 GB)
           gh release delete desenvolvimento --cleanup-tag --yes 2>$null
           $exe = (Get-ChildItem build\Output\Instalador_CNT_Legendas_*.exe | Select-Object -First 1).FullName
-          gh release create desenvolvimento $exe --prerelease --latest=false --target $env:GITHUB_SHA `
+          $dexe = (Get-ChildItem build\Output\Instalador_CNT_Dubla_*.exe | Select-Object -First 1).FullName
+          gh release create desenvolvimento $exe $dexe --prerelease --latest=false --target $env:GITHUB_SHA `
             --title "CNT Legendas ${{ steps.versao.outputs.full }} (desenvolvimento)" `
             --notes "Versão de testes. Não instale no computador de trabalho; ela se atualiza sozinha pelo canal de desenvolvimento."
           if ($LASTEXITCODE) { throw "falha ao publicar a pré-versão" }
@@ -184,6 +222,31 @@ jobs:
           $r = Invoke-RestMethod -Method Put -Uri "$env:CNT_URL/v1/admin/versoes/$full/patch" -Headers $h `
             -ContentType "application/octet-stream" -InFile $zip
           "::notice title=Servidor::pacote $full publicado ({0:N1} MB, sha256 $($r.sha256.Substring(0,12))…)" -f ($r.tamanho / 1MB)
+
+      - name: Enviar ao servidor da CNT Dubla
+        if: github.ref == 'refs/heads/dev' || (github.ref == 'refs/heads/main' && vars.CNT_PROD_ATIVO == '1')
+        shell: pwsh
+        env:
+          CNT_TOKEN: ${{ github.ref == 'refs/heads/dev' && secrets.CNT_DUBLA_TOKEN_DEV || secrets.CNT_DUBLA_TOKEN_PROD }}
+          CNT_URL: ${{ github.ref == 'refs/heads/dev' && 'https://dev-dubla.cntoficial.com.br' || 'https://dubla.cntoficial.com.br' }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (-not $env:CNT_TOKEN) { throw "falta o segredo do servidor da Dubla (CNT_DUBLA_TOKEN_DEV / CNT_DUBLA_TOKEN_PROD)" }
+          $full = "${{ steps.versao.outputs.full }}"; $dfull = "${{ steps.versao.outputs.dubla }}"
+          $tag = if ($env:GITHUB_REF -eq "refs/heads/dev") { "desenvolvimento" } else { "v$full" }
+          $h = @{ Authorization = "Bearer $env:CNT_TOKEN"; "X-Notas" = "${{ steps.versao.outputs.notas }}"; "X-Requer-Instalador" = "${{ steps.versao.outputs.requer }}" }
+          $exe = Get-ChildItem build\Output\Instalador_CNT_Dubla_*.exe | Select-Object -First 1
+          $names = gh release view $tag --json assets --jq ".assets[].name"
+          if ($names -notcontains $exe.Name) { throw "instalador da Dubla não encontrado na versão $tag" }
+          $url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/releases/download/$tag/$($exe.Name)"
+          $meta = @{ url = $url; sha256 = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower(); tamanho = $exe.Length } | ConvertTo-Json -Compress
+          $r = Invoke-RestMethod -Method Put -Uri "$env:CNT_URL/v1/admin/versoes/$dfull/instalador" -Headers $h `
+            -ContentType "application/octet-stream" -Body ([Text.Encoding]::UTF8.GetBytes($meta))
+          "::notice title=Servidor da Dubla::instalador $dfull registrado"
+          $zip = "build\Output\Atualizacao_CNT_Dubla_$dfull.zip"
+          $r = Invoke-RestMethod -Method Put -Uri "$env:CNT_URL/v1/admin/versoes/$dfull/patch" -Headers $h `
+            -ContentType "application/octet-stream" -InFile $zip
+          "::notice title=Servidor da Dubla::pacote $dfull publicado ({0:N1} MB)" -f ($r.tamanho / 1MB)
 
   unix:
     name: Montar para ${{ matrix.nome }}
@@ -227,6 +290,11 @@ jobs:
           curl -fs http://127.0.0.1:8766/ping | grep -q legendas || { cat "$RUNNER_TEMP/app.log"; exit 1; }
           echo "::notice title=${{ matrix.nome }}::programa montado abriu e respondeu"
           kill %1 || true
+          CNT_SEM_REDE=1 CNT_DUBLA_HOME="$RUNNER_TEMP/dubla-home" "$DPROG/cnt-dubla" --sem-navegador --porta 8767 > "$RUNNER_TEMP/dubla.log" 2>&1 &
+          for i in $(seq 60); do curl -fs http://127.0.0.1:8767/ping && break; sleep 1; done
+          curl -fs http://127.0.0.1:8767/ping | grep -q dubla || { cat "$RUNNER_TEMP/dubla.log"; exit 1; }
+          echo "::notice title=${{ matrix.nome }}::CNT Dubla montada abriu e respondeu"
+          kill %2 || true
       - name: Publicar (pré-versão de desenvolvimento ou versão)
         if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
         env:
@@ -234,8 +302,8 @@ jobs:
         run: |
           VER=$(python3 -c "import core; print(core.__version__)").${{ github.run_number }}
           TAG=$([ "$GITHUB_REF" = "refs/heads/dev" ] && echo desenvolvimento || echo "v$VER")
-          gh release upload "$TAG" build/Output/CNT_Legendas_* --clobber
-          for f in build/Output/CNT_Legendas_*; do echo "::notice title=Publicado::$(basename "$f") ($(du -h "$f" | cut -f1))"; done
+          gh release upload "$TAG" build/Output/CNT_Legendas_* build/Output/CNT_Dubla_* --clobber
+          for f in build/Output/CNT_Legendas_* build/Output/CNT_Dubla_*; do echo "::notice title=Publicado::$(basename "$f") ($(du -h "$f" | cut -f1))"; done
       - name: Registrar no servidor de licenças (download do site e atualização por instalador)
         if: github.ref == 'refs/heads/dev' || (github.ref == 'refs/heads/main' && vars.CNT_PROD_ATIVO == '1')
         env:
@@ -257,4 +325,24 @@ jobs:
             -H "Content-Type: application/octet-stream" -H "X-Sistema: ${{ matrix.sistema }}" -H "X-Requer-Instalador: $REQ" \
             --data-binary "{\"url\":\"$URL\",\"sha256\":\"$SHA\",\"tamanho\":$TAM}" > /dev/null
           echo "::notice title=Servidor::instalador ${{ matrix.sistema }} $VER registrado ($N)"
-
+      - name: Registrar no servidor da CNT Dubla
+        if: github.ref == 'refs/heads/dev' || (github.ref == 'refs/heads/main' && vars.CNT_PROD_ATIVO == '1')
+        env:
+          CNT_TOKEN: ${{ github.ref == 'refs/heads/dev' && secrets.CNT_DUBLA_TOKEN_DEV || secrets.CNT_DUBLA_TOKEN_PROD }}
+          CNT_URL: ${{ github.ref == 'refs/heads/dev' && 'https://dev-dubla.cntoficial.com.br' || 'https://dubla.cntoficial.com.br' }}
+        run: |
+          [ -n "$CNT_TOKEN" ] || { echo "falta o segredo do servidor da Dubla (CNT_DUBLA_TOKEN_DEV / CNT_DUBLA_TOKEN_PROD)"; exit 1; }
+          VER=$(python3 -c "import core; print(core.__version__)").$CNT_BUILD
+          DVER=$(python3 -c "import dubla; print(dubla.VERSAO)").$CNT_BUILD
+          TAG=$([ "$GITHUB_REF" = "refs/heads/dev" ] && echo desenvolvimento || echo "v$VER")
+          F=$(ls build/Output/CNT_Dubla_*.AppImage build/Output/CNT_Dubla_*.dmg 2>/dev/null | head -1)
+          [ -n "$F" ] || { echo "pacote da Dubla não encontrado"; exit 1; }
+          N=$(basename "$F")
+          SHA=$( (sha256sum "$F" 2>/dev/null || shasum -a 256 "$F") | cut -d' ' -f1)
+          TAM=$(wc -c < "$F" | tr -d ' ')
+          REQ=$(git log -1 --format=%B | grep -q '\[instalador\]' && echo 1 || echo 0)
+          URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/$N"
+          curl -fsS -X PUT "$CNT_URL/v1/admin/versoes/$DVER/instalador" -H "Authorization: Bearer $CNT_TOKEN" \
+            -H "Content-Type: application/octet-stream" -H "X-Sistema: ${{ matrix.sistema }}" -H "X-Requer-Instalador: $REQ" \
+            --data-binary "{\"url\":\"$URL\",\"sha256\":\"$SHA\",\"tamanho\":$TAM}" > /dev/null
+          echo "::notice title=Servidor da Dubla::instalador ${{ matrix.sistema }} $DVER registrado ($N)"

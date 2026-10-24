@@ -31,6 +31,21 @@ class Erro(LegendasError):
         self.status = status
 
 
+class Bloqueado(Erro):
+    """Função paga sem licença ativa (a tela abre a janela da licença)."""
+
+    def __init__(self, recurso: str):
+        from core import licenca
+        super().__init__(licenca.mensagem_bloqueio(recurso), 402)
+        self.recurso = recurso
+
+
+def need(recurso: str) -> None:
+    from core import licenca
+    if not licenca.atual().tem(recurso):
+        raise Bloqueado(recurso)
+
+
 def _ffmpeg() -> str:
     from core.media import ffmpeg
     return ffmpeg()
@@ -454,6 +469,8 @@ class Dubla:
             raise Erro("Anel não encontrado.", 404)
         per = next((x for x in p["personagens"] if x["id"] == a["personagem_id"]), {})
         voz = (b.get("voz") or per.get("voz_ia") or {"tipo": "sistema"})
+        if voz.get("tipo") == "clonada":
+            need("clonagem")
         textos = [f for f in p["falas"] if f["id"] in a["falas"]]
         if not any((f["texto"] or "").strip() for f in textos):
             raise Erro("As falas deste anel ainda não têm texto adaptado.")

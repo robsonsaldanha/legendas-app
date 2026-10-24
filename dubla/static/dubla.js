@@ -22,7 +22,11 @@ function lerTc(v) {
 async function api(method, url, body) {
   const r = await fetch(url, { method, headers: { "Content-Type": "application/json", "X-Token": TOKEN }, body: body === undefined ? undefined : JSON.stringify(body) });
   let j = {}; try { j = await r.json(); } catch { /* vazio */ }
-  if (!r.ok) { const e = new Error(j.error || "Não deu certo."); e.status = r.status; throw e; }
+  if (!r.ok) {
+    const e = new Error(j.error || "Não deu certo."); e.status = r.status;
+    if (j.licenca) { e.licenca = true; setTimeout(() => janelaLicenca(j.error), 0); }
+    throw e;
+  }
   return j;
 }
 function toast(msg, erro = false) {
@@ -607,15 +611,81 @@ async function abaMixagem(p) {
 }
 
 /* ------------------------------------------------------------ configurações */
+const MODO_LIC = { avaliacao: "Dia de avaliação", licenciada: "Licença ativa", gratis: "Modo grátis" };
+function textoLicenca(l) {
+  if (!l) return "";
+  const ate = l.valido_ate ? ` até ${new Date(l.valido_ate).toLocaleString("pt-BR")}` : "";
+  return `${MODO_LIC[l.modo] || l.modo}${l.plano && l.modo === "licenciada" ? ` — plano ${esc(l.plano)}` : ""}${ate}`;
+}
+async function janelaLicenca(aviso = "") {
+  if (document.querySelector(".db-modal-bg")) return;     // já tem uma janela aberta
+  let l = {}; try { l = await api("GET", "/api/licenca"); } catch { /* */ }
+  const site = (l.site || "").replace("https://", "");
+  const r = await modal("Licença da CNT Dubla", `
+    ${aviso ? `<p class="note err">${esc(aviso)}</p>` : ""}
+    <p><b>${textoLicenca(l)}</b></p>
+    <p class="small muted">Sem licença continuam livres: criar e organizar projetos e editar o roteiro. Gravar takes, vozes por IA,
+      separar música e efeitos, mixar e exportar fazem parte da licença paga.</p>
+    <label class="field"><span>Código de ativação</span><input type="text" id="lic-cod" placeholder="Cole aqui o código que chegou por e-mail"></label>
+    ${site ? `<p class="small muted">Para comprar ou ver os seus códigos: <b>${esc(site)}</b> (área do cliente).</p>` : ""}`,
+  [["", "Fechar"], ["conferir", "Conferir de novo"], ["ativar", "Ativar", "primary"]]);
+  try {
+    if (r === "ativar") { await api("POST", "/api/licenca/ativar", { codigo: $("#lic-cod")?.value || "" }); toast("Licença ativada."); }
+    if (r === "conferir") { await api("POST", "/api/licenca/conferir"); toast("Licença conferida."); }
+    if (r) { S.estado = await api("GET", "/api/estado"); desenharLicenca(); }
+  } catch (e) { toast(e.message, true); }
+}
+function desenharLicenca() {
+  const b = document.getElementById("lic-badge");
+  const l = S.estado && S.estado.licenca;
+  if (!b || !l) return;
+  b.hidden = false;
+  b.textContent = MODO_LIC[l.modo] || "Licença";
+  b.classList.toggle("warn", l.modo === "gratis");
+}
+async function verAtualizacao() {
+  let u; try { u = await api("POST", "/api/atualizacao/verificar"); } catch { return; }
+  const b = document.getElementById("upd-banner");
+  if (!b) return;
+  if (u.estado === "disponivel" || u.estado === "manual") {
+    b.hidden = false;
+    b.innerHTML = u.estado === "manual"
+      ? `Versão ${esc(u.versao)} disponível: baixe o instalador novo no site.`
+      : `Versão ${esc(u.versao)} disponível. <button class="btn primary sm" id="upd-ok">Atualizar agora</button>`;
+    const ok = $("#upd-ok");
+    if (ok) ok.onclick = async () => {
+      ok.disabled = true; b.textContent = "Baixando a atualização… o programa reabre sozinho.";
+      try { await api("POST", "/api/atualizacao/aplicar"); } catch (e) { toast(e.message, true); }
+    };
+  }
+}
+
 async function telaConfig() {
   document.getElementById("crumb").textContent = "Configurações";
-  const e = S.estado || await api("GET", "/api/estado");
+  const e = await api("GET", "/api/estado");
+  S.estado = e;
   main.innerHTML = `<div class="page-head"><div><span class="eyebrow">CNT Dubla ${esc(e.versao)}</span><h1 style="margin-top:6px">Configurações</h1></div></div>
+    <section class="panel stack" style="margin-bottom:16px"><h2 style="margin:0">Licença</h2>
+      <p>${textoLicenca(e.licenca)}</p>
+      <div class="row"><button class="btn primary" id="cf-lic">Ativar ou conferir a licença</button>
+        <button class="btn" id="cf-upd">Procurar atualização</button></div></section>
+    <section class="panel stack" style="margin-bottom:16px"><h2 style="margin:0">Chave do serviço de IA</h2>
+      <p class="small muted">Usada nas sugestões de adaptação e nas vozes do serviço. Fica guardada neste computador (a mesma do CNT Legendas, se ele estiver instalado).
+        O texto vai direto daqui ao serviço, com a sua chave.</p>
+      <p>Situação: <b>${e.chave_ia ? "configurada" : "não configurada"}</b></p>
+      <div class="row"><input type="password" id="cf-chave" placeholder="sk-…" style="flex:1" autocomplete="off">
+        <button class="btn primary" id="cf-salvar">Salvar</button>${e.chave_ia ? `<button class="btn" id="cf-apagar">Apagar</button>` : ""}</div></section>
     <section class="panel stack"><h2 style="margin:0">Neste computador</h2>
       <p>Transcrição do original: ${e.transcricao ? "instalada" : "não instalada"}</p>
-      <p>Separador de voz (M&E): ${e.separador ? "instalado" : "não instalado"}</p>
-      <p>Chave de IA (sugestões de adaptação e vozes do serviço): ${e.chave_ia ? "configurada" : "não configurada — use a mesma do CNT Legendas (Configurações → Inteligência artificial)"}</p>
+      <p>Separador de voz (música e efeitos): ${e.separador ? "instalado" : "não instalado"}</p>
       <p>Clonagem de voz local: ${e.clonagem ? "instalada" : "não instalada (motor grande; precisa de placa de vídeo para ficar rápido)"}</p></section>`;
+  $("#cf-lic").onclick = () => janelaLicenca();
+  $("#cf-upd").onclick = async () => { await verAtualizacao(); if (document.getElementById("upd-banner").hidden) toast("Você já está na versão mais nova."); };
+  $("#cf-salvar").onclick = async () => {
+    try { await api("POST", "/api/chave", { chave: $("#cf-chave").value }); toast("Chave salva."); telaConfig(); } catch (er) { toast(er.message, true); }
+  };
+  const ap = $("#cf-apagar");
+  if (ap) ap.onclick = async () => { await api("DELETE", "/api/chave"); toast("Chave apagada."); telaConfig(); };
 }
 
 /* ------------------------------------------------------------ início */
@@ -624,5 +694,10 @@ async function telaConfig() {
   try { sel.value = localStorage.getItem("cnt.tema") || "dark"; } catch { /* */ }
   sel.onchange = () => { try { localStorage.setItem("cnt.tema", sel.value); } catch { /* */ } location.reload(); };
   try { S.estado = await api("GET", "/api/estado"); } catch { S.estado = null; }
+  desenharLicenca();
+  const lb = document.getElementById("lic-badge");
+  if (lb) lb.onclick = () => janelaLicenca();
   rotear();
+  setTimeout(verAtualizacao, 4000);                       // a conferência da licença e a consulta rodam ao abrir
+  setInterval(verAtualizacao, 30 * 60 * 1000);
 })();

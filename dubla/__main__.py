@@ -1,6 +1,6 @@
 """Abre a CNT Dubla: servidor local + janela do programa (Windows) ou o navegador padrão.
 
-    python -m dubla
+    python -m dubla            (o atalho instalado chama `python -m cntboot --produto dubla`)
 """
 
 from __future__ import annotations
@@ -16,16 +16,13 @@ from . import APP, VERSAO
 
 
 def pasta_dados() -> Path:
-    if os.environ.get("CNT_DUBLA_HOME"):
-        p = Path(os.environ["CNT_DUBLA_HOME"])
-    else:
-        from core.plataforma import pasta_dados as pd
-        p = pd(APP)
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+    """%APPDATA%\\CNT Dubla (Windows), Application Support (Mac), ~/.local/share/cnt-dubla (Linux); CNT_DUBLA_HOME muda."""
+    from core.config import data_dir
+    return data_dir()
 
 
 def main(argv: list[str] | None = None) -> int:
+    os.environ["CNT_PRODUTO"] = "dubla"         # licença, atualização e pastas da Dubla (core/produto.py)
     ap = argparse.ArgumentParser(prog="cnt-dubla")
     ap.add_argument("--porta", type=int, default=0)
     ap.add_argument("--sem-navegador", action="store_true")
@@ -36,6 +33,11 @@ def main(argv: list[str] | None = None) -> int:
     from .server import App, criar_servidor
     app = App(pasta)
     srv = criar_servidor(app, a.porta)
+    if not os.environ.get("CNT_SEM_REDE"):
+        from core import licenca
+        licenca.conferir_em_segundo_plano()          # renova a concessão (ou começa o dia de avaliação)
+        import threading as _t
+        _t.Thread(target=app.check_update, daemon=True, name="atualizacao").start()
     url = f"http://127.0.0.1:{app.port}/open?k={app.token}"
     (pasta / "sessao.txt").write_text(f"{app.port}\n", encoding="utf-8")
     print(f"{APP} {VERSAO} em http://127.0.0.1:{app.port}", flush=True)

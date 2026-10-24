@@ -23,7 +23,8 @@ class _LicencaDeTeste:
         from core import licenca as L
         self.estado = L.Estado(modo="licenciada", plano="teste", licenca="L-TESTE",
                                recursos=["ia_traducao", "ia_revisao", "transcricao", "sincronia_fala", "regras",
-                                         "clientes", "relatorios", "lote", "armazenamento_empresa", "ao_vivo", "audiodescricao"])
+                                         "clientes", "relatorios", "lote", "armazenamento_empresa", "ao_vivo", "audiodescricao",
+                                         "dublagem", "vozes_ia", "clonagem"])
         self.device = {"id": "0" * 64}
 
     def tem(self, recurso):

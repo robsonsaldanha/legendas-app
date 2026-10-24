@@ -20,7 +20,7 @@ from core.errors import LegendasError
 
 from . import VERSAO
 from .db import Banco
-from .servico import Dubla, Erro
+from .servico import Bloqueado, Dubla, Erro, need
 
 log = logging.getLogger("dubla")
 STATIC = Path(__file__).resolve().parent / "static"
@@ -44,6 +44,39 @@ class App:
         self.cookie = "cntdubla_" + secrets.token_hex(4)
         self.port = 0
         self.server: ThreadingHTTPServer | None = None
+        from core.atualizacao import Atualizador
+        self.updater = Atualizador()
+
+    # ------------------------------------------------------------ licença e atualização (as mesmas do Legendas)
+    def license_state(self) -> dict:
+        from core import licenca
+        d = licenca.atual().estado.to_dict()
+        d["canal"] = licenca.canal()
+        d["site"] = licenca.servidor()
+        return d
+
+    def _reiniciar(self, pacote: str, exe=None) -> None:
+        import os
+        from core import atualizacao
+        if pacote == "instalador":
+            atualizacao.rodar_instalador(exe)
+        else:
+            atualizacao.reabrir(self.port, self.token)
+        threading.Timer(1.5, lambda: os._exit(0)).start()
+
+    def check_update(self) -> dict:
+        if self.updater.estado in ("baixando", "aplicando", "reiniciando", "instalando"):
+            return self.updater.to_dict()
+        return self.updater.verificar()
+
+    def apply_update(self) -> dict:
+        if self.updater.estado != "disponivel":
+            info = self.updater.verificar()
+            if info["estado"] != "disponivel":
+                return info
+        self.updater.estado = "baixando"
+        threading.Thread(target=self.updater.executar, args=(self._reiniciar,), daemon=True, name="atualizacao").start()
+        return self.updater.to_dict()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -130,6 +163,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._media(caminho)
                 return
             self._estatico(caminho)
+        except Bloqueado as e:
+            self._json({"error": str(e), "licenca": True, "recurso": e.recurso}, 402)
         except Erro as e:
             self._json({"error": str(e)}, e.status)
         except LegendasError as e:
@@ -250,7 +285,61 @@ class Handler(BaseHTTPRequestHandler):
             tem_chave = False
         from . import clonagem
         return {"versao": VERSAO, "separador": separate.available(), "transcricao": whisper_local.available(), "chave_ia": tem_chave,
-                "clonagem": clonagem.disponivel()}
+                "clonagem": clonagem.disponivel(), "licenca": self.app.license_state(), "atualizacao": self.app.updater.to_dict()}
+
+    @rota("GET", r"/api/licenca")
+    def api_licenca(self):
+        return self.app.license_state()
+
+    @rota("POST", r"/api/licenca/ativar")
+    def api_licenca_ativar(self):
+        from core import licenca
+        codigo = str(self._body().get("codigo") or "").strip()
+        if not codigo:
+            raise Erro("Cole o código de ativação.")
+        try:
+            licenca.atual().ativar(codigo)
+        except licenca.LicencaError as e:
+            raise Erro(str(e)) from e
+        except Exception as e:  # noqa: BLE001  (sem internet)
+            raise Erro("Não consegui falar com o servidor de licenças. Confira a internet e tente de novo.") from e
+        return self.app.license_state()
+
+    @rota("POST", r"/api/licenca/conferir")
+    def api_licenca_conferir(self):
+        from core import licenca
+        try:
+            licenca.atual().conferir()
+        except licenca.LicencaError as e:
+            raise Erro(str(e)) from e
+        return self.app.license_state()
+
+    @rota("POST", r"/api/chave")
+    def api_chave(self):
+        from core.openai_client import set_api_key
+        k = str(self._body().get("chave") or "").strip()
+        if not k.startswith("sk-") or len(k) < 20:
+            raise Erro("Isso não parece uma chave do serviço de IA (ela começa com sk-).")
+        set_api_key(k)
+        return {"ok": True}
+
+    @rota("DELETE", r"/api/chave")
+    def api_chave_apagar(self):
+        from core.openai_client import delete_api_key
+        delete_api_key()
+        return {"ok": True}
+
+    @rota("GET", r"/api/atualizacao")
+    def api_atualizacao(self):
+        return self.app.updater.to_dict()
+
+    @rota("POST", r"/api/atualizacao/verificar")
+    def api_atualizacao_verificar(self):
+        return self.app.check_update()
+
+    @rota("POST", r"/api/atualizacao/aplicar")
+    def api_atualizacao_aplicar(self):
+        return self.app.apply_update()
 
     @rota("POST", r"/api/dialogo")
     def api_dialogo(self):
@@ -308,10 +397,12 @@ class Handler(BaseHTTPRequestHandler):
 
     @rota("POST", r"/api/projetos/(\d+)/transcrever")
     def api_transcrever(self, pid):
+        need("dublagem")
         return self.d.transcrever(int(pid), self._body())
 
     @rota("POST", r"/api/projetos/(\d+)/sugerir-personagens")
     def api_sugerir(self, pid):
+        need("dublagem")
         return self.d.sugerir_personagens(int(pid), self._body())
 
     # ------------------------------------------------------------ falas
@@ -330,6 +421,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @rota("POST", r"/api/projetos/(\d+)/falas/(\d+)/adaptar")
     def api_adaptar(self, pid, fid):
+        need("vozes_ia")
         return self.d.adaptar_ia(int(pid), int(fid), self._body())
 
     # ------------------------------------------------------------ personagens e dubladores
@@ -382,11 +474,13 @@ class Handler(BaseHTTPRequestHandler):
 
     @rota("POST", r"/api/projetos/(\d+)/aneis/(\d+)/takes")
     def api_take_novo(self, pid, aid):
+        need("dublagem")
         return self.d.gravar_take(int(pid), int(aid), self._body())
 
     @rota("POST", r"/api/projetos/(\d+)/aneis/(\d+)/voz-ia")
     def api_voz_ia(self, pid, aid):
         from .vozes import VozErro
+        need("vozes_ia")
         try:
             return self.d.voz_ia(int(pid), int(aid), self._body())
         except VozErro as e:
@@ -404,10 +498,12 @@ class Handler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------ M&E, exportar, relatório, tarefas
     @rota("POST", r"/api/projetos/(\d+)/me")
     def api_me(self, pid):
+        need("dublagem")
         return self.d.me(int(pid), self._body())
 
     @rota("POST", r"/api/projetos/(\d+)/exportar")
     def api_exportar(self, pid):
+        need("dublagem")
         return self.d.exportar(int(pid), self._body())
 
     @rota("GET", r"/api/projetos/(\d+)/relatorio")

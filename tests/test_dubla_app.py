@@ -159,3 +159,55 @@ def test_legendas_envia_para_a_dubla(dubla, monkeypatch):
     assert [(f["texto"], f["original"]) for f in p["falas"]] == [("Bom dia.", "Good morning."), ("Tudo bem?", "How are you?")]
     assert p["video"] == str(video) and p["idioma_origem"] == "en"
     assert chamar(app, "GET", "/api/recebidos")[1]["recebidos"] == []      # saiu da lista (foi para "importados")
+
+
+def test_dubla_tem_licenca_e_servidor_proprios(dubla, monkeypatch, tmp_path):
+    """Sem licença, a Dubla deixa organizar e editar, mas gravar/exportar pedem licença (402 com aviso)."""
+    app, tmp = dubla
+    from core import licenca as L
+    monkeypatch.setenv("CNT_PRODUTO", "dubla")
+    monkeypatch.delenv("CNT_SERVIDOR", raising=False)
+    monkeypatch.delenv("CNT_CANAL", raising=False)
+    assert L.servidor() in ("https://dev-dubla.cntoficial.com.br", "https://dubla.cntoficial.com.br")
+    monkeypatch.setenv("CNT_CANAL", "producao")
+    assert L.servidor() == "https://dubla.cntoficial.com.br" and L._pubkey_b64() == L.CANAIS_POR_PRODUTO["dubla"]["producao"]["chave"]
+    from core import atualizacao, produto
+    import dubla as D
+    assert atualizacao.versao_atual().startswith(D.VERSAO) and produto.nome() == "CNT Dubla"
+    from core.config import data_dir
+    monkeypatch.setenv("CNT_DUBLA_HOME", str(tmp_path / "casa-dubla"))
+    assert data_dir() == tmp_path / "casa-dubla"
+
+    class Gratis:
+        estado = L.Estado(modo="gratis", motivo="avaliacao_encerrada")
+        device = {"id": "0" * 64}
+
+        def tem(self, r):
+            return False
+    L.definir(Gratis())
+    st, p = chamar(app, "POST", "/api/projetos", {"nome": "Sem licença", "idioma_destino": "pt-BR"})
+    assert st == 200, p                                        # criar projeto continua livre
+    st, lic = chamar(app, "GET", "/api/licenca")
+    assert lic["modo"] == "gratis" and lic["site"] == "https://dubla.cntoficial.com.br"
+    st, r = chamar(app, "POST", f"/api/projetos/{p['id']}/exportar", {})
+    assert st == 402 and r["licenca"] is True and "licença paga" in r["error"]
+    st, r = chamar(app, "POST", f"/api/projetos/{p['id']}/aneis/1/voz-ia", {})
+    assert st == 402 and r["recurso"] == "vozes_ia"
+
+
+def test_partida_da_dubla(monkeypatch, tmp_path):
+    """`cntboot --produto dubla` usa a versão e a pasta de versões da Dubla e abre o programa da Dubla."""
+    import cntboot
+    import dubla as D
+    monkeypatch.setenv("CNT_PRODUTO", "dubla")
+    monkeypatch.setenv("CNT_DUBLA_HOME", str(tmp_path))
+    root = Path(cntboot.__file__).parent
+    assert cntboot.versao_instalada(root).startswith(D.VERSAO)
+    assert cntboot.versoes_dir() == tmp_path / "versoes"
+    chamado = {}
+    import dubla.__main__ as M
+    monkeypatch.setattr(M, "main", lambda argv: chamado.setdefault("argv", argv) and 0)
+    monkeypatch.setenv("CNT_SEM_ATUALIZACAO", "1")
+    monkeypatch.delenv("CNT_PRODUTO")
+    cntboot.main(["--produto", "dubla", "--sem-navegador"])
+    assert chamado["argv"] == ["--sem-navegador"]

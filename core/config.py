@@ -17,6 +17,20 @@ APP_NAME = "CNT Legendas"
 OLD_APP_NAME = "Legendas"   # nome até a versão 0.5
 
 
+def _app_name() -> str:
+    """"CNT Legendas" ou "CNT Dubla" (core/produto.py)."""
+    from .produto import nome
+    return nome()
+
+
+def _var(nome: str) -> str | None:
+    """LEGENDAS_HOME / LEGENDAS_SHARED no Legendas; CNT_DUBLA_HOME / CNT_DUBLA_SHARED na Dubla."""
+    from .produto import atual
+    if atual() == "dubla":
+        return os.environ.get({"HOME": "CNT_DUBLA_HOME", "SHARED": "CNT_DUBLA_SHARED"}[nome])
+    return os.environ.get(f"LEGENDAS_{nome}")
+
+
 def _migrate(old: Path, new: Path) -> None:
     """Traz a pasta da versão antiga (só dados do próprio programa)."""
     if new.exists() or not old.is_dir():
@@ -32,16 +46,17 @@ def _migrate(old: Path, new: Path) -> None:
 
 
 def data_dir() -> Path:
-    override = os.environ.get("LEGENDAS_HOME")
+    override = _var("HOME")
     if override:
         p = Path(override)
     elif sys.platform == "win32":
         root = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        p = root / APP_NAME
-        _migrate(root / OLD_APP_NAME, p)
+        p = root / _app_name()
+        if _app_name() == APP_NAME:
+            _migrate(root / OLD_APP_NAME, p)
     else:
         from .plataforma import pasta_dados   # Mac: Application Support; Linux: ~/.local/share (2.17)
-        p = pasta_dados()
+        p = pasta_dados(_app_name())
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -65,17 +80,18 @@ def _writable(p: Path) -> bool:
 
 def shared_dir() -> Path | None:
     """Pasta comum a todos os perfis do Windows (C:\\ProgramData\\CNT Legendas)."""
-    override = os.environ.get("LEGENDAS_SHARED")
+    override = _var("SHARED")
     if override:
         return Path(override)
-    if os.environ.get("LEGENDAS_HOME"):
+    if _var("HOME"):
         return None
     if sys.platform == "win32":
         root = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
-        _migrate(root / OLD_APP_NAME, root / APP_NAME)   # o instalador já tenta antes
-        return root / APP_NAME
+        if _app_name() == APP_NAME:
+            _migrate(root / OLD_APP_NAME, root / APP_NAME)   # o instalador já tenta antes
+        return root / _app_name()
     from .plataforma import pasta_comum        # Mac: /Users/Shared/CNT Legendas; Linux: nenhuma
-    return pasta_comum()
+    return pasta_comum(_app_name())
 
 
 def models_dir() -> Path:

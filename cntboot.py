@@ -1,4 +1,4 @@
-"""Partida do CNT Legendas (o atalho chama `python -m cntboot`).
+"""Partida do CNT Legendas (o atalho chama `python -m cntboot`) e da CNT Dubla (`python -m cntboot --produto dubla`).
 
 Escolhe qual código abrir: o que veio no instalador ou a atualização mais nova já baixada
 (`%ProgramData%\\CNT Legendas\\versoes\\<versão>`, com o marcador `pronto`). Se uma versão
@@ -30,8 +30,19 @@ def _cmp(a: str, b: str) -> int:
     return (pa > pb) - (pa < pb)
 
 
+def _dubla() -> bool:
+    return os.environ.get("CNT_PRODUTO") == "dubla"
+
+
+def _app() -> str:
+    return "CNT Dubla" if _dubla() else "CNT Legendas"
+
+
 def versao_instalada(root: Path = ROOT) -> str:
-    m = re.search(r'__version__\s*=\s*"([^"]+)"', (root / "core" / "__init__.py").read_text(encoding="utf-8"))
+    if _dubla():
+        m = re.search(r'VERSAO\s*=\s*"([^"]+)"', (root / "dubla" / "__init__.py").read_text(encoding="utf-8"))
+    else:
+        m = re.search(r'__version__\s*=\s*"([^"]+)"', (root / "core" / "__init__.py").read_text(encoding="utf-8"))
     v = m.group(1) if m else "0"
     try:
         import json
@@ -46,18 +57,19 @@ def versao_instalada(root: Path = ROOT) -> str:
 def versoes_dir() -> Path | None:
     if os.environ.get("CNT_VERSOES_DIR"):
         return Path(os.environ["CNT_VERSOES_DIR"])
-    if os.environ.get("LEGENDAS_HOME"):
-        return Path(os.environ["LEGENDAS_HOME"]) / "versoes"
+    home = os.environ.get("CNT_DUBLA_HOME" if _dubla() else "LEGENDAS_HOME")
+    if home:
+        return Path(home) / "versoes"
     cands = []
     if sys.platform == "win32":
-        cands.append(Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "CNT Legendas" / "versoes")
-        cands.append(Path(os.environ.get("APPDATA", Path.home())) / "CNT Legendas" / "versoes")
+        cands.append(Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / _app() / "versoes")
+        cands.append(Path(os.environ.get("APPDATA", Path.home())) / _app() / "versoes")
     else:
         try:   # mesma regra de core/plataforma.py (Mac: pasta comum e Application Support; Linux: ~/.local/share)
             from core.plataforma import pasta_comum, pasta_dados
-            if pasta_comum():
-                cands.append(pasta_comum() / "versoes")
-            cands.append(pasta_dados() / "versoes")
+            if pasta_comum(_app()):
+                cands.append(pasta_comum(_app()) / "versoes")
+            cands.append(pasta_dados(_app()) / "versoes")
         except Exception:  # noqa: BLE001
             cands.append(Path.home() / ".legendas" / "versoes")
     for c in cands:
@@ -109,6 +121,11 @@ def _esperar(pid: int, limite: float = 30.0) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if "--produto" in argv:
+        i = argv.index("--produto")
+        if i + 1 < len(argv) and argv[i + 1] == "dubla":
+            os.environ["CNT_PRODUTO"] = "dubla"
+        del argv[i:i + 2]
     if "--depois-de" in argv:
         i = argv.index("--depois-de")
         try:
@@ -126,6 +143,9 @@ def main(argv: list[str] | None = None) -> int:
         sys.path.insert(0, str(escolhida))
         os.environ["CNT_VERSAO_DIR"] = str(escolhida)
     os.environ.setdefault("CNT_INSTALL_ROOT", str(ROOT))
+    if _dubla():
+        from dubla.__main__ import main as dubla_main
+        return dubla_main(argv)
     from app.__main__ import main as app_main
     return app_main(argv)
 

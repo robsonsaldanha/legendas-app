@@ -80,6 +80,7 @@ Type: files; Name: "{commondesktop}\Legendas.lnk"
 ; arquivos .pyc gerados em uso; os dados de cada perfil (%APPDATA%\CNT Legendas) são mantidos
 Type: filesandordirs; Name: "{app}\core"
 Type: filesandordirs; Name: "{app}\app"
+Type: filesandordirs; Name: "{app}\dubla"
 Type: filesandordirs; Name: "{app}\python"
 Type: files; Name: "{app}\cntboot.py"
 Type: filesandordirs; Name: "{app}\__pycache__"

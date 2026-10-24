@@ -31,20 +31,41 @@ log = logging.getLogger(__name__)
 IA_TRADUCAO, IA_REVISAO, TRANSCRICAO, SINCRONIA_FALA = "ia_traducao", "ia_revisao", "transcricao", "sincronia_fala"
 REGRAS, CLIENTES, RELATORIOS, LOTE = "regras", "clientes", "relatorios", "lote"
 AO_VIVO, AUDIODESCRICAO = "ao_vivo", "audiodescricao"     # todos os planos; a avaliação de 1 dia não tem
+DUBLAGEM, VOZES_IA, CLONAGEM = "dublagem", "vozes_ia", "clonagem"   # CNT Dubla
 RECURSO_NOME = {
     IA_TRADUCAO: "tradução com IA", IA_REVISAO: "revisão com IA", TRANSCRICAO: "transcrição do vídeo",
     SINCRONIA_FALA: "sincronia pela fala", REGRAS: "perfis de regras", CLIENTES: "clientes",
     RELATORIOS: "relatórios", LOTE: "trabalhos em segundo plano",
     AO_VIVO: "legenda ao vivo", AUDIODESCRICAO: "audiodescrição",
+    DUBLAGEM: "gravação e mixagem da dublagem", VOZES_IA: "voz por IA", CLONAGEM: "voz clonada",
 }
 
-# Servidores e chaves públicas de cada canal (a privada correspondente só existe na VPS)
-CANAIS = {
-    "producao": {"url": "https://legendas.cntoficial.com.br",
-                 "chave": "HLMnHWiimTah5qkAVMTruEaLhklPKZjBL3lLhmCd2Hg="},
-    "desenvolvimento": {"url": "https://dev-legendas.cntoficial.com.br",
-                        "chave": "+H2oTLOzk6X8nAJbzL63CUQDqOuzL4bfWf869cw7yh8="},
+# Servidores e chaves públicas de cada canal, por programa (a privada correspondente só existe na VPS)
+CANAIS_POR_PRODUTO = {
+    "legendas": {
+        "producao": {"url": "https://legendas.cntoficial.com.br",
+                     "chave": "HLMnHWiimTah5qkAVMTruEaLhklPKZjBL3lLhmCd2Hg="},
+        "desenvolvimento": {"url": "https://dev-legendas.cntoficial.com.br",
+                            "chave": "+H2oTLOzk6X8nAJbzL63CUQDqOuzL4bfWf869cw7yh8="},
+    },
+    "dubla": {
+        "producao": {"url": "https://dubla.cntoficial.com.br",
+                     "chave": "z/vToZ0WDtKCUOcAUwYP3GrVqB81dFEoPLOf1gj7Y44="},
+        "desenvolvimento": {"url": "https://dev-dubla.cntoficial.com.br",
+                            "chave": "RDRZpuvSNCgCNPYQFl7aF1dzN00udrpjy8IdwPdNfDM="},
+    },
 }
+CANAIS = CANAIS_POR_PRODUTO["legendas"]
+
+
+def _canais() -> dict:
+    from .produto import atual
+    return CANAIS_POR_PRODUTO[atual()]
+
+
+def _agente() -> str:
+    from .produto import nome
+    return nome().replace(" ", "-")
 
 
 class LicencaError(RuntimeError):
@@ -70,11 +91,11 @@ def canal() -> str:
 
 
 def servidor() -> str:
-    return os.environ.get("CNT_SERVIDOR") or CANAIS[canal()]["url"]
+    return os.environ.get("CNT_SERVIDOR") or _canais()[canal()]["url"]
 
 
 def _pubkey_b64() -> str:
-    return os.environ.get("CNT_CHAVE_PUBLICA") or CANAIS[canal()]["chave"]
+    return os.environ.get("CNT_CHAVE_PUBLICA") or _canais()[canal()]["chave"]
 
 
 def verificar(env: dict, chave_b64: str | None = None) -> dict | None:
@@ -138,7 +159,7 @@ def _ip_interno() -> str:
 
 def device_info() -> dict:
     """Impressão do computador: só hashes e dados não sensíveis (ver a política de privacidade)."""
-    from . import __version__
+    from .produto import versao
     base = "|".join([_machine_guid(), _bios(), _volume_serial()]) or socket.gethostname()
     return {
         "id": hashlib.sha256(("cntl-device:" + base).encode("utf-8")).hexdigest(),
@@ -146,7 +167,7 @@ def device_info() -> dict:
         "sistema": f"{platform.system()} {platform.release()} {platform.version()}"[:120],
         "mac_hash": hashlib.sha256(f"cntl-mac:{uuid.getnode():012x}".encode()).hexdigest(),
         "ip_interno": _ip_interno(),
-        "versao": __version__,
+        "versao": versao(),
     }
 
 
@@ -272,7 +293,7 @@ class Licenca:
     # -------------------------------------------------- servidor
     def _post(self, path: str, body: dict) -> dict:
         import httpx
-        http = self._http or httpx.Client(timeout=15, headers={"User-Agent": "CNT-Legendas"})
+        http = self._http or httpx.Client(timeout=15, headers={"User-Agent": _agente()})
         from .erros import de_http, de_rede
         try:
             r = http.post(servidor() + path, json=body)

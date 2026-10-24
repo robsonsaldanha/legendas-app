@@ -62,3 +62,9 @@
 
 .db-grid2 > .panel { margin-top: 0; }
 .db-falas td:nth-last-child(2) { min-width: 240px; }
+
+/* licença e atualização */
+.db-lic { margin-right: 12px; }
+.db-lic.warn { border-color: var(--warn, #d9a441); color: var(--warn, #d9a441); }
+.db-upd { margin: 0 24px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel, transparent);
+  display: flex; gap: 12px; align-items: center; justify-content: space-between; }

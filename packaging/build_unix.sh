@@ -3,6 +3,7 @@
 #
 #   packaging/build_unix.sh linux     → build/Output/CNT_Legendas_<versão>_linux_x86_64.tar.gz e .AppImage
 #   packaging/build_unix.sh mac       → build/Output/CNT_Legendas_<versão>_mac_<arquitetura>.dmg
+# e, do mesmo programa montado, a CNT Dubla (CNT_Dubla_<versão da Dubla>_…), que abre com `cntboot --produto dubla`.
 #
 # Roda no GitHub Actions (ubuntu / macos). Precisa de internet, python3, curl e jq.
 # No Mac e no Linux o programa abre no navegador padrão (a janela própria e o ícone da bandeja são do Windows).
@@ -18,6 +19,8 @@ trap 'echo "::error title=Montagem $SISTEMA::falhou na etapa: ${ETAPA:-início}"
 VERSAO=$(python3 -c "import sys; sys.path.insert(0, '$RAIZ'); import core; print(core.__version__)")
 CANAL=${CNT_CANAL:-desenvolvimento}; NUM=${CNT_BUILD:-0}
 COMPLETA=$VERSAO; [ "$NUM" != "0" ] && COMPLETA="$VERSAO.$NUM"
+VERSAO_DUBLA=$(python3 -c "import sys; sys.path.insert(0, '$RAIZ'); import dubla; print(dubla.VERSAO)")
+COMPLETA_DUBLA=$VERSAO_DUBLA; [ "$NUM" != "0" ] && COMPLETA_DUBLA="$VERSAO_DUBLA.$NUM"
 ARQ=$(uname -m)                                   # x86_64 | arm64
 case "$SISTEMA-$ARQ" in
   linux-x86_64) TRIPLA=x86_64-unknown-linux-gnu ;;
@@ -62,10 +65,10 @@ rm -rf "$PROG"/python/lib/python3.12/site-packages/torch/{include,test} 2>/dev/n
 
 # ---------------------------------------------------------------- programa
 etapa "código"
-cp -R "$RAIZ/core" "$RAIZ/app" "$PROG/"; cp "$RAIZ/cntboot.py" "$PROG/"
-find "$PROG/core" "$PROG/app" -name "__pycache__" -type d -prune -exec rm -rf {} +
+cp -R "$RAIZ/core" "$RAIZ/app" "$RAIZ/dubla" "$PROG/"; cp "$RAIZ/cntboot.py" "$PROG/"
+find "$PROG/core" "$PROG/app" "$PROG/dubla" -name "__pycache__" -type d -prune -exec rm -rf {} +
 printf '{"canal": "%s", "build": %s}' "$CANAL" "$NUM" > "$PROG/core/canal.json"
-"$PY" -m compileall -q -f "$PROG/core" "$PROG/app" >/dev/null
+"$PY" -m compileall -q -f "$PROG/core" "$PROG/app" "$PROG/dubla" >/dev/null
 
 # ---------------------------------------------------------------- modelos (os mesmos do Windows)
 etapa "modelos"
@@ -92,16 +95,8 @@ fi
 chmod +x "$PROG/bin/ffmpeg" "$PROG/bin/ffprobe"
 "$PROG/bin/ffprobe" -version | head -1
 
-# ---------------------------------------------------------------- partida
+# ---------------------------------------------------------------- partida e pacotes
 etapa "partida"
-cat > "$PROG/cnt-legendas" <<'EOS'
-#!/bin/sh
-# Abre o CNT Legendas (no navegador padrão). O programa fica nesta pasta; os dados ficam na pasta do usuário.
-DIR=$(cd "$(dirname "$0")" && pwd -P)
-export CNT_INSTALL_ROOT="$DIR"
-cd "$DIR" && exec "$DIR/python/bin/python3" -m cntboot "$@"
-EOS
-chmod +x "$PROG/cnt-legendas"
 "$PY" -m pip install -q pillow >/dev/null 2>&1 || true
 "$PY" - "$RAIZ/app/static/icon.png" "$BUILD/icone-512.png" <<'EOS'
 import sys
@@ -109,72 +104,98 @@ from PIL import Image
 Image.open(sys.argv[1]).convert("RGBA").resize((512, 512), Image.LANCZOS).save(sys.argv[2])
 EOS
 
-# ---------------------------------------------------------------- empacotar
-etapa "pacote"
-if [ "$SISTEMA" = linux ]; then
-  cp "$BUILD/icone-512.png" "$APP/cnt-legendas.png"
-  cat > "$APP/cnt-legendas.desktop" <<EOS
+# empacotar <pasta do programa> <Nome> <slug> <arquivo> <versão> <completa> <descrição> <id do Mac> <args da partida>
+empacotar() {
+  local APP=$1 NOME=$2 SLUG=$3 ARQV=$4 V=$5 VC=$6 DESC=$7 BID=$8 ARGS=$9
+  local PROG=$APP; [ "$SISTEMA" = mac ] && PROG="$APP/Contents/Resources/programa"
+  cat > "$PROG/$SLUG" <<EOS
+#!/bin/sh
+# Abre o $NOME (no navegador padrão). O programa fica nesta pasta; os dados ficam na pasta do usuário.
+DIR=\$(cd "\$(dirname "\$0")" && pwd -P)
+export CNT_INSTALL_ROOT="\$DIR"
+cd "\$DIR" && exec "\$DIR/python/bin/python3" -m cntboot $ARGS "\$@"
+EOS
+  chmod +x "$PROG/$SLUG"
+  if [ "$SISTEMA" = linux ]; then
+    cp "$BUILD/icone-512.png" "$APP/$SLUG.png"
+    cat > "$APP/$SLUG.desktop" <<EOS
 [Desktop Entry]
 Type=Application
-Name=CNT Legendas
-Comment=Legendagem, tradução e sincronia
-Exec=cnt-legendas
-Icon=cnt-legendas
+Name=$NOME
+Comment=$DESC
+Exec=$SLUG
+Icon=$SLUG
 Categories=AudioVideo;Video;
 Terminal=false
 EOS
-  cat > "$APP/INSTALAR.txt" <<'EOS'
-CNT Legendas para Linux
+    cat > "$APP/INSTALAR.txt" <<EOS
+$NOME para Linux
 
-1. Extraia esta pasta onde quiser (por exemplo, ~/Aplicativos/CNT Legendas).
-2. Abra com ./cnt-legendas (ele abre no navegador padrão).
-3. Opcional: copie cnt-legendas.desktop para ~/.local/share/applications e troque Exec= pelo caminho completo.
+1. Extraia esta pasta onde quiser (por exemplo, ~/Aplicativos/$NOME).
+2. Abra com ./$SLUG (ele abre no navegador padrão).
+3. Opcional: copie $SLUG.desktop para ~/.local/share/applications e troque Exec= pelo caminho completo.
 EOS
-  tar -C "$BUILD/linux" -czf "$SAIDA/CNT_Legendas_${COMPLETA}_linux_x86_64.tar.gz" "CNT Legendas"
-  # AppImage (um arquivo só, dois cliques)
-  AI="$BUILD/linux/AppDir"; rm -rf "$AI"; mkdir -p "$AI/usr"
-  cp -R "$APP" "$AI/usr/cnt-legendas"
-  cp "$APP/cnt-legendas.desktop" "$AI/"; cp "$BUILD/icone-512.png" "$AI/cnt-legendas.png"
-  printf '#!/bin/sh\nHERE=$(dirname "$(readlink -f "$0")")\nexec "$HERE/usr/cnt-legendas/cnt-legendas" "$@"\n' > "$AI/AppRun"; chmod +x "$AI/AppRun"
-  URL=$(ultimo_asset AppImage/appimagetool "^appimagetool-x86_64\\.AppImage$" tags/continuous)
-  baixar "$URL" "$DL/appimagetool"; chmod +x "$DL/appimagetool"
-  ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$DL/appimagetool" -n "$AI" "$SAIDA/CNT_Legendas_${COMPLETA}_linux_x86_64.AppImage"
-else
-  mkdir -p "$APP/Contents/MacOS"
-  cat > "$APP/Contents/MacOS/CNT Legendas" <<'EOS'
+    tar -C "$(dirname "$APP")" -czf "$SAIDA/${ARQV}_${VC}_linux_x86_64.tar.gz" "$(basename "$APP")"
+    # AppImage (um arquivo só, dois cliques)
+    local AI="$BUILD/linux/AppDir-$SLUG"; rm -rf "$AI"; mkdir -p "$AI/usr"
+    cp -al "$APP" "$AI/usr/$SLUG"            # ligações (sem gastar disco de novo)
+    cp "$APP/$SLUG.desktop" "$AI/"; cp "$BUILD/icone-512.png" "$AI/$SLUG.png"
+    printf '#!/bin/sh\nHERE=$(dirname "$(readlink -f "$0")")\nexec "$HERE/usr/%s/%s" "$@"\n' "$SLUG" "$SLUG" > "$AI/AppRun"; chmod +x "$AI/AppRun"
+    local URL; URL=$(ultimo_asset AppImage/appimagetool "^appimagetool-x86_64\\.AppImage$" tags/continuous)
+    baixar "$URL" "$DL/appimagetool"; chmod +x "$DL/appimagetool"
+    ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$DL/appimagetool" -n "$AI" "$SAIDA/${ARQV}_${VC}_linux_x86_64.AppImage"
+    rm -rf "$AI"
+  else
+    mkdir -p "$APP/Contents/MacOS"
+    cat > "$APP/Contents/MacOS/$NOME" <<EOS
 #!/bin/sh
-DIR=$(cd "$(dirname "$0")/../Resources/programa" && pwd -P)
-exec "$DIR/cnt-legendas" "$@"
+DIR=\$(cd "\$(dirname "\$0")/../Resources/programa" && pwd -P)
+exec "\$DIR/$SLUG" "\$@"
 EOS
-  chmod +x "$APP/Contents/MacOS/CNT Legendas"
-  cat > "$APP/Contents/Info.plist" <<EOS
+    chmod +x "$APP/Contents/MacOS/$NOME"
+    cat > "$APP/Contents/Info.plist" <<EOS
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>CNT Legendas</string>
-  <key>CFBundleDisplayName</key><string>CNT Legendas</string>
-  <key>CFBundleIdentifier</key><string>br.com.cntoficial.legendas</string>
-  <key>CFBundleVersion</key><string>$COMPLETA</string>
-  <key>CFBundleShortVersionString</key><string>$VERSAO</string>
-  <key>CFBundleExecutable</key><string>CNT Legendas</string>
+  <key>CFBundleName</key><string>$NOME</string>
+  <key>CFBundleDisplayName</key><string>$NOME</string>
+  <key>CFBundleIdentifier</key><string>$BID</string>
+  <key>CFBundleVersion</key><string>$VC</string>
+  <key>CFBundleShortVersionString</key><string>$V</string>
+  <key>CFBundleExecutable</key><string>$NOME</string>
   <key>CFBundleIconFile</key><string>icone</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 EOS
-  ICONSET="$BUILD/icone.iconset"; rm -rf "$ICONSET"; mkdir -p "$ICONSET"
-  for s in 16 32 64 128 256 512; do sips -z $s $s "$BUILD/icone-512.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null; done
-  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/icone.icns"
-  # assinatura local (sem conta de desenvolvedor: na 1ª vez o Mac pede "Abrir" pelo botão direito)
-  codesign --force --deep -s - "$APP" || true
-  DMG="$BUILD/dmg"; rm -rf "$DMG"; mkdir -p "$DMG"; cp -R "$APP" "$DMG/"; ln -s /Applications "$DMG/Aplicativos"
-  # o hdiutil às vezes falha com "Resource busy" nas máquinas do CI: tenta de novo
-  for tentativa in 1 2 3 4; do
-    hdiutil create -volname "CNT Legendas" -srcfolder "$DMG" -ov -format UDZO "$SAIDA/CNT_Legendas_${COMPLETA}_mac_${ARQ}.dmg" >/dev/null && break
-    [ "$tentativa" = 4 ] && false
-    echo "hdiutil ocupado; tentando de novo ($tentativa)"; sleep $((tentativa * 10))
-  done
-fi
+    local ICONSET="$BUILD/icone.iconset"; rm -rf "$ICONSET"; mkdir -p "$ICONSET"
+    for s in 16 32 64 128 256 512; do sips -z $s $s "$BUILD/icone-512.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null; done
+    iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/icone.icns"
+    # assinatura local (sem conta de desenvolvedor: na 1ª vez o Mac pede "Abrir" pelo botão direito)
+    codesign --force --deep -s - "$APP" || true
+    local DMG="$BUILD/dmg"; rm -rf "$DMG"; mkdir -p "$DMG"; cp -R "$APP" "$DMG/"; ln -s /Applications "$DMG/Aplicativos"
+    # o hdiutil às vezes falha com "Resource busy" nas máquinas do CI: tenta de novo
+    for tentativa in 1 2 3 4; do
+      hdiutil create -volname "$NOME" -srcfolder "$DMG" -ov -format UDZO "$SAIDA/${ARQV}_${VC}_mac_${ARQ}.dmg" >/dev/null && break
+      [ "$tentativa" = 4 ] && false
+      echo "hdiutil ocupado; tentando de novo ($tentativa)"; sleep $((tentativa * 10))
+    done
+    rm -rf "$DMG"
+  fi
+}
+
+etapa "pacote"
+empacotar "$APP" "CNT Legendas" cnt-legendas CNT_Legendas "$VERSAO" "$COMPLETA" "Legendagem, tradução e sincronia" br.com.cntoficial.legendas ""
+# CNT Dubla: o mesmo programa montado, outra partida (mesmo Python, bibliotecas, ffmpeg e modelos)
+etapa "pacote da Dubla"
+if [ "$SISTEMA" = mac ]; then DAPP="$BUILD/mac/CNT Dubla.app"; else DAPP="$BUILD/linux/CNT Dubla"; fi
+rm -rf "$DAPP"; mkdir -p "$(dirname "$DAPP")"
+# cópia sem gastar disco: clone do APFS no Mac, ligações no Linux (os scripts de partida são escritos de novo, sem mexer nos do Legendas)
+if [ "$SISTEMA" = mac ]; then mkdir -p "$DAPP/Contents/Resources"; cp -Rc "$PROG" "$DAPP/Contents/Resources/programa"; rm -f "$DAPP/Contents/Resources/programa/cnt-legendas"
+else cp -al "$APP" "$DAPP"; rm -f "$DAPP/cnt-legendas" "$DAPP/cnt-legendas.png" "$DAPP/cnt-legendas.desktop" "$DAPP/INSTALAR.txt"; fi
+empacotar "$DAPP" "CNT Dubla" cnt-dubla CNT_Dubla "$VERSAO_DUBLA" "$COMPLETA_DUBLA" "Estúdio de dublagem" br.com.cntoficial.dubla "--produto dubla"
+if [ "$SISTEMA" = mac ]; then DPROG="$DAPP/Contents/Resources/programa"; else DPROG="$DAPP"; fi
 ls -la "$SAIDA"
 echo "PROG=$PROG" >> "${GITHUB_ENV:-/dev/null}"
+echo "DPROG=$DPROG" >> "${GITHUB_ENV:-/dev/null}"

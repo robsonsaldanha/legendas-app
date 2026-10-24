@@ -1,6 +1,7 @@
 ﻿# Monta o programa completo em build\CNTLegendas e gera o instalador.
 #
-# Resultado: build\Output\Instalador_CNT_Legendas_<versão>.exe
+# Resultado: build\Output\Instalador_CNT_Legendas_<versão>.exe e, do mesmo programa montado,
+#            build\Output\Instalador_CNT_Dubla_<versão da Dubla>.exe (abre com `cntboot --produto dubla`).
 #
 # Precisa (só na máquina que monta, não na da usuária): Python 3.12 no PATH,
 # Inno Setup 6 e internet. O GitHub Actions roda este script.
@@ -37,6 +38,8 @@ $Canal = if ($env:CNT_CANAL) { $env:CNT_CANAL } else { "desenvolvimento" }
 $BuildNum = if ($env:CNT_BUILD) { [int]$env:CNT_BUILD } else { 0 }
 if ($Canal -notin @("producao", "desenvolvimento")) { throw "CNT_CANAL inválido: $Canal" }
 $FullVersion = if ($BuildNum) { "$Version.$BuildNum" } else { $Version }
+$DublaVersion = (& python -c "import sys; sys.path.insert(0, r'$Root'); import dubla; print(dubla.VERSAO)").Trim()
+$DublaFull = if ($BuildNum) { "$DublaVersion.$BuildNum" } else { $DublaVersion }
 Write-Host "== CNT Legendas $FullVersion ($Canal) =="
 
 Remove-Item $App -Recurse -Force -ErrorAction SilentlyContinue
@@ -102,12 +105,13 @@ Remove-Item (Join-Path $site "torch\test") -Recurse -Force -ErrorAction Silently
 $Stage = "código"
 Copy-Item (Join-Path $Root "core") (Join-Path $App "core") -Recurse
 Copy-Item (Join-Path $Root "app") (Join-Path $App "app") -Recurse
+Copy-Item (Join-Path $Root "dubla") (Join-Path $App "dubla") -Recurse
 Copy-Item (Join-Path $Root "cntboot.py") (Join-Path $App "cntboot.py")
 Get-ChildItem $App -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
 Remove-Item (Join-Path $App "core\canal.json") -ErrorAction SilentlyContinue
 $canalJson = @{ canal = $Canal; build = $BuildNum } | ConvertTo-Json -Compress
 [IO.File]::WriteAllText((Join-Path $App "core\canal.json"), $canalJson, (New-Object Text.UTF8Encoding $false))
-& python -m compileall -q -f (Join-Path $App "core") (Join-Path $App "app") | Out-Null
+& python -m compileall -q -f (Join-Path $App "core") (Join-Path $App "app") (Join-Path $App "dubla") | Out-Null
 
 # pacote de atualização (patch): app\ e core\, para o programa já instalado baixar e aplicar
 New-Item -ItemType Directory -Force -Path (Join-Path $Build "Output") | Out-Null
@@ -119,6 +123,7 @@ Remove-Item $PatchRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $PatchRoot | Out-Null
 Copy-Item (Join-Path $App "app") (Join-Path $PatchRoot "app") -Recurse
 Copy-Item (Join-Path $App "core") (Join-Path $PatchRoot "core") -Recurse
+Copy-Item (Join-Path $App "dubla") (Join-Path $PatchRoot "dubla") -Recurse
 & python -m pip install --disable-pip-version-check --no-warn-script-location --no-deps --target (Join-Path $PatchRoot "lib") `
     -r (Join-Path $PSScriptRoot "bibliotecas-no-pacote.txt")
 if ($LASTEXITCODE) { throw "falha ao instalar as bibliotecas do pacote" }
@@ -127,9 +132,11 @@ Get-ChildItem (Join-Path $PatchRoot "lib") -Directory | Where-Object { $_.Name -
 $dic = Join-Path $PatchRoot "lib\spellchecker\resources"
 if (Test-Path $dic) { Get-ChildItem $dic -File | Where-Object { $_.Name -notmatch '^(pt|es|en)\.json\.gz$' } | Remove-Item -Force }
 # (zip pelo Python: nomes com "/", que funcionam em qualquer descompactador)
-& python -c "import sys, zipfile, pathlib; r = pathlib.Path(sys.argv[1]); z = zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED, compresslevel=9); [z.write(f, f.relative_to(r).as_posix()) for d in ('app', 'core', 'lib') for f in sorted((r / d).rglob('*')) if f.is_file()]; z.close()" $PatchRoot $patch
+& python -c "import sys, zipfile, pathlib; r = pathlib.Path(sys.argv[1]); z = zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED, compresslevel=9); [z.write(f, f.relative_to(r).as_posix()) for d in ('app', 'core', 'dubla', 'lib') for f in sorted((r / d).rglob('*')) if f.is_file()]; z.close()" $PatchRoot $patch
 if ($LASTEXITCODE) { throw "falha ao gerar o pacote de atualização" }
 Write-Host "Pacote de atualização: $([math]::Round((Get-Item $patch).Length / 1MB, 1)) MB"
+# a Dubla usa o mesmo pacote (com dubla\), com o número de versão dela
+Copy-Item $patch (Join-Path $Build "Output\Atualizacao_CNT_Dubla_$DublaFull.zip") -Force
 
 # ---------------------------------------------------------------- detector de voz
 $Stage = "detector de voz"
@@ -162,6 +169,7 @@ $Stage = "vc++ e ícone"
 Get-File $VcRedist (Join-Path $Build "redist\vc_redist.x64.exe")
 & python -m pip install --disable-pip-version-check -q pillow
 & python (Join-Path $PSScriptRoot "make_icon.py") (Join-Path $App "legendas.ico")
+Copy-Item (Join-Path $App "legendas.ico") (Join-Path $App "dubla.ico")
 
 # ---------------------------------------------------------------- instalador
 $Stage = "inno setup"
@@ -172,4 +180,7 @@ $size = [math]::Round(((Get-ChildItem $App -Recurse | Measure-Object Length -Sum
 Write-Host "Programa montado: $size MB"
 & $iscc /Q "/DAppVersion=$FullVersion" "/DBuildDir=$Build" (Join-Path $PSScriptRoot "legendas.iss")
 if ($LASTEXITCODE) { throw "falha ao gerar o instalador" }
+$Stage = "inno setup (Dubla)"
+& $iscc /Q "/DAppVersion=$DublaFull" "/DBuildDir=$Build" (Join-Path $PSScriptRoot "dubla.iss")
+if ($LASTEXITCODE) { throw "falha ao gerar o instalador da Dubla" }
 Get-ChildItem (Join-Path $Build "Output")
