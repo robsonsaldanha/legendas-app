@@ -260,3 +260,9 @@
 - Clientes compartilhados (Workspace): o programa guarda, por cliente, o resumo do que sincronizou por último (`meta ws:<nome>`). Mudou aqui → envia; mudou nos colegas e não aqui → recebe; mudou nos dois → o daqui vai na próxima (o mais recente vale). Com "Glossários" desligado no Workspace, o glossário local é mantido.
 - Métricas: um registro por episódio/filme (chave = hash do computador + pasta + id), só quando algo mudou desde o último envio.
 - Teste de integração real feito contra o servidor 1.2 (dois computadores na mesma licença Enterprise).
+
+## 2026-10-24 — Plano da 2.14: glossário geral, do cliente e do projeto (antes de começar)
+- Pedido do Róbson: o glossário pode ser **geral** ou **só do projeto**, para não misturar as informações de um projeto com outro.
+- Três níveis, do mais amplo ao mais específico: **Geral** (vale em todos os trabalhos; Configurações → Glossário geral), **Cliente** (o que já existe) e **Projeto** (série/filme; menu ⋯ do projeto → Glossário do projeto). Na tradução (API e ChatGPT) e na transcrição entram os três juntos; se o mesmo termo aparecer em mais de um, vale o mais específico (projeto > cliente > geral).
+- O projeto é descoberto pelo episódio aberto no editor (ou pelo trabalho criado em "Novo trabalho"); legenda solta, sem projeto, usa geral + cliente.
+- Perfil na nuvem: o glossário geral e os glossários de projeto (pelo nome do projeto) entram no perfil do usuário.
