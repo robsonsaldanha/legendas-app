@@ -140,3 +140,109 @@ async function waitRestartAndReload() {
   }
   location.reload();
 }
+
+/* ------------------------------------------------------------ atualizar, reiniciar e bandeja (programa aberto) */
+
+/* Pergunta com botões; devolve a chave do botão escolhido (ou null se fechou). */
+function ask(title, body, buttons) {
+  return new Promise((resolve) => {
+    let done = false;
+    const m = modal(title, body, buttons.map(([k, t, cls]) => `<button class="btn ${cls || ""}" data-k="${k}">${esc(t)}</button>`).join(""),
+      { onClose: () => { if (!done) resolve(null); } });
+    m.ov.addEventListener("click", (e) => {
+      const k = e.target.closest("[data-k]")?.dataset.k;
+      if (k) { done = true; m.close(); resolve(k); }
+    });
+  });
+}
+
+/* Antes de atualizar ou reiniciar: salvar o editor e avisar dos trabalhos em segundo plano. */
+async function prepararSaida(acao) {
+  if (location.hash.startsWith("#/editor/") && ED.dirty) {
+    const k = await ask("Há alterações não salvas",
+      `<p>A legenda aberta no editor tem alterações que ainda não foram salvas. O que fazer antes de ${esc(acao)}?</p>`,
+      [["cancelar", "Cancelar"], ["como", "Salvar como…"], ["salvar", "Salvar", "primary"]]);
+    if (!k || k === "cancelar") return false;
+    if (!(await save(k === "como"))) return false;
+  }
+  try {
+    const { jobs } = await api("GET", "/api/jobs");
+    const n = jobs.filter((j) => j.status === "rodando" || j.status === "fila").length;
+    if (n) {
+      const k = await ask("Trabalhos em andamento",
+        `<p>${n === 1 ? "Há 1 trabalho" : `Há ${n} trabalhos`} em segundo plano (transcrição, tradução…). Eles param agora e dá para retomar depois, em “Trabalhos em segundo plano”.</p>`,
+        [["cancelar", "Cancelar"], ["ok", `Continuar e ${acao}`, "primary"]]);
+    if (k !== "ok") return false;
+    }
+  } catch { /* sem lista: segue */ }
+  return true;
+}
+
+async function aplicarAtualizacao() {
+  if (!(await prepararSaida("atualizar"))) return;
+  try {
+    S.state.atualizacao = await api("POST", "/api/atualizacao/aplicar", { hash: location.hash });
+  } catch (e) { toast(e.message, true); return; }
+  if (S.state.atualizacao.estado === "atualizado") { toast("Você já está na versão mais nova."); return; }
+  updateGate();
+}
+
+let UPD_DISPENSADA = "";
+/* manual = pelo menu (sempre responde); senão, só avisa se houver versão nova ainda não dispensada. */
+async function checkUpdate(manual = false) {
+  let u;
+  try { u = await api("POST", "/api/atualizacao/verificar"); } catch (e) { if (manual) toast(e.message, true); return; }
+  if (u.estado === "disponivel") {
+    if (!manual && u.versao === UPD_DISPENSADA) return;
+    const k = await ask(`Nova versão ${u.versao}`,
+      `<p>Há uma versão nova do CNT Legendas. Atualizar agora leva alguns segundos: o programa salva o que precisar, fecha e reabre onde você está.</p>
+       ${u.notas ? `<details><summary>O que muda</summary><p class="small">${esc(u.notas)}</p></details>` : ""}
+       <p class="muted small">Versão atual: ${esc(u.versao_atual)}. Se escolher “Depois”, ela entra na próxima vez que abrir o programa.</p>`,
+      [["depois", "Depois"], ["agora", "Atualizar agora", "primary"]]);
+    if (k === "agora") return aplicarAtualizacao();
+    UPD_DISPENSADA = u.versao;
+  } else if (manual) {
+    toast(u.estado === "sem_conexao" ? "Não consegui falar com o servidor agora. Tente de novo mais tarde."
+      : u.estado === "erro" ? `A atualização não deu certo: ${u.erro}` : `Você já está na versão mais nova (${u.versao_atual}).`, u.estado !== "atualizado");
+  }
+}
+
+async function reiniciarPrograma() {
+  if (!(await prepararSaida("reiniciar"))) return;
+  try { await api("POST", "/api/reiniciar", { hash: location.hash }); } catch (e) { toast(e.message, true); return; }
+  S.state.atualizacao = { ...(S.state.atualizacao || {}), estado: "reiniciando" };
+  updateGate();
+}
+
+async function reabrirUltimo() {
+  try {
+    const d = await api("GET", `/api/obras?mes=${thisMonth()}`);
+    if (!d.recent) { toast("Nenhum episódio foi aberto ainda."); return; }
+    await openItem(d.recent.item_id);
+  } catch (e) { toast(e.message, true); }
+}
+
+/* Chamado pelo menu do ícone da bandeja (janela própria). */
+window.cntTray = (acao) => {
+  if (acao === "reabrir") return reabrirUltimo();
+  if (acao === "novo") { location.hash = "#/obra/nova"; return; }
+  if (acao === "atualizar") return checkUpdate(true);
+  if (acao === "reiniciar") return reiniciarPrograma();
+};
+
+/* Depois de atualizar/reiniciar: volta para onde estava (o editor reabre o mesmo arquivo). */
+async function retomarOndeEstava(r) {
+  if (!r) return false;
+  try {
+    if (r.editor) {
+      const o = await api("POST", "/api/editor/open", r.editor);
+      location.hash = `#/editor/${o.sid}`;
+      return true;
+    }
+    if (r.hash) { location.hash = r.hash; return true; }
+  } catch (e) { toast(`Não consegui reabrir onde você estava: ${e.message}`, true); }
+  return false;
+}
+
+/* Com o programa aberto, procura versão nova a cada 30 minutos. */
+setInterval(() => { if (!document.querySelector(".upd-ov")) checkUpdate(false); }, 30 * 60 * 1000);

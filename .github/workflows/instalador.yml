@@ -99,7 +99,7 @@ jobs:
               -WorkingDirectory "$env:ProgramFiles\CNT Legendas" -PassThru
             if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "a janela não fechou sozinha em 2 minutos" }
             $r = if (Test-Path $res) { Get-Content $res -Raw } else { "sem resultado" }
-            if ($r -notmatch '^ok') {
+            if ($r -notmatch '^ok' -or $r -notmatch 'bandeja=sim') {
               Get-ChildItem "$env:APPDATA\CNT Legendas\logs" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 30 }
               throw "janela própria falhou: $r"
             }

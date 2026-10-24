@@ -98,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     except OSError:
         srv = make_server(app, 0)  # porta ocupada (outro programa): usa uma livre
     port = srv.server_address[1]
+    app.port = port
     app.write_session(port)
     if not args.teste_janela:
         _depois_de_abrir(app, port)
@@ -157,7 +158,12 @@ def _rodar_na_janela(app, srv, url: str, teste: str = "") -> int:
             if ok:
                 break
             time.sleep(0.5)
-        Path(teste).write_text(f"{'ok' if ok else 'falhou'} {window.evaluate_js('document.title')}", encoding="utf-8")
+        for _ in range(20):          # o ícone da bandeja aparece logo depois da janela
+            if jan.icone_bandeja is not None:
+                break
+            time.sleep(0.25)
+        Path(teste).write_text(f"{'ok' if ok else 'falhou'} {window.evaluate_js('document.title')} "
+                               f"bandeja={'sim' if jan.icone_bandeja is not None else 'nao'}", encoding="utf-8")
         jan.fechar()
 
     app.janela = jan
@@ -177,7 +183,10 @@ def _rodar_na_janela(app, srv, url: str, teste: str = "") -> int:
         srv.shutdown()
         app.clear_session()
         srv.server_close()
-    return 0
+    # Encerra o processo de vez: o .NET da janela e fios auxiliares (conferência da licença, fila)
+    # podiam manter o programa vivo em segundo plano depois do X, sem janela e sem atualizar.
+    logging.shutdown()
+    os._exit(0)
 
 
 if __name__ == "__main__":

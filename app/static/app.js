@@ -1125,6 +1125,10 @@ async function renderSettings() {
         : l.modo === "avaliacao" ? `Avaliação até ${esc(new Date(l.valido_ate).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}`
         : "Modo grátis: projetos e tradução manual. IA, sincronia pela fala, regras e relatórios precisam de licença."; })(),
         `<button class="ds-btn sm ${(st.licenca || {}).modo === "licenciada" ? "" : "primary"}" data-action="licenca">${(st.licenca || {}).modo === "licenciada" ? "Ver" : "Ativar"}</button>`)}
+      ${setRow("cfg-versao", "Versão do programa", `${esc(st.versao_completa || st.version || "")} · o programa se atualiza sozinho ao abrir e avisa quando houver versão nova`,
+        `<button class="ds-btn sm" data-action="check-update">Procurar atualização</button>`)}
+      ${st.janela ? setRow("cfg-bandeja", "Bandeja do sistema", `<label class="check"><input type="checkbox" id="s-bandeja" ${s.bandeja !== false ? "checked" : ""}>
+          Manter o ícone ao lado do relógio; o X esconde a janela em vez de fechar</label>`, "") : ""}
       ${setRow("cfg-nome", "Seu nome na legenda", `<input type="text" id="s-who" value="${esc(s.translator_name || "")}" placeholder="Como você assina as legendas" aria-label="Seu nome na legenda">`,
         `<button class="ds-btn sm" data-action="save-who">Salvar</button>`)}
       ${setRow("cfg-pasta", "Pasta dos trabalhos", `<span class="mono small">${esc(st.projects_root || "não escolhida")}</span> — um mês por pasta (${esc(monthFolder(thisMonth()))}…)`,
@@ -1208,6 +1212,12 @@ async function renderSettings() {
 
 
 
+  document.getElementById("s-bandeja")?.addEventListener("change", async (e) => {
+    try {
+      S.state.settings = await api("PUT", "/api/settings", { bandeja: e.target.checked });
+      toast(e.target.checked ? "O ícone fica na bandeja; o X esconde a janela." : "Sem bandeja: o X pergunta e fecha o programa.");
+    } catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }
+  });
   main.onclick = async (e) => {
     const b = e.target.closest("[data-action]");
     if (!b) return;
@@ -1264,6 +1274,7 @@ async function renderSettings() {
         await loadState();
         toast("Configurações salvas.");
       }
+      if (a === "check-update") await checkUpdate(true);
       if (a === "open-data") await api("POST", "/api/open", { path: st.data_dir });
       if (a === "quit") {
         if (!confirm("Fechar o programa? Trabalhos em andamento serão interrompidos (dá para retomar depois).")) return;
@@ -1421,9 +1432,11 @@ document.addEventListener("drop", (e) => e.preventDefault());
   drawNav();
   try {
     await loadState();
+    const retomar = S.state.retomar;   // depois de atualizar/reiniciar
     await updateGate();          // atualização obrigatória antes de trabalhar
     drawLicenseBadge();
-    if (!location.hash) { location.hash = S.state.projects_root ? "#/inicio" : "#/bemvindo"; }
+    if (await retomarOndeEstava(retomar)) { /* já navegou */ }
+    else if (!location.hash) { location.hash = S.state.projects_root ? "#/inicio" : "#/bemvindo"; }
     else router();
   } catch (e) { router(); }
   refreshRunningCount();

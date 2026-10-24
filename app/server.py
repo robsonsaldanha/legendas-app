@@ -135,6 +135,12 @@ class App:
         self.server: ThreadingHTTPServer | None = None
         from core.atualizacao import Atualizador
         self.updater = Atualizador()
+        self.port = 0
+        self.retomar_ao_reabrir: dict | None = None
+        try:   # depois de atualizar/reiniciar: a página volta para onde estava (uma vez)
+            self.retomar = json.loads(os.environ.pop("CNT_RETOMAR", "") or "null")
+        except ValueError:
+            self.retomar = None
         self.janela = None          # app.janela.Janela quando aberto na janela própria
         self.editor_sujo = False    # o editor avisa quando há alterações não salvas (confirmação ao fechar)
 
@@ -190,7 +196,13 @@ class App:
             "licenca": self.license_state(),
             "atualizacao": self.updater.to_dict(),
             "janela": self.janela is not None,
+            "retomar": self._pop_retomar(),
+            "versao_completa": versao_completa(),
         }
+
+    def _pop_retomar(self):
+        r, self.retomar = self.retomar, None
+        return r
 
     # ---------------------------------------------------------- licença e atualização
 
@@ -201,24 +213,77 @@ class App:
         d["site"] = licenca.servidor()
         return d
 
-    def start_update(self, port: int) -> None:
-        """Atualização obrigatória: se o servidor tiver versão nova, baixa, aplica e reabre.
-        A página fica na tela "Atualizando…" enquanto isso (ver /api/atualizacao)."""
+    def _reiniciar_cb(self, port: int):
+        """O que fazer quando a atualização baixou: reabrir (patch) ou rodar o instalador; depois sair."""
         from core import atualizacao
 
         def reiniciar(pacote: str, exe=None):
-            import threading as _t
             if pacote == "instalador":
                 atualizacao.rodar_instalador(exe)
             else:
-                atualizacao.reabrir(port, self.token, janela=self.janela is not None)
-            _t.Timer(1.5, lambda: os._exit(0)).start()   # a página vê "reiniciando" e espera a nova instância
+                atualizacao.reabrir(port, self.token, janela=self.janela is not None, retomar=self.retomar_ao_reabrir)
+            self._sair_em(1.5)
+        return reiniciar
+
+    def _sair_em(self, segundos: float) -> None:
+        """Encerra o processo (a página vê "reiniciando" e espera a nova instância)."""
+        import threading as _t
+
+        def sair():
+            if self.janela is not None:
+                self.janela.remover_bandeja_antes_de_sair()
+            os._exit(0)
+        _t.Timer(segundos, sair).start()
+
+    def start_update(self, port: int) -> None:
+        """Atualização obrigatória ao abrir: se o servidor tiver versão nova, baixa, aplica e reabre.
+        A página fica na tela "Atualizando…" enquanto isso (ver /api/atualizacao)."""
+        self.port = port
 
         def run():
             info = self.updater.verificar()
             if info["estado"] == "disponivel":
-                self.updater.executar(reiniciar)
+                self.updater.executar(self._reiniciar_cb(port))
         threading.Thread(target=run, daemon=True, name="atualizacao").start()
+
+    def check_update(self) -> dict:
+        """Com o programa aberto (a cada 30 min ou pelo menu): só pergunta ao servidor."""
+        if self.updater.estado in ("baixando", "aplicando", "reiniciando", "instalando"):
+            return self.updater.to_dict()
+        return self.updater.verificar()
+
+    def apply_update(self, retomar: dict | None) -> dict:
+        """A usuária aceitou atualizar agora (já salvou o que precisava)."""
+        if self.updater.estado != "disponivel":
+            info = self.updater.verificar()
+            if info["estado"] != "disponivel":
+                return info
+        self.retomar_ao_reabrir = retomar
+        self.updater.estado = "baixando"
+        threading.Thread(target=self.updater.executar, args=(self._reiniciar_cb(self.port),), daemon=True,
+                         name="atualizacao").start()
+        return self.updater.to_dict()
+
+    def restart(self, retomar: dict | None) -> None:
+        from core import atualizacao
+        atualizacao.reabrir(self.port, self.token, janela=self.janela is not None, retomar=retomar)
+        self.updater.estado = "reiniciando"
+        self._sair_em(1.5)
+
+    def retomar_de(self, hash_: str) -> dict | None:
+        """Onde ela estava, para reabrir no mesmo lugar depois de atualizar/reiniciar. O editor vira
+        "abrir este arquivo de novo" (a sessão do editor não sobrevive ao reinício)."""
+        hash_ = str(hash_ or "")
+        m = re.match(r"^#/editor/([\w-]+)$", hash_)
+        if m:
+            sess = self.editor.sessions.get(m.group(1))
+            if sess is None:
+                return None
+            return {"editor": {"srt": str(sess.srt) if sess.srt else None, "video": str(sess.video) if sess.video else None,
+                               "client_id": sess.client_id, "item_id": sess.item_id}}
+        if re.match(r"^#/[\w/-]{0,80}$", hash_):
+            return {"hash": hash_}
+        return None
 
     def recent(self) -> list[dict]:
         out = []
@@ -790,7 +855,7 @@ class Handler(BaseHTTPRequestHandler):
                    "translate_usd_per_mtok_out": float, "translate_method": str,
                    "parallel_requests": int, "align": str, "keep_job_days": int,
                    "translator_name": str, "use_gpu": str, "whisper_model": str,
-                   "transcribe_engine": str, "transcribe_multilang": bool}
+                   "transcribe_engine": str, "transcribe_multilang": bool, "bandeja": bool}
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))
@@ -810,6 +875,8 @@ class Handler(BaseHTTPRequestHandler):
         s.parallel_requests = max(1, min(8, s.parallel_requests))
         s.keep_job_days = max(1, min(365, s.keep_job_days))
         s.save()
+        if "bandeja" in data and self.app.janela is not None:
+            self.app.janela.atualizar_bandeja()
         return s.__dict__
 
     @route("POST", r"/api/models/(\w+)")
@@ -1246,6 +1313,19 @@ class Handler(BaseHTTPRequestHandler):
         b = self._body()
         return self.app.editor.rewrap(b.get("text", ""), b.get("profile_key") or None,
                                       b.get("language") or None)
+
+    @route("POST", r"/api/atualizacao/verificar")
+    def api_update_check(self):
+        return self.app.check_update()
+
+    @route("POST", r"/api/atualizacao/aplicar")
+    def api_update_apply(self):
+        return self.app.apply_update(self.app.retomar_de(self._body().get("hash")))
+
+    @route("POST", r"/api/reiniciar")
+    def api_restart(self):
+        self.app.restart(self.app.retomar_de(self._body().get("hash")))
+        return {"ok": True}
 
     @route("POST", r"/api/janela/sujo")
     def api_janela_sujo(self):

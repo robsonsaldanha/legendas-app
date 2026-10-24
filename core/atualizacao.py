@@ -203,11 +203,13 @@ def rodar_instalador(exe: Path) -> None:
                                "na próxima vez que abrir o programa.")
 
 
-def reabrir(port: int, token: str, janela: bool = False) -> None:
+def reabrir(port: int, token: str, janela: bool = False, retomar: dict | None = None) -> None:
     """Abre uma nova instância (pela partida, que escolhe a versão mais nova) com a mesma porta e
     sessão. No navegador a página aberta só recarrega; na janela própria, a nova instância abre
     a janela dela (a antiga fecha junto com o processo)."""
     env = {**os.environ, "CNT_REUSE_PORT": str(port), "CNT_REUSE_TOKEN": token}
+    if retomar:
+        env["CNT_RETOMAR"] = json.dumps(retomar)   # a nova instância abre a página onde ela estava
     exe = Path(sys.executable)
     if sys.platform == "win32" and exe.name.lower() == "python.exe" and (exe.parent / "pythonw.exe").exists():
         exe = exe.parent / "pythonw.exe"

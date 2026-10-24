@@ -110,7 +110,7 @@ async function save(asNew = false) {
       const base = (ED.video || ED.name).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
       const folder = (ED.srt || ED.video).replace(/[\\/][^\\/]*$/, "");
       const { paths } = await api("POST", "/api/dialog", { kind: "save_srt", initial: folder, filename: `${base}.srt` });
-      if (!paths.length) return;
+      if (!paths.length) return false;
       path = paths[0];
     }
     const r = await api("POST", `/api/editor/${ED.sid}/save`, { cues: sortedCues(), path });
@@ -121,7 +121,8 @@ async function save(asNew = false) {
       const orig = (r.origin || "").split(/[\\/]/).pop();
       toast(`Salvo em “${r.name}”. A legenda de origem (${orig}) não foi alterada; os próximos “Salvar” vão para esta cópia.`);
     } else toast(`Legenda salva (${r.count} legendas).`);
-  } catch (e) { toast(e.message, true); }
+    return true;
+  } catch (e) { toast(e.message, true); return false; }
 }
 function sortedCues() {
   const selCue = ED.cues[ED.sel];
