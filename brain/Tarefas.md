@@ -18,9 +18,9 @@ _(nada no momento)_
 - [ ] T-002 · P-01 · Hub público em `cntoficial.com.br` (layout das 12 seções, celular primeiro, cookies, WhatsApp)
 - [ ] T-003 · P-01 · Área logada do hub (início com produtos contratados, faturas, suporte, conta, privacidade)
 - [ ] T-004 · P-01 · Painel do Róbson no hub (produtos, textos, casos, dados da empresa)
-- [ ] T-005 · P-02 · Tokens e CSS base comuns (hub + Legendas + Dubla)
-- [ ] T-006 · P-02 · Site do Legendas no visual novo — **homologação (`dev-legendas`) primeiro**
-- [ ] T-007 · P-02 · Área do cliente e painel do Legendas no visual novo
+- [x] T-005 · P-02 · Tokens e CSS base do visual novo (no `cnt-server/public/site.css`; o hub e a Dubla copiam) — 24/10/2026
+- [x] T-006 · P-02 · Site do Legendas no visual novo em homologação (`dev-legendas`) — servidor 1.5, 24/10/2026
+- [x] T-007 · P-02 · Área do cliente (menu lateral) e painel do Legendas no visual novo — servidor 1.5, 24/10/2026
 - [ ] T-008 · P-02 · Visual novo em produção (`legendas.`) após aprovação
 - [ ] T-009 · P-03 · Decidir onde ficam as contas e como os produtos validam a sessão
 - [ ] T-010 · P-03 · Conta única CNT (entrar uma vez) + migração das contas do Legendas
