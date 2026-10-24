@@ -861,7 +861,8 @@ class Handler(BaseHTTPRequestHandler):
                    "translate_usd_per_mtok_out": float, "translate_method": str,
                    "parallel_requests": int, "align": str, "keep_job_days": int,
                    "translator_name": str, "use_gpu": str, "whisper_model": str,
-                   "transcribe_engine": str, "transcribe_multilang": bool, "bandeja": bool}
+                   "transcribe_engine": str, "transcribe_multilang": bool, "bandeja": bool,
+                   "formato_entrega": str}
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))
@@ -870,6 +871,8 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(ed, dict) or len(json.dumps(ed)) > 8000:
                 raise ApiError("Preferências do editor inválidas.")
             s.editor = {k: v for k, v in ed.items() if isinstance(k, str) and len(k) < 40}
+        from core.formatos import valido as _fmt_ok
+        s.formato_entrega = _fmt_ok(s.formato_entrega) or "srt"
         if s.use_gpu not in ("auto", "nao"):
             s.use_gpu = "auto"
         if s.whisper_model not in ("small", "medium", "large-v3"):
@@ -1179,6 +1182,10 @@ class Handler(BaseHTTPRequestHandler):
         need("relatorios")
         return self.app.projects.obra_report(int(oid))
 
+    @route("GET", r"/api/prazos")
+    def api_prazos(self):
+        return {"prazos": self.app.projects.prazos()}
+
     @route("PUT", r"/api/itens/(\d+)")
     def api_item_update(self, iid):
         return self.app.projects.update_item(int(iid), self._body())
@@ -1260,6 +1267,65 @@ class Handler(BaseHTTPRequestHandler):
             return self.app.worker.estimate(params, inputs)
         jid = self.app.worker.submit(params, inputs)
         return self.app.job_detail(jid)
+
+    @route("GET", r"/api/editor/(\w+)/versoes")
+    def api_editor_versoes(self, sid):
+        return self.app.editor.versoes(sid)
+
+    @route("POST", r"/api/editor/(\w+)/versoes/([\w-]+)")
+    def api_editor_versao(self, sid, vid):
+        return self.app.editor.versao(sid, vid, self._body().get("cues", []))
+
+    @route("POST", r"/api/editor/(\w+)/memoria")
+    def api_editor_memoria(self, sid):
+        origs = self._body().get("origs") or []
+        if not isinstance(origs, list):
+            raise ApiError("Pedido inválido.")
+        return self.app.editor.memoria(sid, origs)
+
+    @route("GET", r"/api/memoria")
+    def api_memoria(self):
+        return {"total": self.app.db.tm_total()}
+
+    @route("DELETE", r"/api/memoria")
+    def api_memoria_limpar(self):
+        self.app.db.tm_limpar()
+        return {"total": 0}
+
+    @route("GET", r"/api/suporte/registros")
+    def api_suporte_registros(self):
+        """O que vai junto se ela marcar "enviar o registro" (para ela ver antes)."""
+        from core import suporte
+        txt = suporte.registros()
+        return {"tamanho": len(txt), "fim": txt[-4000:]}
+
+    @route("POST", r"/api/suporte")
+    def api_suporte(self):
+        from core import suporte
+        b = self._body()
+        try:
+            return suporte.enviar(b.get("descricao", ""), b.get("email", ""), bool(b.get("registros")), versao_completa())
+        except suporte.SuporteError as e:
+            raise ApiError(str(e)) from e
+
+    @route("POST", r"/api/ortografia")
+    def api_ortografia(self):
+        b = self._body()
+        return self.app.editor.ortografia(b.get("sid"), b.get("texto", ""), b.get("lang"))
+
+    @route("POST", r"/api/ortografia/dicionario")
+    def api_dicionario(self):
+        b = self._body()
+        palavra = str(b.get("palavra") or "").strip()
+        if not palavra or len(palavra) > 60 or " " in palavra:
+            raise ApiError("Palavra inválida.")
+        st = Settings.load()
+        atual = [w for w in (st.dicionario or []) if w.lower() != palavra.lower()]
+        if not b.get("remover"):
+            atual.append(palavra)
+        st.dicionario = sorted(atual, key=str.lower)[:5000]
+        st.save()
+        return {"dicionario": st.dicionario}
 
     @route("GET", r"/api/editor/(\w+)/deliver")
     def api_editor_deliver_info(self, sid):

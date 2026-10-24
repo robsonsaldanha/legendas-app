@@ -31,8 +31,9 @@ SETTINGS_SINCRONIZADAS = (
     "transcribe_multilang", "whisper_model", "parallel_requests", "keep_job_days", "bandeja", "claude_model",
     "claude_usd_per_mtok_in", "claude_usd_per_mtok_out", "gateway_name", "gateway_url", "gateway_format", "gateway_model",
     "gateway_usd_per_mtok_in", "gateway_usd_per_mtok_out", "ai_selected", "ai_models", "ai_urls", "ai_names", "editor",
+    "formato_entrega", "dicionario",
 )
-CAMPOS_CLIENTE = ("name", "client", "instructions", "context", "profile_key", "source_lang", "target_lang")
+CAMPOS_CLIENTE = ("name", "client", "instructions", "context", "profile_key", "source_lang", "target_lang", "formato")
 PREFIXO_EMPRESA = "empresa-"
 INTERVALO = 10 * 60          # sincroniza a cada 10 minutos (e logo depois de mudanças pedidas pela tela)
 
@@ -250,6 +251,7 @@ class Sincronizador:
             est = self.cli.estado()
             self.status.update(perfil=est.get("perfil"), outros=est.get("outros") or [], workspace=est.get("workspace"))
             ws = est.get("workspace")
+            _meta(self.db, "ws_formato", (ws or {}).get("formato_entrega") or "")
             if ws is not None:
                 self.status["perfis_empresa"] = aplicar_perfis_empresa(self.db, ws)
                 if (ws.get("compartilhar") or {}).get("clientes"):

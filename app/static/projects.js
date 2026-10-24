@@ -232,6 +232,7 @@ async function renderNewProject() {
           <div class="ds-fields">
             <label class="ds-field"><span>Idioma do original ${helpBtn("idiomas")}</span><select id="nt-src">${langOptions(W.src, true)}</select></label>
             ${W.kind !== "sincronizar" ? `<label class="ds-field"><span>${W.kind === "transcrever" ? "Depois traduzir para" : "Traduzir para"}</span><select id="nt-dst">${W.kind === "transcrever" ? `<option value="">Não traduzir</option>` : ""}${langOptions(W.dst)}</select></label>` : ""}
+            <label class="ds-field"><span>Entregar até <em class="muted small">(opcional)</em></span><input type="date" id="nt-prazo" value="${esc(W.prazo || "")}"></label>
           </div>
         </section>
 
@@ -261,6 +262,7 @@ async function renderNewProject() {
     W.name = val("nt-name") ?? W.name;
     W.newKind = val("nt-newkind") ?? W.newKind;
     W.src = val("nt-src") ?? W.src;
+    W.prazo = val("nt-prazo") ?? W.prazo;
     if (document.getElementById("nt-dst")) W.dst = val("nt-dst");
   };
   main.onchange = (e) => {
@@ -325,6 +327,7 @@ async function renderNewProject() {
           item = o.items.find((it) => it.season === Number(W.season) && it.episode === Number(W.episode));
         } else item = (await api("GET", `/api/obras/${o.id}`)).items[0];
       }
+      if (W.prazo && item) await api("PUT", `/api/itens/${item.id}`, { prazo: W.prazo });
       const files = [W.files.a, W.files.b].filter(Boolean);
       if (files.length) await copyFiles(item.id, files);
       if (W.kind === "transcrever") {
@@ -395,7 +398,7 @@ function epCard(it, serie, isNow) {
       <input type="text" data-title="${it.id}" value="${esc(it.title || "")}" placeholder="título (opcional)" aria-label="Título do episódio ${esc(it.episode)}">`
       : `<small>Filme</small><b style="font-size:20px">${ic("film")}</b>`}</div>
     <ol class="ds-track" aria-label="Passos">${track}</ol>
-    <div class="ds-ep-note"><small>${esc(lab)}</small><span>${esc(note)}</span>${it.exists ? "" : `<span class="ds-err">pasta não encontrada</span>`}</div>
+    <div class="ds-ep-note"><small>${esc(lab)}</small><span>${esc(note)}</span>${it.prazo && it.step < 4 ? (() => { const t = prazoTexto(it.prazo); return `<span class="ds-prazo ${t.nivel}" title="Prazo de entrega">Entrega ${esc(t.texto)}</span>`; })() : ""}${it.exists ? "" : `<span class="ds-err">pasta não encontrada</span>`}</div>
     <div class="ds-ep-acts">
       <button type="button" class="ds-btn sm ${isNow ? "primary" : ""}" data-o="${it.step === 0 ? "files" : "edit"}" data-i="${it.id}">${esc(it.action)}</button>
       <div class="ds-more"><button type="button" class="ds-iconbtn" data-o="more" data-i="${it.id}" aria-haspopup="menu" aria-expanded="false" aria-label="Mais opções">⋯</button></div>
@@ -409,6 +412,7 @@ function epMenu(it) {
     <button role="menuitem" data-o="files" data-i="${it.id}">Pôr vídeo ou legenda…</button>
     <button role="menuitem" data-o="ifolder" data-path="${esc(it.folder)}">Abrir a pasta no Windows</button>
     <a role="menuitem" href="#/item/${it.id}">Números do episódio</a>
+    <button role="menuitem" data-o="prazo" data-i="${it.id}">${it.prazo ? "Mudar o prazo de entrega…" : "Prazo de entrega…"}</button>
     <hr>
     ${it.status === "finalizado" ? `<button role="menuitem" data-o="istatus" data-st="andamento" data-i="${it.id}">Reabrir (não está entregue)</button>`
       : `<button role="menuitem" data-o="istatus" data-st="finalizado" data-i="${it.id}">Marcar como entregue</button>`}
@@ -434,7 +438,7 @@ async function renderObra(id) {
     <header class="ds-head">
       <div class="ds-head-main">
         <h1 class="ds-title">${esc(o.name)}</h1>
-        <p class="ds-sub">${serie ? "Série" : "Filme"}${o.client_name ? ` · <b>${esc(o.client_name)}</b>` : " · sem cliente"} · ${esc(shortLang(o.source_lang))} → ${esc(shortLang(o.target_lang))}${prof?.profile_key ? ` · regras: ${esc(profileName(prof.profile_key))}` : ""}${o.status === "finalizado" ? " · <b>entregue</b>" : ""}</p>
+        <p class="ds-sub">${serie ? "Série" : "Filme"}${o.client_name ? ` · <b>${esc(o.client_name)}</b>` : " · sem cliente"} · ${esc(shortLang(o.source_lang))} → ${esc(shortLang(o.target_lang))}${prof?.profile_key ? ` · regras: ${esc(profileName(prof.profile_key))}` : ""}${o.formato ? ` · entrega em .${esc(o.formato)}` : ""}${o.status === "finalizado" ? " · <b>entregue</b>" : ""}</p>
       </div>
       <div class="ds-actions">
         <button type="button" class="ds-btn" data-o="folder">${ic("open")} Abrir a pasta</button>
@@ -500,6 +504,7 @@ async function renderObra(id) {
         toggleMenu(b, `<div class="ds-menu" role="menu">
           <button role="menuitem" data-o="glossario">Glossário do projeto…</button>
           <button role="menuitem" data-o="client">Mudar o cliente…</button>
+          <button role="menuitem" data-o="formato">Formato de entrega…</button>
           <button role="menuitem" data-o="tab-met">Números e histórico</button>
           ${o.status === "finalizado" ? `<button role="menuitem" data-o="status" data-st="andamento">Reabrir o projeto</button>`
             : `<button role="menuitem" data-o="status" data-st="finalizado">Marcar o projeto todo como entregue</button>`}
@@ -527,6 +532,35 @@ async function renderObra(id) {
       if (a === "remove") {
         if (!confirm("Tirar este projeto da lista? A pasta e os arquivos continuam no computador; dá para encontrá-lo de novo pela pasta.")) return;
         await api("DELETE", `/api/obras/${id}`); location.hash = "#/inicio";
+      }
+      if (a === "prazo") {
+        const it = o.items.find((x) => x.id === itemId);
+        const md = modal(serie ? `Prazo de entrega — ${it.label}` : "Prazo de entrega", `
+          <label class="ds-field"><span>Entregar até</span><input type="date" id="pz-d" value="${esc(it.prazo || "")}"></label>
+          <p class="ds-meta">Não é obrigatório. A próxima entrega aparece no topo da tela.</p>`,
+          `${it.prazo ? `<button class="btn" data-m="limpar">Tirar o prazo</button>` : ""}<span style="flex:1"></span><button class="btn" data-m="x">Cancelar</button><button class="btn primary" data-m="ok">Salvar</button>`);
+        md.ov.onclick = async (ev) => {
+          const k = ev.target.closest("[data-m]")?.dataset.m;
+          if (k === "x") md.close();
+          if (k === "ok" || k === "limpar") {
+            try {
+              await api("PUT", `/api/itens/${itemId}`, { prazo: k === "limpar" ? "" : md.$("#pz-d").value });
+              md.close(); toast(k === "limpar" ? "Prazo tirado." : "Prazo salvo."); renderObra(id); atualizarPrazoTopo();
+            } catch (err) { toast(err.message, true); }
+          }
+        };
+      }
+      if (a === "formato") {
+        const cli = (S.projects || []).find((c) => c.id === o.client_id);
+        const herda = cli?.formato ? `Igual ao cliente (${FORMATOS.find((f) => f[0] === cli.formato)?.[1] || cli.formato})` : "Igual ao cliente / Configurações (padrão .srt)";
+        const md = modal("Formato de entrega do projeto", `<label class="ds-field"><span>Formato</span><select id="of-sel">${formatoOptions(o.formato, herda)}</select></label>
+          <p class="ds-meta">Só para este projeto. Na hora de entregar ainda dá para trocar só daquela vez.</p>`,
+          `<button class="btn" data-m="x">Cancelar</button><button class="btn primary" data-m="ok">Salvar</button>`);
+        md.ov.onclick = async (ev) => {
+          const k = ev.target.closest("[data-m]")?.dataset.m;
+          if (k === "x") md.close();
+          if (k === "ok") { await api("PUT", `/api/obras/${id}`, { formato: md.$("#of-sel").value }); md.close(); toast("Formato do projeto salvo."); renderObra(id); }
+        };
       }
       if (a === "client") {
         const md = modal("Cliente do projeto", `<label class="ds-field"><span>Cliente</span><select id="oc-sel"><option value="">Sem cliente</option>${(S.projects || []).map((c) => `<option value="${c.id}" ${c.id === o.client_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>`,

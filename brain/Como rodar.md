@@ -55,6 +55,9 @@ python -m pytest -q
 - Testes unitários + ponta a ponta com a API simulada e vídeo gerado pelo ffmpeg.
 - `tests/test_app_server.py`: API da interface (sessão/cookie, projetos, perfis, fila, resultado, envio de arquivo).
 - `tests/test_glossario_niveis.py`: glossário geral/cliente/projeto (prioridade, API, tradução pelo episódio, perfil).
+- `tests/test_formatos.py`: formatos de entrega (conversões, prioridade projeto > cliente > equipe > global, entrega) e prazos.
+- `tests/test_versoes_memoria.py`: histórico de versões, memória de tradução e corretor ortográfico (precisa do `pyspellchecker`).
+- `tests/test_suporte.py`: "Relatar um problema" (registro sem segredos, envio com servidor simulado).
 - `tests/test_perfil.py`: perfil na nuvem (montar/aplicar, arquivo, perfis da empresa, clientes compartilhados entre dois computadores, sincronizador) com um servidor simulado.
 - `tests/test_editor.py`: editor (vídeo com Range, cópia de pré-visualização de MKV, forma de onda, rascunho, salvar com cópia de segurança, QC).
 - `tests/test_align_real.py` usa o modelo de verdade; roda no GitHub Actions (job "Alinhamento real") com fala sintetizada pela voz do Windows.

@@ -7,6 +7,7 @@ cada pasta de projeto também guarda um `projeto.cnt.json` para poder ser reaber
 from __future__ import annotations
 
 import json
+import re
 import logging
 import shutil
 import threading
@@ -54,6 +55,20 @@ def _has_work(folder: Path, deep: bool = False) -> bool:
                 return True
     return False
 
+
+
+def _prazo(v) -> str:
+    """Prazo de entrega (AAAA-MM-DD) ou vazio. Data inválida → erro claro."""
+    p = str(v or "").strip()
+    if p and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", p):
+        raise ProjectError("Data de entrega inválida.")
+    if p:
+        import datetime as _dt
+        try:
+            _dt.date.fromisoformat(p)
+        except ValueError as e:
+            raise ProjectError("Data de entrega inválida.") from e
+    return p
 
 class ProjectManager:
     def __init__(self, db):
@@ -154,6 +169,7 @@ class ProjectManager:
         if chk["problem"]:
             raise ProjectError(chk["problem"])
         folder = Path(chk["path"])
+        prazo = _prazo(data.get("prazo"))
         episodes = []
         if kind == SERIE:
             season = data.get("season")
@@ -180,6 +196,11 @@ class ProjectManager:
         else:
             for s, e in episodes:
                 self._new_item(oid, folder, s, e, str(data.get("title") or "") if len(episodes) == 1 else "")
+        if prazo:
+            self.db._exec("UPDATE itens SET prazo = ? WHERE obra_id = ?", (prazo, oid))
+        from core.formatos import valido
+        if valido(data.get("formato")):
+            self.db._exec("UPDATE obras SET formato = ? WHERE id = ?", (valido(data.get("formato")), oid))
         self._save_marker(oid)
         return self.get(oid)
 
@@ -220,9 +241,12 @@ class ProjectManager:
     def update(self, oid: int, data: dict) -> dict:
         o = self._obra(oid)
         fields = {}
-        for k in ("client_id", "source_lang", "target_lang", "notes"):
+        for k in ("client_id", "source_lang", "target_lang", "notes", "formato"):
             if k in data:
                 fields[k] = data[k] or (None if k == "client_id" else "")
+        if "formato" in fields:
+            from core.formatos import valido
+            fields["formato"] = valido(fields["formato"]) or ""
         if fields:
             sets = ", ".join(f"{k} = ?" for k in fields)
             self.db._exec(f"UPDATE obras SET {sets}, updated_at = ? WHERE id = ?", (*fields.values(), _now(), oid))
@@ -262,6 +286,9 @@ class ProjectManager:
         it = self._item(iid)
         if "title" in data:
             self.db._exec("UPDATE itens SET title = ?, updated_at = ? WHERE id = ?", (str(data["title"])[:200], _now(), iid))
+        if "prazo" in data:
+            prazo = _prazo(data["prazo"])
+            self.db._exec("UPDATE itens SET prazo = ?, updated_at = ? WHERE id = ?", (prazo, _now(), iid))
         if "status" in data:
             return self.set_item_status(iid, data["status"])
         self._save_marker(it["obra_id"])
@@ -702,6 +729,15 @@ class ProjectManager:
             prog = "Entregue" if done else ("Começado" if steps and steps[0][1] > 0 else "Não começado")
         return {"done": done, "total": len(rows), "progress": prog, "next": text,
                 "pct": round(100 * done / len(rows)) if rows else 0}
+
+    def prazos(self, limite: int = 20) -> list[dict]:
+        """Episódios/filmes com prazo marcado e ainda não entregues, do mais próximo ao mais distante."""
+        rows = self.db._q("""SELECT i.id, i.obra_id, i.season, i.episode, i.title, i.prazo, i.status, o.name AS obra, o.kind
+                             FROM itens i JOIN obras o ON o.id = i.obra_id
+                             WHERE i.prazo <> '' AND i.status <> ? AND o.status <> ? ORDER BY i.prazo, i.id LIMIT ?""",
+                          (FINALIZADO, FINALIZADO, limite))
+        return [{"item_id": r["id"], "obra_id": r["obra_id"], "obra": r["obra"], "kind": r["kind"],
+                 "label": self._label(dict(r)), "prazo": r["prazo"]} for r in rows]
 
     def recent(self) -> dict | None:
         """O que ela mexeu por último (projeto + episódio), para o botão “Continuar”."""

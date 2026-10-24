@@ -165,6 +165,10 @@ class Settings:
     keep_job_days: int = 30
     # Janela própria: ícone ao lado do relógio enquanto aberto; o X esconde em vez de fechar.
     bandeja: bool = True
+    # Formato de entrega padrão (global). Cliente, projeto e equipe podem mudar: o mais específico vale.
+    formato_entrega: str = "srt"
+    # Corretor ortográfico: palavras que ela adicionou ao dicionário pessoal
+    dicionario: list = field(default_factory=list)
     # Quem faz a tradução automática: "openai", "claude" ou "gateway" (compatível com OpenAI).
     translate_provider: str = "openai"
     # Claude (Anthropic). Preços em platform.claude.com/docs/en/models/overview (out/2026).

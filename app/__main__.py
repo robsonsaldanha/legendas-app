@@ -168,6 +168,7 @@ def _rodar_na_janela(app, srv, url: str, teste: str = "") -> int:
         jan.fechar()
 
     app.janela = jan
+    app.worker.ao_terminar = jan.aviso_trabalho   # balão na bandeja quando um trabalho termina
     try:
         jan.abrir(conferir if teste else None)
     except Exception:  # noqa: BLE001

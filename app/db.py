@@ -41,6 +41,17 @@ CREATE TABLE IF NOT EXISTS glossario_extra (
     note TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS tm (            -- memória de tradução (2.15): só neste computador
+    chave TEXT NOT NULL,                     -- original normalizado
+    lang TEXT NOT NULL,                      -- idioma da tradução (pt, es...)
+    inicio TEXT NOT NULL DEFAULT '',         -- duas primeiras palavras (para achar as parecidas)
+    orig TEXT NOT NULL,
+    trad TEXT NOT NULL,
+    usos INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (chave, lang)
+);
+CREATE INDEX IF NOT EXISTS tm_inicio ON tm (lang, inicio);
 CREATE TABLE IF NOT EXISTS profiles (
     key TEXT PRIMARY KEY,
     data TEXT NOT NULL
@@ -158,6 +169,14 @@ class Database:
             self.conn.execute("ALTER TABLE obras ADD COLUMN mes TEXT NOT NULL DEFAULT ''")
         if "importada" not in cols:  # 2.9: pasta que já existia (o programa não grava nada nela)
             self.conn.execute("ALTER TABLE obras ADD COLUMN importada INTEGER NOT NULL DEFAULT 0")
+        if "formato" not in cols:   # 2.15: formato de entrega do projeto ('' = herda do cliente/equipe/global)
+            self.conn.execute("ALTER TABLE obras ADD COLUMN formato TEXT NOT NULL DEFAULT ''")
+        pcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(projects)")}
+        if "formato" not in pcols:  # 2.15: formato de entrega do cliente
+            self.conn.execute("ALTER TABLE projects ADD COLUMN formato TEXT NOT NULL DEFAULT ''")
+        icols = {r["name"] for r in self.conn.execute("PRAGMA table_info(itens)")}
+        if "prazo" not in icols:    # 2.15: prazo de entrega do episódio/filme (AAAA-MM-DD, opcional)
+            self.conn.execute("ALTER TABLE itens ADD COLUMN prazo TEXT NOT NULL DEFAULT ''")
         from core.projects import parse_month_folder
         for r in self.conn.execute("SELECT id, folder, created_at FROM obras WHERE mes = ''").fetchall():
             mes = parse_month_folder(Path(r["folder"]).parent.name) or (r["created_at"] or "")[:7]
@@ -251,7 +270,10 @@ class Database:
             raise ValueError("Dê um nome ao cliente.")
         fields = {k: (data.get(k) or "").strip() if isinstance(data.get(k), str) else data.get(k)
                   for k in ("name", "client", "instructions", "context", "profile_key",
-                            "source_lang", "target_lang")}
+                            "source_lang", "target_lang", "formato")}
+        if "formato" in fields:
+            from core.formatos import valido
+            fields["formato"] = valido(fields["formato"]) or ""
         fields = {k: v for k, v in fields.items() if v is not None}
         with self._lock:
             if pid is None:
@@ -310,6 +332,57 @@ class Database:
                     n += 1
             self.conn.commit()
         return n
+
+    # ------------------------------------------------------------ memória de tradução
+
+    def tm_guardar(self, pares: list[tuple[str, str]], lang: str) -> int:
+        """Guarda (original, tradução). A tradução mais nova vale."""
+        from core.memoria import chave, inicio
+        lang = (lang or "").split("-")[0].lower()
+        n = 0
+        now = time.strftime("%Y-%m-%d %H:%M:%S")
+        with self._lock:
+            for o, t in pares:
+                k = chave(o)
+                if not k or not t.strip() or chave(t) == k or len(k) < 4:
+                    continue
+                self.conn.execute(
+                    "INSERT INTO tm (chave, lang, inicio, orig, trad, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+                    " ON CONFLICT(chave, lang) DO UPDATE SET usos = usos + (trad = excluded.trad),"
+                    " trad = excluded.trad, orig = excluded.orig, updated_at = excluded.updated_at",
+                    (k, lang, inicio(k), o.strip(), t.strip(), now))
+                n += 1
+            self.conn.commit()
+        return n
+
+    def tm_buscar(self, origs: list[str], lang: str) -> list[dict | None]:
+        """Para cada original: a tradução já feita (igual ou quase igual), ou None."""
+        from core.memoria import chave, inicio, parecido
+        lang = (lang or "").split("-")[0].lower()
+        out: list[dict | None] = []
+        for o in origs:
+            k = chave(o)
+            if len(k) < 4:
+                out.append(None)
+                continue
+            r = self._q("SELECT orig, trad, usos FROM tm WHERE chave = ? AND lang = ?", (k, lang))
+            if r:
+                out.append({"orig": r[0]["orig"], "trad": r[0]["trad"], "igual": True, "usos": r[0]["usos"]})
+                continue
+            melhor = None
+            for c in self._q("SELECT chave, orig, trad, usos FROM tm WHERE lang = ? AND inicio = ? LIMIT 200", (lang, inicio(k))):
+                p = parecido(k, c["chave"])
+                if p >= 0.85 and (melhor is None or p > melhor[0]):
+                    melhor = (p, c)
+            out.append({"orig": melhor[1]["orig"], "trad": melhor[1]["trad"], "igual": False, "usos": melhor[1]["usos"],
+                        "semelhanca": round(melhor[0], 2)} if melhor else None)
+        return out
+
+    def tm_total(self) -> int:
+        return self._q("SELECT COUNT(*) AS n FROM tm")[0]["n"]
+
+    def tm_limpar(self) -> None:
+        self._exec("DELETE FROM tm")
 
     def glossario_efetivo(self, client_id: int | None, obra_id: int | None) -> tuple[list[Entry], dict]:
         """Geral + cliente + projeto. O mesmo termo em mais de um: vale o mais específico (projeto > cliente > geral).

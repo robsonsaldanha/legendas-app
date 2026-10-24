@@ -33,6 +33,7 @@ from core.media import SAMPLE_RATE, extract_audio, ffmpeg, load_wav, probe
 from core.profiles import Profile, default_profile_for, for_language, same_family
 from core.formatter import reflow_cues
 from core.qc import AVISO, Issue, check_rules, write_report
+from core import formatos, memoria, versoes
 from core.subtitle import Cue, read_srt, write_srt
 from core.flags import load_flags
 from core.translate import (ChatLot, chat_message, detect_language, is_revision, opposite_language,
@@ -275,6 +276,7 @@ class EditorManager:
             "has_video": bool(s.info.get("vcodec")), "has_audio": bool(s.info.get("acodec")),
             "language": s.language, "detected": s.detected,
             "client_id": s.client_id, "shots": s.shots, "item_id": s.item_id, "obra_id": self._obra_of(s),
+            "prazo": self._prazo_of(s),
             "suggested_target": opposite_language(s.detected or s.language),
             "media": {"status": s.media_status, "progress": round(s.media_progress, 3),
                       "error": s.media_error, "url": f"/media/{s.sid}/{int(time.time())}"
@@ -406,6 +408,7 @@ class EditorManager:
         write_srt(cues, target)
         self._mark(target)
         s.srt = target
+        self._guardar_versao(target, cues, "salvar", raw, s)
         self._record(s, cues, "salvar", target, raw)
         return {"path": str(target), "name": target.name, "count": len(cues),
                 "saved_at": time.strftime("%H:%M:%S"), "redirected": redirected,
@@ -603,6 +606,64 @@ class EditorManager:
 
     # ------------------------------------------------------------ projeto
 
+    def _guardar_versao(self, arquivo: Path, cues: list[Cue], origem: str, raw: list[dict] | None, s: Session) -> None:
+        """Histórico de versões e memória de tradução. Nunca impede salvar."""
+        try:
+            versoes.guardar(editor_dir() / "versoes", arquivo, cues, origem)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Não consegui guardar a versão: %s", e)
+        try:
+            if self.db is not None and hasattr(self.db, "tm_guardar"):
+                pares = memoria.pares_da_legenda(raw or [])
+                if pares:
+                    self.db.tm_guardar(pares, s.language or self._profile_obj(s).language)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Não consegui guardar a memória de tradução: %s", e)
+
+    # ------------------------------------------------------- versões e memória
+
+    def versoes(self, sid: str) -> dict:
+        s = self._get(sid)
+        if s.srt is None:
+            return {"versoes": [], "arquivo": ""}
+        return {"versoes": [{k: v for k, v in x.items() if k != "file"} for x in versoes.listar(editor_dir() / "versoes", s.srt)],
+                "arquivo": s.srt.name}
+
+    def versao(self, sid: str, vid: str, raw: list[dict] | None) -> dict:
+        s = self._get(sid)
+        if s.srt is None:
+            raise EditorError("Esta legenda ainda não foi salva.", 404)
+        try:
+            antes = versoes.ler(editor_dir() / "versoes", s.srt, vid)
+        except KeyError as e:
+            raise EditorError("Versão não encontrada.", 404) from e
+        atual = sorted(self._cues(raw or []), key=lambda c: c.start)
+        return {"cues": [{"start": c.start, "end": c.end, "text": c.text} for c in antes],
+                "diferencas": versoes.comparar(antes, atual)}
+
+    def memoria(self, sid: str, origs: list[str]) -> dict:
+        s = self._get(sid)
+        if self.db is None or not hasattr(self.db, "tm_buscar"):
+            return {"sugestoes": [None] * len(origs)}
+        lang = s.language or self._profile_obj(s).language
+        return {"sugestoes": self.db.tm_buscar([str(o or "") for o in origs[:5000]], lang)}
+
+    def ortografia(self, sid: str | None, texto: str, lang: str | None = None) -> dict:
+        from core import ortografia
+        from core.config import Settings
+        s = self.sessions.get(sid) if sid else None
+        lang = lang or (s.language if s else None) or "pt-BR"
+        if not ortografia.disponivel(lang):
+            return {"disponivel": False, "erros": []}
+        ign = {str(w).lower() for w in (Settings.load().dicionario or [])}
+        if s is not None and self.db is not None and hasattr(self.db, "glossario_efetivo"):
+            try:
+                ents, _ = self.db.glossario_efetivo(s.client_id, self._obra_of(s))
+                ign |= ortografia.termos_do_glossario(ents)
+            except Exception:  # noqa: BLE001
+                pass
+        return {"disponivel": True, "erros": ortografia.verificar(str(texto or "")[:4000], lang, ign)}
+
     def _record(self, s: Session, cues: list[Cue], origem: str, path: Path | None,
                 raw: list[dict] | None = None, issues=None) -> None:
         """Guarda as métricas do episódio (quando a legenda é de um projeto)."""
@@ -627,6 +688,14 @@ class EditorManager:
             return int(self.projects._item(s.item_id)["obra_id"])
         except LegendasError:
             return None
+
+    def _prazo_of(self, s: Session) -> str:
+        if not s.item_id or self.projects is None:
+            return ""
+        try:
+            return str(self.projects._item(s.item_id).get("prazo") or "")
+        except LegendasError:
+            return ""
 
     def beat(self, sid: str, seconds: float) -> dict:
         s = self._get(sid)
@@ -983,6 +1052,24 @@ class EditorManager:
 
     # ------------------------------------------------------------ entregar
 
+    def formato_de(self, s: Session) -> tuple[str, str]:
+        """Formato de entrega que vale para esta legenda: projeto > cliente > equipe > global (padrão .srt)."""
+        from core.config import Settings
+        projeto = cliente = equipe = None
+        oid = self._obra_of(s)
+        if oid and self.projects is not None:
+            try:
+                projeto = self.projects._obra(oid).get("formato")
+            except LegendasError:
+                pass
+        c = self._client(s.client_id)
+        if c:
+            cliente = c.get("formato")
+        if self.db is not None:
+            rows = self.db._q("SELECT v FROM meta WHERE k = 'ws_formato'")
+            equipe = rows[0]["v"] if rows else None
+        return formatos.formato_efetivo(projeto, cliente, equipe, Settings.load().formato_entrega)
+
     def delivery_info(self, sid: str) -> dict:
         s = self._get(sid)
         prof = self._profile_obj(s)
@@ -997,16 +1084,18 @@ class EditorManager:
             folder = folder / "Entrega"
         lang = (s.language or prof.language).lower()
         label = "Traducción" if lang.startswith("es") else "Tradução" if lang.startswith("pt") else "Translation"
-        return {"folder": str(folder), "name": name, "signature_label": label,
-                "profile": prof.name, "naming": prof.naming}
+        fmt, origem = self.formato_de(s)
+        return {"folder": str(folder), "name": formatos.com_extensao(name, fmt), "signature_label": label,
+                "profile": prof.name, "naming": prof.naming, "formato": fmt, "formato_origem": origem,
+                "formatos": [{"id": k, "nome": v["nome"]} for k, v in formatos.FORMATOS.items()]}
 
     def deliver(self, sid: str, raw: list[dict], opts: dict) -> dict:
         s = self._get(sid)
         prof = self._profile_obj(s)
         folder = Path(opts.get("folder") or (s.srt or s.video).parent)
+        fmt = formatos.valido(opts.get("formato")) or self.formato_de(s)[0]
         name = _SAFE.sub("_", str(opts.get("name") or "").strip()) or self.delivery_info(sid)["name"]
-        if not name.lower().endswith(".srt"):
-            name += ".srt"
+        name = formatos.com_extensao(name, fmt)
         target = folder / name
         if s.origin is not None and _same(target, s.origin):
             raise EditorError(f"{target.name} é a legenda de origem e não é alterada. Escolha outro nome ou outra pasta.")
@@ -1029,17 +1118,18 @@ class EditorManager:
         if target.exists():
             bdir = data_dir() / "editor" / "copias"
             bdir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(target, bdir / f"{target.stem}.{time.strftime('%Y%m%d-%H%M%S')}.srt")
-        write_srt(cues, target)
+            shutil.copy2(target, bdir / f"{target.stem}.{time.strftime('%Y%m%d-%H%M%S')}{target.suffix}")
+        formatos.escrever(cues, target, fmt, s.language or prof.language)
         self._mark(target)
+        self._guardar_versao(s.srt or target, cues, "entrega", raw, s)
         issues = check_rules(cues, prof, s.info.get("fps"), language=s.language)
         self._record(s, cues, "entrega", target, raw, issues)
         errs = sum(1 for i in issues if i.severity == "erro")
         report = None
         if opts.get("report"):
-            report = target.with_name(target.name[:-4] + ".qc.txt")
+            report = target.with_name(target.stem + ".qc.txt")
             write_report(issues, cues, prof, report, title=target.name)
-        return {"path": str(target), "name": target.name, "count": len(cues), "errors": errs,
+        return {"path": str(target), "name": target.name, "formato": fmt, "count": len(cues), "errors": errs,
                 "warnings": len(issues) - errs, "report": str(report) if report else "",
                 "signature_added": bool(sig) and len(cues) > len(raw)}
 
@@ -1049,7 +1139,7 @@ class EditorManager:
     def cleanup(self, days: int) -> None:
         limit = time.time() - days * 86400
         for d in editor_dir().iterdir():
-            if d.is_dir() and d.name != "copias" and d.stat().st_mtime < limit:
+            if d.is_dir() and d.name not in ("copias", "versoes") and d.stat().st_mtime < limit:
                 shutil.rmtree(d, ignore_errors=True)
 
 

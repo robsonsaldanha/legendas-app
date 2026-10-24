@@ -39,4 +39,7 @@ from app.janela import usar_lib_do_pacote  # noqa: E402
 usar_lib_do_pacote()
 import webview  # noqa: E402
 check("biblioteca da janela no pacote", True, webview.__file__)
+from core import ortografia  # noqa: E402
+erros = ortografia.verificar("A legnda", "pt-BR")
+check("corretor ortográfico", bool(erros) and "legenda" in erros[0]["sugestoes"], str(erros)[:200])
 print("PACOTE OK")

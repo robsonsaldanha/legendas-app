@@ -6,3 +6,4 @@ pythonnet==3.2.1
 clr_loader==0.3.1
 proxy_tools==0.1.0
 bottle==0.13.4
+pyspellchecker==0.9.1

@@ -113,7 +113,23 @@ def usar_bandeja() -> bool:
 
 # Itens do menu da bandeja: (texto, ação). None = linha separadora.
 MENU_BANDEJA = [("Exibir", "exibir"), ("Reabrir último", "reabrir"), ("Novo projeto", "novo"), None,
-                ("Atualizar", "atualizar"), ("Reiniciar", "reiniciar"), ("Sair", "sair")]
+                ("Atualizar", "atualizar"), ("Reiniciar", "reiniciar"), ("Relatar um problema…", "relatar"), ("Sair", "sair")]
+
+
+def texto_aviso_trabalho(job: dict, status: str, erro: str = "") -> tuple[str, str]:
+    """Título e texto do balão da bandeja quando um trabalho em segundo plano termina."""
+    nome = str(job.get("name") or "Trabalho")
+    if len(nome) > 60:
+        nome = nome[:57] + "…"
+    passos = job.get("steps") or []
+    o_que = ("Tradução" if "traduzir" in passos else "Transcrição" if "transcrever" in passos
+             else "Sincronia" if "sincronizar" in passos else "Trabalho")
+    if status == "pronto":
+        return f"{o_que} pronta", f"{nome}\nClique para abrir."
+    erro = (erro or "").strip()
+    if len(erro) > 140:
+        erro = erro[:137] + "…"
+    return f"{o_que} não terminou", f"{nome}\n{erro or 'Veja o que aconteceu no trabalho.'}"
 
 
 class Janela:
@@ -131,6 +147,7 @@ class Janela:
         self.saindo = False
         self.icone_bandeja = None       # System.Windows.Forms.NotifyIcon
         self._avisou_bandeja = False
+        self._destino_balao = ""        # para onde o clique no balão leva (ex.: #/trabalho/12)
 
     # -------------------------------------------------------------- fio da janela (WinForms)
 
@@ -181,6 +198,13 @@ class Janela:
             if args.Button == MouseButtons.Left:
                 self.acao_bandeja("exibir")
         ni.MouseClick += clique
+
+        def clique_balao(sender, args):
+            destino, self._destino_balao = self._destino_balao, ""
+            self.mostrar()
+            if destino:
+                self._em_segundo_plano(lambda: self._js(f"location.hash = {destino!r}"))
+        ni.BalloonTipClicked += clique_balao
         ni.Visible = True
         self.icone_bandeja = ni
 
@@ -204,13 +228,39 @@ class Janela:
         if self.window is not None and self.icone_bandeja is not None:
             self._na_janela(self._remover_bandeja)
 
+    def _em_uso(self) -> bool:
+        """A janela está aberta e é a que ela está usando agora (aí o aviso aparece na própria tela)."""
+        try:
+            f = self.window.native
+            from System.Windows.Forms import FormWindowState
+            return bool(f.Visible and f.WindowState != FormWindowState.Minimized and f.ContainsFocus)
+        except Exception:  # noqa: BLE001
+            return False
+
+    def avisar(self, titulo: str, texto: str, destino: str = "", erro: bool = False) -> None:
+        """Balão da bandeja (só com o ícone ligado e a janela fora de uso: não interrompe quem está trabalhando)."""
+        if self.window is None or self.icone_bandeja is None:
+            return
+
+        def mostrar_balao():
+            if self.icone_bandeja is None or self._em_uso():
+                return
+            from System.Windows.Forms import ToolTipIcon
+            self._destino_balao = destino
+            self.icone_bandeja.ShowBalloonTip(8000, titulo, texto, ToolTipIcon.Warning if erro else ToolTipIcon.Info)
+        self._na_janela(mostrar_balao)
+
+    def aviso_trabalho(self, job: dict, status: str, erro: str = "") -> None:
+        titulo, texto = texto_aviso_trabalho(job, status, erro)
+        self.avisar(titulo, texto, f"#/trabalho/{job.get('id')}", erro=status != "pronto")
+
     def acao_bandeja(self, acao: str) -> None:
         """Menu do ícone (roda no fio da janela: nada que espere a página aqui dentro)."""
         if acao == "exibir":
             self.mostrar()
         elif acao == "sair":
             self.sair()
-        elif acao in ("reabrir", "novo", "atualizar", "reiniciar"):
+        elif acao in ("reabrir", "novo", "atualizar", "reiniciar", "relatar"):
             self.mostrar()
             self._em_segundo_plano(lambda: self._js(f"window.cntTray && window.cntTray({acao!r})"))
 

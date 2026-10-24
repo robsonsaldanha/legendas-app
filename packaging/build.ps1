@@ -123,6 +123,9 @@ Copy-Item (Join-Path $App "core") (Join-Path $PatchRoot "core") -Recurse
     -r (Join-Path $PSScriptRoot "bibliotecas-no-pacote.txt")
 if ($LASTEXITCODE) { throw "falha ao instalar as bibliotecas do pacote" }
 Get-ChildItem (Join-Path $PatchRoot "lib") -Directory | Where-Object { $_.Name -eq "bin" } | Remove-Item -Recurse -Force
+# corretor: só os dicionários de português, espanhol e inglês (os outros só aumentam o pacote)
+$dic = Join-Path $PatchRoot "lib\spellchecker\resources"
+if (Test-Path $dic) { Get-ChildItem $dic -File | Where-Object { $_.Name -notmatch '^(pt|es|en)\.json\.gz$' } | Remove-Item -Force }
 # (zip pelo Python: nomes com "/", que funcionam em qualquer descompactador)
 & python -c "import sys, zipfile, pathlib; r = pathlib.Path(sys.argv[1]); z = zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED, compresslevel=9); [z.write(f, f.relative_to(r).as_posix()) for d in ('app', 'core', 'lib') for f in sorted((r / d).rglob('*')) if f.is_file()]; z.close()" $PatchRoot $patch
 if ($LASTEXITCODE) { throw "falha ao gerar o pacote de atualização" }

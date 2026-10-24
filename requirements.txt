@@ -14,3 +14,5 @@ cryptography>=42
 # Janela própria (WebView2 do Windows). Em Python puro: também vai no pacote de atualização
 # (packaging/bibliotecas-no-pacote.txt — manter as versões iguais)
 pywebview==6.2.1; sys_platform == "win32"
+# Corretor ortográfico do editor (Python puro, dicionários pt/es). Também vai no pacote de atualização.
+pyspellchecker==0.9.1

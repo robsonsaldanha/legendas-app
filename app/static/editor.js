@@ -148,7 +148,7 @@ async function renderEditor(sid) {
     sel: 0, dirty: false, undo: [], redo: [], peaks: null, savedAt: "", playUntil: null,
     hasVideo: data.has_video, hasAudio: data.has_audio,
     detected: data.detected, suggested: data.suggested_target,
-    clientId: data.client_id || null, shots: data.shots || null, itemId: data.item_id || null, lastAct: Date.now(),
+    clientId: data.client_id || null, shots: data.shots || null, itemId: data.item_id || null, prazo: data.prazo || "", lastAct: Date.now(),
   });
   ED.hasOrig = ED.cues.some((c) => c.orig != null);
   ED.wave.start = 0;
@@ -197,6 +197,7 @@ async function renderEditor(sid) {
       <button class="btn ghost icon" data-ed="undo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer">↶</button>
       <button class="btn ghost icon" data-ed="redo" title="Refazer (Ctrl+Y)" aria-label="Refazer">↷</button>
       <button class="btn ghost icon" data-ed="find" title="Localizar e substituir (Ctrl+F)" aria-label="Localizar e substituir">🔍︎</button>
+      <button class="btn ghost icon" data-ed="versoes" title="Versões salvas desta legenda" aria-label="Versões salvas">🕘︎</button>
       <span class="sep"></span>
       <label class="ed-inline">Cliente
         <select id="ed-client"><option value="">Nenhum</option>${clients.map((p) => `<option value="${p.id}" ${String(p.id) === String(ED.clientId) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
@@ -234,8 +235,9 @@ async function renderEditor(sid) {
       <div class="ed-text">
         <div class="ed-orig" id="ed-orig" ${ED.hasOrig ? "" : "hidden"}><span class="muted small">Original</span><div id="ed-origtxt"></div></div>
         <div class="ed-text-head"><span>${ED.hasOrig ? "Tradução" : "Texto"}</span><span id="ed-cps" class="tnum"></span></div>
-        <textarea id="ed-txt" spellcheck="true" lang="${esc(ED.language)}"></textarea>
+        <textarea id="ed-txt" spellcheck="false" lang="${esc(ED.language)}"></textarea>
         <div class="ed-text-foot"><span id="ed-linelen" class="tnum"></span><span id="ed-total" class="tnum"></span></div>
+        <div class="ed-dicas" id="ed-dicas" hidden></div>
       </div>
       <div class="ed-side-btns">
         <button class="btn" data-ed="unbreak">Juntar linhas</button>
@@ -306,6 +308,7 @@ async function renderEditor(sid) {
 
   applyEdPrefs();
   bindEditor();
+  carregarMemoria();
   if (ED.itemId) {   // tempo trabalhado no episódio: conta a cada minuto com atividade
     every(60000, () => {
       const v = vid();
@@ -547,6 +550,7 @@ function drawEdit() {
   const o = document.getElementById("ed-origtxt");
   if (o) o.innerHTML = c.orig != null ? c.orig.split("\n").map((l) => `<div>${esc(l)}</div>`).join("") : '<i class="muted small">sem original para esta legenda</i>';
   drawTextStats();
+  desenharDicas(); agendarOrtografia();
 }
 function drawTextStats() {
   const c = ED.cues[ED.sel];
@@ -723,6 +727,7 @@ function act(name) {
     case "verify": openVerify(); break;
     case "deliver": openDeliver(); break;
     case "find": openFind(); break;
+    case "versoes": abrirVersoes(); break;
   }
 }
 
@@ -1238,6 +1243,7 @@ function drawStatus() {
     <span>${ED.cues.length ? `${ED.sel + 1}/${ED.cues.length}` : "0/0"}</span>
     <button class="btn link small ${n ? "warn" : ""}" data-ed="nextissue">${n ? `${n} ${n === 1 ? "legenda precisa" : "legendas precisam"} de revisão` : "Nenhum problema"}</button>
     <span class="muted">${esc(ED.profile.name)}</span>
+    ${ED.prazo ? (() => { const t = prazoTexto(ED.prazo); return `<span class="ds-prazo ${t.nivel}" title="Prazo de entrega deste episódio">Entrega ${esc(t.texto)}</span>`; })() : ""}
     <span class="grow"></span>
     <span class="${ED.dirty ? "warn" : "muted"}">${ED.dirty ? "Alterações não salvas" : ED.savedAt ? `Salvo às ${ED.savedAt}` : "Sem alterações"}</span>`;
 }
@@ -1262,7 +1268,8 @@ function bindEditor() {
   rows.addEventListener("dblclick", (e) => { const tr = e.target.closest("tr[data-i]"); if (tr) { selectCue(Number(tr.dataset.i)); vid()?.play(); } });
 
   const txt = document.getElementById("ed-txt");
-  txt.addEventListener("input", () => { if (ED.cues[ED.sel]) setCue(ED.sel, { text: txt.value }, { edit: false }); });
+  txt.addEventListener("input", () => { if (ED.cues[ED.sel]) { setCue(ED.sel, { text: txt.value }, { edit: false }); desenharDicas(); agendarOrtografia(); } });
+  document.getElementById("ed-dicas").addEventListener("click", (e) => { if (cliqueDica(e)) e.stopPropagation(); });
   const st = document.getElementById("ed-start"), du = document.getElementById("ed-dur");
   st.addEventListener("change", () => {
     const c = ED.cues[ED.sel], t = parseTC(st.value);

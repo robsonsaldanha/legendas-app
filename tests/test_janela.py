@@ -119,7 +119,28 @@ def test_com_bandeja_o_x_so_esconde(monkeypatch):
 def test_menu_da_bandeja():
     from app.janela import MENU_BANDEJA
     textos = [m[0] if m else "—" for m in MENU_BANDEJA]
-    assert textos == ["Exibir", "Reabrir último", "Novo projeto", "—", "Atualizar", "Reiniciar", "Sair"]
+    assert textos == ["Exibir", "Reabrir último", "Novo projeto", "—", "Atualizar", "Reiniciar", "Relatar um problema…", "Sair"]
+
+
+def test_aviso_de_trabalho_terminado():
+    from app.janela import texto_aviso_trabalho
+    t, x = texto_aviso_trabalho({"id": 3, "name": "Ep 01.srt", "steps": ["traduzir"]}, "pronto")
+    assert t == "Tradução pronta" and x.startswith("Ep 01.srt")
+    t, x = texto_aviso_trabalho({"id": 3, "name": "Ep 02", "steps": ["transcrever", "traduzir"]}, "erro", "Sem internet." * 30)
+    assert t == "Tradução não terminou" and x.endswith("…") and len(x) < 220
+
+
+def test_fila_avisa_quando_termina(server):  # noqa: F811
+    """O aviso da bandeja recebe o trabalho que terminou (e um aviso com erro não derruba a fila)."""
+    app, port, tmp = server
+    vistos = []
+
+    def aviso(job, status, erro):
+        vistos.append((job["id"], status))
+        raise RuntimeError("bandeja fora")
+    app.worker.ao_terminar = aviso
+    app.worker._avisar({"id": 7, "name": "x", "steps": []}, "pronto", "")
+    assert vistos == [(7, "pronto")]
 
 
 def test_retomar_onde_estava(server):  # noqa: F811

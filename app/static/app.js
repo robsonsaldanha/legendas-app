@@ -251,6 +251,7 @@ async function router() {
   }
   lastHash = location.hash;
   clearTimers();
+  atualizarPrazoTopo();
   main.onclick = null; main.onchange = null; main.onsubmit = null; main.oninput = null;
   cancelAnimationFrame(ED.raf);
   document.querySelectorAll("video").forEach((v) => { v.pause(); v.removeAttribute("src"); v.load(); });
@@ -1017,6 +1018,7 @@ async function renderProject(id) {
         <label class="field"><span>Idioma da tradução</span><select id="p-dst">${langOptions(p.target_lang)}</select></label>
         <label class="field"><span>Regras (perfil) · <a href="#/perfil/${esc(p.profile_key)}" id="p-rules-link">ver e editar as regras</a></span><select id="p-profile">${S.state.profiles.map((x) => `<option value="${esc(x.key)}" ${x.key === p.profile_key ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>
         <p class="muted small" style="align-self:end">As regras acompanham o idioma da legenda quando o cliente tem um perfil para cada idioma (ex.: Netflix ES ↔ PT).</p>
+        <label class="field"><span>Formato de entrega ${helpBtn("formato")}</span><select id="p-formato">${formatoOptions(p.formato, "Igual às Configurações (padrão .srt)")}</select></label>
         <label class="field" style="grid-column:1/-1"><span>Sobre o material</span>
           <textarea id="p-context" placeholder="Assunto, época, personagens principais. Vai como contexto para a transcrição.">${esc(p.context)}</textarea></label>
         <label class="field" style="grid-column:1/-1"><span>Instruções do cliente</span>
@@ -1056,6 +1058,7 @@ async function renderProject(id) {
     source_lang: document.getElementById("p-src").value, target_lang: document.getElementById("p-dst").value,
     profile_key: document.getElementById("p-profile").value, context: document.getElementById("p-context").value,
     instructions: document.getElementById("p-instr").value, glossary: gloss.filter((g) => g.term.trim()),
+    formato: document.getElementById("p-formato").value,
   });
 
   main.onclick = async (e) => {
@@ -1139,10 +1142,14 @@ async function renderSettings() {
         `<a class="ds-btn sm" href="#/clientes">Abrir</a>`)}
       ${setRow("cfg-glossario", "Glossário geral", "Termos que valem em todos os trabalhos (o do cliente e o do projeto ficam nas telas deles)",
         `<button class="ds-btn sm" data-action="glossario-geral">Abrir</button>`)}
+      ${setRow("formato", "Formato de entrega", `<select id="s-formato" aria-label="Formato de entrega" style="width:auto">${formatoOptions(s.formato_entrega || "srt")}</select>
+          · cliente e projeto podem usar outro`, "")}
       ${setRow("cfg-perfis", "Perfis de regras", `${(st.profiles || []).length} perfis (limites e manual de cada cliente)`,
         `<a class="ds-btn sm" href="#/perfis">Abrir</a>`)}
       ${setRow("cfg-ia", "Tradução automática", `Pelo seu ChatGPT (sem custo) ou pela API${prov ? ` · serviço: ${esc(prov.name || prov.id)}${prov.ready ? " (pronto)" : " (falta a chave)"}` : ""}`,
         `<button class="ds-btn sm" data-action="open-ai">Configurar</button>`)}
+      ${setRow("cfg-relatar", "Relatar um problema", "Algo não funcionou? Conte o que aconteceu e a CNT recebe na hora",
+        `<button class="ds-btn sm" data-action="relatar">Relatar</button>`)}
       ${setRow("cfg-fila", "Trabalhos em segundo plano", "Transcrições e traduções que rodam sozinhas",
         `<a class="ds-btn sm" href="#/trabalhos">Ver</a>`)}
       ${setRow("cfg-editor", "Preferências do editor", "Cores, fontes, forma de onda e tamanho das áreas",
@@ -1217,6 +1224,12 @@ async function renderSettings() {
 
 
   api("GET", "/api/perfil").then((p) => { S.perfil = p; const el = document.getElementById("pf-resumo"); if (el) el.textContent = perfilResumo(p); }).catch(() => {});
+  document.getElementById("s-formato")?.addEventListener("change", async (e) => {
+    try {
+      S.state.settings = await api("PUT", "/api/settings", { formato_entrega: e.target.value });
+      toast(`Entregas em ${e.target.selectedOptions[0].textContent}, a não ser que o cliente ou o projeto peça outro.`);
+    } catch (err) { toast(err.message, true); }
+  });
   document.getElementById("s-bandeja")?.addEventListener("change", async (e) => {
     try {
       S.state.settings = await api("PUT", "/api/settings", { bandeja: e.target.checked });
@@ -1282,6 +1295,7 @@ async function renderSettings() {
       if (a === "check-update") await checkUpdate(true);
       if (a === "perfil") await perfilModal();
       if (a === "glossario-geral") await glossarioGeral();
+      if (a === "relatar") relatarProblema();
       if (a === "open-data") await api("POST", "/api/open", { path: st.data_dir });
       if (a === "quit") {
         if (!confirm("Fechar o programa? Trabalhos em andamento serão interrompidos (dá para retomar depois).")) return;

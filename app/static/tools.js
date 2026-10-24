@@ -28,8 +28,10 @@ function applyCues(cues, msg) {
     let k = ED.cues.findIndex((c) => c.start >= selStart - 1e-6);
     ED.sel = Math.max(0, Math.min(k < 0 ? ED.cues.length - 1 : k, ED.cues.length - 1));
   }
+  ED.hasOrig = ED.hasOrig || ED.cues.some((c) => c.orig != null);
   changed(false); drawAll(); selectCue(ED.sel, { seek: false });
   if (msg) toast(`${msg} (Ctrl+Z desfaz)`);
+  carregarMemoria();
 }
 
 async function syncOp(op, params = {}) {
@@ -360,6 +362,8 @@ async function openDeliver() {
   const m = modal("Entregar a legenda", `
     <label class="field"><span>Nome do arquivo ${info.naming ? `<em class="muted small">· padrão ${esc(info.profile)}</em>` : ""}</span>
       <input type="text" id="dl-name" value="${esc(info.name)}"></label>
+    <label class="field"><span>Formato <em class="muted small">· ${esc(ORIGEM_FORMATO[info.formato_origem] || "padrão")}</em> ${helpBtn("formato")}</span>
+      <select id="dl-fmt">${formatoOptions(info.formato || "srt")}</select></label>
     <label class="field"><span>Pasta</span>
       <div class="row" style="flex-wrap:nowrap"><input type="text" id="dl-folder" value="${esc(info.folder)}"><button class="btn" data-x="folder">Escolher</button></div></label>
     <label class="row small" style="gap:6px"><input type="checkbox" id="dl-sig" ${hasSig ? "disabled" : who ? "checked" : ""}>
@@ -371,6 +375,10 @@ async function openDeliver() {
     <label class="row small" style="gap:6px"><input type="checkbox" id="dl-rep"> Salvar também o relatório de verificação (.qc.txt)</label>
     ${n ? `<p class="note warn">${n} legenda(s) com apontamentos. <button class="btn link small" data-x="verify">Ver antes de entregar</button></p>` : `<p class="note ok">Nenhum problema encontrado.</p>`}`,
     `<button class="btn" data-x="close">Cancelar</button><button class="btn primary" data-x="go">Entregar</button>`, { wide: true });
+  m.$("#dl-fmt").addEventListener("change", (e) => {   // troca só desta vez: acompanha a extensão do nome
+    const ext = "." + e.target.value;
+    m.$("#dl-name").value = m.$("#dl-name").value.replace(/\.(srt|vtt|ttml|dfxp|xml|ass|ssa)$/i, "") + ext;
+  });
   m.$("#dl-who").addEventListener("input", (e) => { if (!hasSig) m.$("#dl-sig").checked = !!e.target.value.trim(); });
   m.ov.addEventListener("click", async (e) => {
     const x = e.target.closest("[data-x]")?.dataset.x;
@@ -385,7 +393,8 @@ async function openDeliver() {
     if (x !== "go") return;
     const who2 = m.$("#dl-who").value.trim();
     const body = { cues: sortedCues(), name: m.$("#dl-name").value.trim(), folder: m.$("#dl-folder").value.trim(),
-      signature: m.$("#dl-sig").checked && who2 ? `${info.signature_label}: ${who2}` : "", report: m.$("#dl-rep").checked };
+      signature: m.$("#dl-sig").checked && who2 ? `${info.signature_label}: ${who2}` : "", report: m.$("#dl-rep").checked,
+      formato: m.$("#dl-fmt").value };
     try {
       if (who2 && who2 !== who) {
         S.state.settings = await api("PUT", "/api/settings", { translator_name: who2 }).catch(() => S.state.settings);

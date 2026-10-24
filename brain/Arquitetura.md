@@ -54,6 +54,11 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 | `sincronia.py` | Perfil na nuvem: conversa com `/v1/sync` (perfil, restaurar, Workspace, métricas), arquivo `.cnt-perfil.json`, resumo (hash) |
 | `languages.py` | Os 20 idiomas (códigos, nomes, Whisper, limites da Netflix) |
 | `flags.py` | Marcas ⚑ das legendas para conferir (fora do SRT) |
+| `formatos.py` | Formatos de entrega (2.15): `.srt` (padrão), `.vtt`, `.ttml` (IMSC 1.1 Text) e `.ass`; itálico e `{\an8}` convertidos; `formato_efetivo` (projeto > cliente > equipe > global) |
+| `versoes.py` | Histórico de versões (2.15): cópia a cada Salvar/Entregar em `editor\versoes\<arquivo>` (50 por arquivo, sem repetir a igual) e comparação legenda a legenda |
+| `memoria.py` | Memória de tradução (2.15): normalização do original e semelhança; a tabela `tm` fica no `legendas.db` (só no computador) |
+| `ortografia.py` | Corretor ortográfico (2.15, `pyspellchecker`): aponta e sugere; ignora nomes no meio da frase, siglas, números, glossários, dicionário pessoal e fala coloquial |
+| `suporte.py` | "Relatar um problema" (2.15): descrição + e-mail + fim do registro técnico (sem segredos) → `POST /v1/suporte` |
 
 ## Partida (`cntboot.py`)
 
@@ -68,7 +73,7 @@ O programa é um servidor local (só `127.0.0.1`). No Windows a tela abre numa *
 | `__main__.py` | `python -m app`: sobe o servidor na porta 8765 (ou outra livre), abre o navegador, limpa temporários antigos. Se já estiver aberto, só abre a página. `--dialog` é o modo auxiliar das janelas de arquivo |
 | `server.py` | HTTP + API JSON (biblioteca padrão, sem framework). Token por sessão no cabeçalho `X-Token`, checagem do `Host`, CSP |
 | `worker.py` | Fila: um trabalho por vez numa thread; progresso e registro em memória para a tela |
-| `db.py` | SQLite `legendas.db`: clientes (tabela `projects`), glossários (do cliente em `glossary`; geral e do projeto em `glossario_extra`), perfis próprios, histórico, recentes |
+| `db.py` | SQLite `legendas.db`: clientes (tabela `projects`, com `formato`), glossários (do cliente em `glossary`; geral e do projeto em `glossario_extra`), perfis próprios, histórico, recentes, memória de tradução (`tm`); projetos (`obras.formato`) e episódios (`itens.prazo`) |
 | `dialogs.py` | Janelas "Abrir" e "Salvar como" do Windows (tkinter) num processo separado, para obter o caminho real do arquivo |
 | `projects.py` | Projetos (tabelas `obras`, `itens`, `metricas`, `tempo`, `eventos`): criar, abrir pela pasta, episódios, status, copiar arquivos, relatórios |
 | `editor.py` | Sessões do editor: lê o SRT, prepara o vídeo para o player (cópia leve quando o navegador não toca o formato), forma de onda + sinal de fala, cliente, operações de sincronia, tarefas em segundo plano (sincronia automática, cortes de cena), entrega, rascunho, salvar com cópia de segurança, QC, quebra de linhas |

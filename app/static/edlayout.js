@@ -11,6 +11,7 @@ const EDP_DEFAULT = {
   sub: { size: 100, bold: false },  // legenda sobre o vídeo (% do tamanho padrão)
   wave: { sel: "", fg: "", bg: "", head: "", grid: true, invertWheel: false, snapShots: true, cps: false },
   font: { listSize: 13, listBold: false, textSize: 18, textBold: true, textCenter: true },
+  dicas: { ortografia: true, memoria: true },   // linha discreta debaixo do texto (2.15)
 };
 let EDP = structuredClone(EDP_DEFAULT);
 
@@ -245,6 +246,11 @@ function edPrefsHtml() {
         ${ck("color.lines", "Mais linhas que o permitido")}${ck("color.overlap", "Sobreposição de tempos")}
         ${ck("color.gap", "Intervalo curto entre legendas")}
         ${col("errColor", "Cor dos problemas", "#f8d7d3")}
+      </section>
+      <section><h3>Dicas debaixo do texto</h3>
+        <p class="muted small">Uma linha pequena, sem janela: só muda alguma coisa se você clicar.</p>
+        ${ck("dicas.ortografia", "Corretor ortográfico (aponta e sugere; “ignorar” põe a palavra no seu dicionário)")}
+        ${ck("dicas.memoria", "Memória de tradução (mostra como você já traduziu o mesmo original)")}
       </section>
       <section><h3>Legenda sobre o vídeo</h3>
         ${num("sub.size", "Tamanho (%)", 50, 200, 5)}${ck("sub.bold", "Negrito")}

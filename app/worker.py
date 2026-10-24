@@ -57,6 +57,7 @@ class Worker:
         self._q: queue.Queue[int] = queue.Queue()
         self._transcriber_factory = transcriber_factory  # testes injetam uma API falsa
         self._translator_factory = translator_factory
+        self.ao_terminar = None   # (job, status, erro) → aviso na bandeja (2.15); nunca derruba a fila
         self._thread = threading.Thread(target=self._loop, name="fila", daemon=True)
         self._thread.start()
 
@@ -151,6 +152,14 @@ class Worker:
             except Exception:  # noqa: BLE001  — o loop nunca pode morrer
                 log.exception("Falha inesperada no trabalho %s", jid)
 
+    def _avisar(self, job: dict, status: str, erro: str) -> None:
+        if self.ao_terminar is None:
+            return
+        try:
+            self.ao_terminar(job, status, erro)
+        except Exception:  # noqa: BLE001
+            log.debug("aviso de trabalho terminado", exc_info=True)
+
     def _run(self, jid: int) -> None:
         job = self.db.get_job(jid)
         if not job or job["status"] != "fila":
@@ -179,6 +188,8 @@ class Worker:
             self.db.update_job(jid, status="cancelado" if cancelled else "erro",
                                error=None if cancelled else str(e),
                                finished_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+            if not cancelled:
+                self._avisar(job, "erro", str(e))
             return
         except Exception as e:  # noqa: BLE001
             log.exception("Erro no trabalho %s", jid)
@@ -186,6 +197,7 @@ class Worker:
             live.add(msg)
             self.db.update_job(jid, status="erro", error=msg,
                                finished_at=time.strftime("%Y-%m-%d %H:%M:%S"))
+            self._avisar(job, "erro", msg)
             return
         self.db.update_job(
             jid, status="pronto", core_job_id=res.job_id,
@@ -195,3 +207,4 @@ class Worker:
             estimated_timing=int(res.estimated_timing),
             finished_at=time.strftime("%Y-%m-%d %H:%M:%S"))
         live.add("Pronto.")
+        self._avisar(job, "pronto", "")

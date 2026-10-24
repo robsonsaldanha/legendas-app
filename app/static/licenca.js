@@ -228,7 +228,48 @@ window.cntTray = (acao) => {
   if (acao === "novo") { location.hash = "#/obra/nova"; return; }
   if (acao === "atualizar") return checkUpdate(true);
   if (acao === "reiniciar") return reiniciarPrograma();
+  if (acao === "relatar") return relatarProblema();
 };
+
+/* "Relatar um problema": descrição + e-mail para resposta + (se ela deixar) o fim do registro técnico. */
+async function relatarProblema() {
+  const email0 = getPref("cnt.email-suporte") || "";
+  const m = modal("Relatar um problema", `
+    <label class="field"><span>O que aconteceu?</span>
+      <textarea id="rp-desc" rows="6" placeholder="Ex.: cliquei em Entregar e apareceu um erro vermelho; o arquivo não foi criado." autofocus></textarea></label>
+    <label class="field"><span>E-mail para a resposta <em class="muted small">(opcional)</em></span>
+      <input type="text" inputmode="email" autocomplete="email" id="rp-email" value="${esc(email0)}" placeholder="voce@exemplo.com"></label>
+    <label class="check"><input type="checkbox" id="rp-reg" checked>
+      <span>Enviar junto o registro técnico do programa (ajuda a achar o problema).
+      <button type="button" class="btn link small" data-r="ver">Ver o que vai</button></span></label>
+    <pre id="rp-prev" class="mono small" hidden style="max-height:180px;overflow:auto;white-space:pre-wrap"></pre>
+    <p class="muted small">Vão: o que você escreveu, o e-mail, a versão do programa e do Windows e, se marcado, o registro (pode ter nomes de arquivos e pastas).
+      Não vão: legendas, vídeos nem as chaves de IA. Detalhes na <a href="${esc((S.state?.licenca?.site || "https://legendas.cntoficial.com.br").replace(/\/$/, ""))}/privacidade" target="_blank" rel="noopener">Política de privacidade</a>.</p>`,
+    `<button class="btn" data-r="x">Cancelar</button><button class="btn primary" data-r="ok">Enviar</button>`, { wide: true });
+  m.ov.addEventListener("click", async (e) => {
+    const r = e.target.closest("[data-r]")?.dataset.r;
+    if (!r) return;
+    e.preventDefault();
+    if (r === "x") return m.close();
+    if (r === "ver") {
+      const pre = m.$("#rp-prev");
+      if (!pre.hidden) { pre.hidden = true; return; }
+      try { const g = await api("GET", "/api/suporte/registros"); pre.textContent = g.tamanho ? `(últimos trechos de ${Math.round(g.tamanho / 1024)} KB)\n…${g.fim}` : "O registro está vazio."; pre.hidden = false; }
+      catch (err) { toast(err.message, true); }
+      return;
+    }
+    if (r === "ok") {
+      const btn = e.target.closest("button"); btn.disabled = true; m.ov.dataset.busy = "1";
+      try {
+        const email = m.$("#rp-email").value.trim();
+        const res = await api("POST", "/api/suporte", { descricao: m.$("#rp-desc").value, email, registros: m.$("#rp-reg").checked });
+        if (email) setPref("cnt.email-suporte", email);
+        delete m.ov.dataset.busy; m.close();
+        toast(`Enviado. Protocolo nº ${res.protocolo}.${email ? " A resposta vai para o seu e-mail." : ""}`);
+      } catch (err) { toast(err.message, true); btn.disabled = false; delete m.ov.dataset.busy; }
+    }
+  });
+}
 
 /* Depois de atualizar/reiniciar: volta para onde estava (o editor reabre o mesmo arquivo). */
 async function retomarOndeEstava(r) {
