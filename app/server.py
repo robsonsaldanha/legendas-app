@@ -40,6 +40,8 @@ from .worker import UPLOADS_SUBDIR, Worker
 log = logging.getLogger("legendas.server")
 
 STATIC = Path(__file__).resolve().parent / "static"
+# mudanças que entram no perfil sincronizado (clientes, glossários, perfis de regras, configurações)
+SINCRONIZA = re.compile(r"^/api/(projects|profiles|settings)(/|$)")
 
 LANGUAGES = as_languages()
 
@@ -142,6 +144,8 @@ class App:
         except ValueError:
             self.retomar = None
         self.janela = None          # app.janela.Janela quando aberto na janela própria
+        from .perfil import Sincronizador
+        self.sincronia = Sincronizador(self.db)
         self.editor_sujo = False    # o editor avisa quando há alterações não salvas (confirmação ao fechar)
 
     # ---------------------------------------------------------- sessão
@@ -583,6 +587,8 @@ class Handler(BaseHTTPRequestHandler):
                     match = rx.match(path)
                     if m == method and match:
                         result = getattr(self, name)(*match.groups())
+                        if method != "GET" and SINCRONIZA.match(path):
+                            self.app.sincronia.avisar_mudanca()     # cliente, perfil ou configuração mudou
                         if result is not None:
                             self._json(result)
                         return
@@ -1326,6 +1332,57 @@ class Handler(BaseHTTPRequestHandler):
     def api_restart(self):
         self.app.restart(self.app.retomar_de(self._body().get("hash")))
         return {"ok": True}
+
+    # ------------------------------------------------------------ perfil sincronizado (2.13)
+
+    @route("GET", r"/api/perfil")
+    def api_perfil(self):
+        return self.app.sincronia.to_dict()
+
+    @route("POST", r"/api/perfil/sincronizar")
+    def api_perfil_sync(self):
+        if not self.app.sincronia.to_dict()["disponivel"]:
+            raise ApiError("O perfil na nuvem precisa de uma licença ativada. Use Exportar/Importar arquivo enquanto isso.")
+        return self.app.sincronia.agora()
+
+    @route("POST", r"/api/perfil/restaurar")
+    def api_perfil_restore(self):
+        from core.sincronia import SincroniaError
+        try:
+            r = self.app.sincronia.restaurar(int(self._body().get("id") or 0))
+        except SincroniaError as e:
+            raise ApiError(str(e)) from e
+        return {"resumo": r, "perfil": self.app.sincronia.to_dict()}
+
+    @route("POST", r"/api/perfil/comecar-do-zero")
+    def api_perfil_fresh(self):
+        self.app.sincronia.nao_restaurar()
+        return self.app.sincronia.to_dict()
+
+    @route("POST", r"/api/perfil/exportar")
+    def api_perfil_export(self):
+        from core.sincronia import para_arquivo
+        from .perfil import montar
+        paths = dialogs.ask("save_perfil", title="Exportar perfil", filename="Meu perfil.cnt-perfil.json")
+        if not paths:
+            return {"ok": False}
+        Path(paths[0]).write_text(json.dumps(para_arquivo(montar(self.app.db)), ensure_ascii=False, indent=1), encoding="utf-8")
+        return {"ok": True, "path": paths[0]}
+
+    @route("POST", r"/api/perfil/importar")
+    def api_perfil_import(self):
+        from core.sincronia import SincroniaError, de_arquivo
+        from .perfil import aplicar
+        paths = dialogs.ask("perfil_usuario", title="Importar perfil")
+        if not paths:
+            return {"ok": False}
+        try:
+            perfil = de_arquivo(json.loads(Path(paths[0]).read_text(encoding="utf-8-sig")))
+            r = aplicar(self.app.db, perfil)
+        except (SincroniaError, ValueError, OSError) as e:
+            raise ApiError(str(e) if isinstance(e, SincroniaError) else "Não consegui ler este arquivo de perfil.") from e
+        self.app.sincronia.avisar_mudanca()
+        return {"ok": True, "resumo": r}
 
     @route("POST", r"/api/janela/sujo")
     def api_janela_sujo(self):

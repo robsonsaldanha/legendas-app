@@ -50,6 +50,7 @@ def _depois_de_abrir(app, port: int) -> None:
         except OSError:
             pass
     licenca.conferir_em_segundo_plano()
+    app.sincronia.iniciar()          # perfil, Workspace e métricas com o servidor (só com licença ativada)
     if atualizacao.build_info() and not os.environ.get("CNT_SEM_ATUALIZACAO"):
         app.start_update(port)     # só na cópia instalada (o CI grava core/canal.json)
 

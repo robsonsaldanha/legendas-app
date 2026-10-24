@@ -51,6 +51,7 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 | `config.py` | Pastas em `%APPDATA%\CNT Legendas` e `Settings` (modelos, preços, paralelismo) |
 | `licenca.py` | Licença: identificação do computador, avaliação/ativação/conferência no servidor, concessão assinada (Ed25519) guardada em `%ProgramData%\CNT Legendas\licenca`, recursos pagos |
 | `atualizacao.py` | Atualização automática: manifesto assinado, download com SHA-256, pacote (patch) em `versoes\<versão>` ou instalador silencioso; reabrir a nova instância |
+| `sincronia.py` | Perfil na nuvem: conversa com `/v1/sync` (perfil, restaurar, Workspace, métricas), arquivo `.cnt-perfil.json`, resumo (hash) |
 | `languages.py` | Os 20 idiomas (códigos, nomes, Whisper, limites da Netflix) |
 | `flags.py` | Marcas ⚑ das legendas para conferir (fora do SRT) |
 
@@ -71,6 +72,7 @@ O programa é um servidor local (só `127.0.0.1`). No Windows a tela abre numa *
 | `dialogs.py` | Janelas "Abrir" e "Salvar como" do Windows (tkinter) num processo separado, para obter o caminho real do arquivo |
 | `projects.py` | Projetos (tabelas `obras`, `itens`, `metricas`, `tempo`, `eventos`): criar, abrir pela pasta, episódios, status, copiar arquivos, relatórios |
 | `editor.py` | Sessões do editor: lê o SRT, prepara o vídeo para o player (cópia leve quando o navegador não toca o formato), forma de onda + sinal de fala, cliente, operações de sincronia, tarefas em segundo plano (sincronia automática, cortes de cena), entrega, rascunho, salvar com cópia de segurança, QC, quebra de linhas |
+| `perfil.py` | Monta/aplica o perfil do usuário (configurações seguras, clientes com glossários, perfis de regras), perfis e clientes da empresa, métricas de produção, sincronizador em segundo plano |
 | `janela.py` | Janela WebView2 (pywebview), confirmação ao fechar, bandeja do sistema (NotifyIcon) e o menu dela |
 | `static/` | `index.html`, `app.css`, `app.js` (telas gerais e roteador), `home.js` (Início), `editor.js` (editor), `tools.js` (Sincronizar, Verificar, Entregar, Localizar) — sem dependências externas (funciona offline) |
 

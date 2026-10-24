@@ -1129,6 +1129,8 @@ async function renderSettings() {
         `<button class="ds-btn sm" data-action="check-update">Procurar atualização</button>`)}
       ${st.janela ? setRow("cfg-bandeja", "Bandeja do sistema", `<label class="check"><input type="checkbox" id="s-bandeja" ${s.bandeja !== false ? "checked" : ""}>
           Manter o ícone ao lado do relógio; o X esconde a janela em vez de fechar</label>`, "") : ""}
+      ${setRow("cfg-perfil", "Perfil na nuvem", `<span id="pf-resumo">${esc(perfilResumo(S.perfil))}</span>`,
+        `<button class="ds-btn sm" data-action="perfil">Abrir</button>`)}
       ${setRow("cfg-nome", "Seu nome na legenda", `<input type="text" id="s-who" value="${esc(s.translator_name || "")}" placeholder="Como você assina as legendas" aria-label="Seu nome na legenda">`,
         `<button class="ds-btn sm" data-action="save-who">Salvar</button>`)}
       ${setRow("cfg-pasta", "Pasta dos trabalhos", `<span class="mono small">${esc(st.projects_root || "não escolhida")}</span> — um mês por pasta (${esc(monthFolder(thisMonth()))}…)`,
@@ -1212,6 +1214,7 @@ async function renderSettings() {
 
 
 
+  api("GET", "/api/perfil").then((p) => { S.perfil = p; const el = document.getElementById("pf-resumo"); if (el) el.textContent = perfilResumo(p); }).catch(() => {});
   document.getElementById("s-bandeja")?.addEventListener("change", async (e) => {
     try {
       S.state.settings = await api("PUT", "/api/settings", { bandeja: e.target.checked });
@@ -1275,6 +1278,7 @@ async function renderSettings() {
         toast("Configurações salvas.");
       }
       if (a === "check-update") await checkUpdate(true);
+      if (a === "perfil") await perfilModal();
       if (a === "open-data") await api("POST", "/api/open", { path: st.data_dir });
       if (a === "quit") {
         if (!confirm("Fechar o programa? Trabalhos em andamento serão interrompidos (dá para retomar depois).")) return;
@@ -1441,4 +1445,5 @@ document.addEventListener("drop", (e) => e.preventDefault());
   } catch (e) { router(); }
   refreshRunningCount();
   setInterval(() => { if (!document.hidden) refreshRunningCount(); }, 5000);
+  perfilAoAbrir();
 })();

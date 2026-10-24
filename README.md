@@ -2,7 +2,7 @@
 
 Programa para Windows de legendagem profissional: traduz (pela IA ou pelo ChatGPT da própria pessoa), transcreve no computador (Whisper), sincroniza pela fala, confere as regras de cada cliente e entrega `.srt` no padrão Netflix. Os vídeos e as legendas nunca saem do computador.
 
-**Estado (out/2026):** versão 2.12 — janela própria (WebView2) com ícone na bandeja do sistema, licença (1 dia de avaliação, modo grátis, ativação por código), atualização automática pelos canais desenvolvimento/produção. Em andamento: 2.13, perfil do usuário e Workspace da empresa sincronizados com o servidor.
+**Estado (out/2026):** versão 2.13 — janela própria (WebView2) com ícone na bandeja do sistema, licença (1 dia de avaliação, modo grátis, ativação por código), atualização automática pelos canais desenvolvimento/produção, perfil do usuário guardado no servidor (restaurar em PC novo, exportar/importar arquivo), Workspace da empresa (perfis e clientes compartilhados) e métricas de produção na área do cliente.
 
 **Para instalar:** baixe o `Instalador_CNT_Legendas_<versão>.exe` em [Releases](../../releases) (ou pelo site) e dê dois cliques. Ele traz tudo (Python, bibliotecas, ffmpeg, modelos); depois o programa se atualiza sozinho.
 

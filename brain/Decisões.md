@@ -253,3 +253,10 @@
 ## 2026-10-24 — Plano da 2.13: perfil sincronizado (antes de começar)
 - Pedido do Róbson: perfis de usuário salvos no servidor e importáveis (PC novo, formatado), "1 perfil por key", tudo que a LGPD permite (menos as chaves de IA), métricas no servidor (sem o texto das legendas); renovar/comprar de novo não perde o perfil. Empresas (Enterprise): perfil da empresa + do usuário, até 3 perfis padrão, configurados só pela conta compradora na área do cliente (já pronto no servidor 1.1).
 - Desenho: ver [[Licenciamento]] → "Perfil do usuário e Workspace no servidor". Identidade dos clientes entre computadores = nome (sem diferenciar maiúsculas). Clientes/glossários compartilhados: cada computador lembra o resumo (hash) do que sincronizou por último; se mudou aqui, envia; se mudou lá, recebe. Apagar não se propaga (evita perder dados por engano).
+
+## 2026-10-24 — 2.13 pronta: perfil na nuvem, Workspace e métricas
+- Como planejado (ver acima e [[Licenciamento]]). Configurações sincronizadas: nome na legenda, método/serviço/modelos/preços de tradução e transcrição, modelo do Whisper, falas em outros idiomas, paralelismo, dias de trabalhos guardados, bandeja, serviços de IA escolhidos (sem chaves) e preferências do editor. Ficam no computador: pasta dos trabalhos, GPU, alinhamento, blocos de áudio.
+- Restaurar só é oferecido quando este computador ainda não tem perfil no servidor e a conta tem outros; a decisão (restaurar ou começar do zero) fica guardada para não perguntar de novo. Depois disso o perfil deste computador é enviado normalmente.
+- Clientes compartilhados (Workspace): o programa guarda, por cliente, o resumo do que sincronizou por último (`meta ws:<nome>`). Mudou aqui → envia; mudou nos colegas e não aqui → recebe; mudou nos dois → o daqui vai na próxima (o mais recente vale). Com "Glossários" desligado no Workspace, o glossário local é mantido.
+- Métricas: um registro por episódio/filme (chave = hash do computador + pasta + id), só quando algo mudou desde o último envio.
+- Teste de integração real feito contra o servidor 1.2 (dois computadores na mesma licença Enterprise).

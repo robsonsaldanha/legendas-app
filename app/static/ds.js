@@ -34,6 +34,8 @@ const HELP = {
     "Ao abrir, o programa procura versão nova e atualiza sozinho. Com ele aberto, confere a cada 30 minutos e pergunta se quer atualizar agora: antes, oferece salvar a legenda aberta, e depois reabre onde você estava."],
   "cfg-bandeja": ["Bandeja do sistema",
     "Ligado: o ícone do CNT Legendas fica ao lado do relógio enquanto o programa está aberto, e o X só esconde a janela (os trabalhos continuam). Para fechar de vez, clique com o botão direito no ícone e escolha Sair. Desligado: o X pergunta e fecha o programa."],
+  "cfg-perfil": ["Perfil na nuvem",
+    "Com a licença ativada, as suas configurações, clientes (com glossários e instruções) e perfis de regras ficam guardados no servidor, ligados à sua conta. Num computador novo ou formatado, ao ativar a licença, o programa oferece trazer tudo de volta. As chaves de IA e as pastas deste computador não vão. Também dá para exportar e importar um arquivo."],
   "cfg-nome": ["Seu nome na legenda",
     "Algumas entregas pedem o nome de quem traduziu no fim da legenda (“Traducción: …”). É este nome que o programa usa."],
   "cfg-pasta": ["Pasta dos trabalhos",

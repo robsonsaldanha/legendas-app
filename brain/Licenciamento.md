@@ -118,7 +118,7 @@ A primeira versão com atualização automática (2.10.0) precisa ser instalada 
 4. Página pública e termos/privacidade.
 5. Nuitka nos módulos sensíveis; repositório privado + runner próprio.
 
-## Perfil do usuário e Workspace no servidor (2.13 — em andamento)
+## Perfil do usuário e Workspace no servidor (2.13 — pronto)
 
 Decisões do Róbson (2026-10-24): **um perfil por key** (o que manda é a key); vai **tudo que não for contra a LGPD** — configurações (exceto as chaves das IAs, que ficam só no PC), regras/perfis de cliente, clientes, glossários e preferências — e **métricas** (quantidades, tempos e nomes de projetos/clientes; nunca o texto das legendas nem arquivos). Renovar ou comprar de novo não pode perder o perfil.
 
@@ -130,3 +130,9 @@ Como funciona:
 - **Workspace da empresa (planos de equipe):** o programa recebe os perfis padrão da empresa (aparecem como perfis "Empresa: …", só leitura) e, se a empresa compartilhar, clientes e glossários: cada computador envia os seus e recebe os dos colegas (o mais recente vale; apagar não se propaga). Métricas: se compartilhadas, a conta compradora vê a produção de cada usuário no Workspace.
 - **Métricas:** cada episódio/filme (projeto, cliente, tipo, temporada/episódio, mês, situação, nº de legendas, minutos de vídeo, tempo de trabalho, data de entrega) vai para o servidor; a área do cliente ganha "Produção".
 - API do programa: `/v1/sync/*`, autenticada por licença + computador ativo nela.
+
+Implementação (2.13 / servidor 1.2):
+- Programa: `core/sincronia.py` (protocolo, arquivo `.cnt-perfil.json`, resumo/hash) e `app/perfil.py` (montar/aplicar o perfil, perfis da empresa, clientes compartilhados, métricas, sincronizador em segundo plano a cada 10 min e alguns segundos depois de salvar cliente, perfil de regras ou configuração). Tela: Configurações → **Perfil na nuvem** (situação, Sincronizar agora, trazer de outro computador, Exportar/Importar arquivo). Num computador recém-ativado com perfis guardados na conta, o programa pergunta "Trazer o seu perfil?" (Restaurar / Começar do zero / Depois) **antes** de enviar o perfil deste computador.
+- Aplicar um perfil junta, não apaga: clientes pelo nome, perfis de regras pela chave, configurações da lista segura.
+- Perfis da empresa: chave `empresa-<id>`, nome "<Empresa>: <perfil>", `extra.padrao` no perfil padrão; somem quando a empresa para de compartilhar.
+- Servidor: `src/sync.js` (ver o `brain/Decisões.md` do servidor).

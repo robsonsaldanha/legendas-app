@@ -16,8 +16,8 @@ Programa Windows com instalador para legendagem profissional (a usuária traduz 
 - [[Especificação]] — documento original de requisitos
 
 ## Estado atual
-**Versão 2.12.** Janela própria (WebView2) com ícone na bandeja (Exibir, Reabrir último, Novo projeto, Atualizar, Reiniciar, Sair); licença com 1 dia de avaliação e modo grátis; atualização automática obrigatória ao abrir e aviso com o programa aberto (salva antes e reabre onde estava). Trabalhos organizados em pastas por mês; Início com o mês, projetos com trilha de passos por episódio; editor no layout do Subtitle Edit (traduzir, sincronizar pela fala, verificar, entregar).
+**Versão 2.13.** Janela própria (WebView2) com ícone na bandeja (Exibir, Reabrir último, Novo projeto, Atualizar, Reiniciar, Sair); licença com 1 dia de avaliação e modo grátis; atualização automática obrigatória ao abrir e aviso com o programa aberto (salva antes e reabre onde estava); **perfil na nuvem** (configurações, clientes com glossários e perfis de regras guardados no servidor, um por computador ativado; restaurar num PC novo; exportar/importar arquivo), **Workspace da empresa** no programa (perfis "Empresa: …", clientes compartilhados) e **métricas de produção** enviadas ao servidor. Trabalhos em pastas por mês; editor no layout do Subtitle Edit (traduzir, sincronizar pela fala, verificar, entregar).
 
-Servidor 1.1 (repositório `cnt-legendas-server`): planos Individual/Teamwork/Business-Enterprise, compra com conta do cliente, área do cliente (`/login`), Workspace da empresa, ganhos, `/status`, termos e privacidade (LGPD).
+Servidor 1.2 (repositório `cnt-legendas-server`): planos Individual/Teamwork/Business-Enterprise, compra com conta do cliente, área do cliente (`/login`: licenças, produção, pedidos, dados, privacidade), Workspace da empresa, ganhos, `/status`, termos e privacidade (LGPD), API `/v1/sync`.
 
-**Em andamento: 2.13** — perfil do usuário no servidor (uma por key), restauração em PC novo, exportar/importar arquivo, Workspace da empresa aplicado no programa, métricas de produção no servidor. Ver [[Licenciamento]] e [[Fases]].
+Próximos passos: ver [[Fases]] (ligar a produção quando o Róbson aprovar; calibrar com o uso real).

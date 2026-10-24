@@ -19,6 +19,7 @@ FILETYPES = {
     "script": [("Roteiro ou texto sem tempo", "*.txt *.docx *.srt")],
     "csv": [("Planilha CSV", "*.csv")],
     "profile": [("Perfil JSON", "*.json")],
+    "perfil_usuario": [("Perfil do CNT Legendas", "*.cnt-perfil.json *.json")],
     "any": [("Vídeo, áudio, legenda ou texto",
              "*.mp4 *.mkv *.mov *.mxf *.avi *.wmv *.m4v *.webm *.ts *.wav *.mp3 *.m4a "
              "*.aac *.flac *.ogg *.opus *.wma *.srt *.txt *.docx")],
@@ -39,6 +40,11 @@ def _show(kind: str, multiple: bool, title: str, initial: str | None,
             p = filedialog.asksaveasfilename(parent=root, title=title or "Salvar legenda como",
                                              defaultextension=".srt", initialdir=initial or None,
                                              initialfile=filename or "", filetypes=FILETYPES["subtitle"])
+            return [p] if p else []
+        if kind == "save_perfil":
+            p = filedialog.asksaveasfilename(parent=root, title=title or "Exportar perfil", defaultextension=".json",
+                                             initialdir=initial or None, initialfile=filename or "",
+                                             filetypes=[("Perfil do CNT Legendas", "*.cnt-perfil.json")])
             return [p] if p else []
         if kind == "folder":
             p = filedialog.askdirectory(parent=root, title=title or "Escolher pasta",
