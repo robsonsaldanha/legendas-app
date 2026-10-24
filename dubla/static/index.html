@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CNT Dubla</title>
+  <link rel="icon" href="/icon.png">
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/dubla.css">
+  <meta name="cnt-token" content="{{TOKEN}}">
+  <script src="/theme.js"></script>
+</head>
+<body>
+  <div class="shell" id="shell">
+    <aside class="side" aria-label="Menu">
+      <a class="brand" href="#/" title="Projetos"><img src="/logo.png" alt="CNT"><span class="brand-sub">DUBLA</span></a>
+      <nav class="nav" aria-label="Principal" id="nav">
+        <a href="#/" data-nav="projetos"><span>Projetos</span></a>
+        <a href="#/dubladores" data-nav="dubladores"><span>Dubladores</span></a>
+        <a href="#/configuracoes" data-nav="configuracoes"><span>Configurações</span></a>
+      </nav>
+      <div class="side-foot"><span class="ver">Versão {{VERSAO}}</span></div>
+    </aside>
+    <div class="content">
+      <header class="topbar"><span class="crumb" id="crumb">Projetos</span><span class="grow"></span>
+        <label class="theme"><span class="label">Tema</span>
+          <select id="theme-sel" aria-label="Tema"><option value="dark">Escuro</option><option value="light">Claro</option><option value="auto">Automático</option></select></label>
+      </header>
+      <main id="main" class="main" tabindex="-1"></main>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/dubla.js"></script>
+</body>
+</html>

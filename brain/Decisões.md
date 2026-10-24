@@ -375,3 +375,12 @@
 ## 2026-10-24 — CNT Dubla: programa separado para dubladores e estúdios
 - Decisão do Róbson: **programa separado**, foco em **dublagem humana** (adaptar, escalar, gravar, dirigir, revisar), IA como apoio; vozes por IA nas três formas (pronta local, serviço pago do cliente, clonagem local com consentimento).
 - Técnica (minha): **mesmo repositório**, pasta `dubla/` com servidor local, banco e tela próprios, reaproveitando `core/` (mídia, separação de voz, transcrição, tradução/IA, legendas, plataforma). Pasta de dados própria ("CNT Dubla"). Instalador e licença próprios ficam para T-059.
+
+## 2026-10-24 — CNT Dubla 0.1 (P-07)
+- **Roteiro:** importação de `.srt` (legenda com "- fala" vira duas falas; "NOME: fala" vira personagem) e de `.docx`/`.txt` ("00:01:02:12 NOME: fala", continuações). Cada fala tem original e adaptação; o selo de sílabas compara a adaptação com o original (ou com ~5,5 sílabas/s quando não há original). Marcações entre parênteses não contam. IA dá 3 opções do tamanho certo (mesma chave da tradução).
+- **Personagens pela voz:** sem modelo extra — espectro em faixas + altura da voz por fala, agrupamento hierárquico; cria "VOZ 1, VOZ 2…" para a pessoa renomear. É sugestão.
+- **Anéis:** falas seguidas do mesmo personagem até 20 s e pausas de até 4 s (configurável), meio segundo de folga, numerados na ordem do vídeo. Gerar de novo com takes gravados pede confirmação (apaga os takes).
+- **Estúdio:** o take grava com pré-rolagem (contagem na tela) e guia opcional; o início real fica no take (`deslocamento` = −pré-rolagem) e dá para ajustar de 40 em 40 ms. O programa mede onde a voz começa no take.
+- **Vozes por IA:** voz do sistema (sem custo) e serviço pago com a chave do cliente — modelo e voz configuráveis porque o modelo atual do serviço sai do ar em 06/01/2027. Clonagem: só com termo de consentimento registrado (cópia do termo e da amostra na pasta do programa; revogar apaga a amostra); o motor local é instalado à parte (T-057).
+- **Entregas:** pasta "<projeto> - dublagem" ao lado do vídeo (ou a escolhida): faixa por personagem, mix com o M&E (sem normalizar), vídeo com o áudio novo (imagem copiada), roteiro de dublagem e anéis por dublador em `.docx`. Originais nunca mudam.
+- Falta: T-058 (enviar do Legendas para a Dubla), T-059 (instalador, licença e site próprios).

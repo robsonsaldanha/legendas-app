@@ -47,13 +47,13 @@ _(nada no momento)_
 
 ### CNT Dubla (programa separado, para dubladores e estúdios)
 - [x] T-050 · P-07 · Decidido: programa separado, processa no computador do cliente, foco em dublagem humana, vozes por IA nas três formas (24/10/2026)
-- [ ] T-051 · P-07 · Base do programa: pasta `dubla/` (servidor local, banco, tela), pasta de dados própria, `brain/` atualizado
-- [ ] T-052 · P-07 · Projetos, importação do roteiro (srt/docx/txt/do Legendas) e transcrição do original
-- [ ] T-053 · P-07 · Personagens (manual + sugestão por voz) e roteiro de dublagem (adaptação, sílabas, marcações, sugestão por IA)
-- [ ] T-054 · P-07 · Anéis (loops) e escalação (personagem → dublador; anéis por dublador)
-- [ ] T-055 · P-07 · Estúdio de gravação (pré-rolagem, guia, takes) e direção/revisão por anel
-- [ ] T-056 · P-07 · M&E (enviado ou separado), mixagem e entregas (mix, stems, vídeo, roteiro, relatório)
-- [ ] T-057 · P-07 · Vozes por IA: pronta local, serviço pago (chave do cliente) e clonagem local com termo de consentimento
+- [x] T-051 · P-07 · Base do programa: pasta `dubla/` (servidor local, banco, tela), pasta de dados própria ("CNT Dubla") — Dubla 0.1
+- [x] T-052 · P-07 · Projetos, importação do roteiro (srt/docx/txt, "NOME: fala", duas falas na mesma legenda) e transcrição do original — Dubla 0.1
+- [x] T-053 · P-07 · Personagens (manual + sugestão pela voz) e roteiro de dublagem (adaptação, sílabas PT/ES, marcações, 3 sugestões por IA) — Dubla 0.1
+- [x] T-054 · P-07 · Anéis e escalação (personagem → dublador; anéis e minutos por dublador) — Dubla 0.1
+- [x] T-055 · P-07 · Estúdio: pré-rolagem com contagem, áudio guia, takes pelo microfone, ouvir com o vídeo, ajuste fino de sincronia, aprovar, situação e nota de direção — Dubla 0.1
+- [x] T-056 · P-07 · M&E (do cliente ou separado no computador), mixagem e entregas (mix, faixas por personagem, vídeo dublado, roteiro .docx, anéis por dublador) — Dubla 0.1
+- [ ] T-057 · P-07 · Vozes por IA: ~~voz do sistema~~, ~~serviço pago (chave do cliente)~~, ~~registro do termo de consentimento~~ (Dubla 0.1); falta instalar o motor de clonagem local e testar numa placa de vídeo
 - [ ] T-058 · P-07 · Integração com o Legendas (enviar para dublagem / legenda de volta)
 - [ ] T-059 · P-07 · Instalador próprio, licença própria (produto "dubla" no servidor e na conta CNT), site `dubla.`
 
@@ -89,6 +89,7 @@ Resumo por versão (detalhes em [[Fases]] e [[Decisões]]).
 - [x] 2.18 — legenda ao vivo (entrada de áudio, fila do operador, página de legenda, arquivo do evento)
 - [x] 2.19 — audiodescrição no editor (espaços sem fala, verificação, voz, sugestão por IA, exportações e áudio mixado)
 - [x] 2.20 — tradução ao vivo (segunda faixa) e gravar a audiodescrição com a própria voz
+- [x] CNT Dubla 0.1 — roteiro, personagens, anéis, escalação, estúdio de gravação, direção, M&E, mixagem e entregas, vozes por IA, termo de voz
 - [x] Hub 1.1 / servidor 1.8–1.9 — conta única CNT e API de integração; produção ligada
 - [x] 2.21 / servidor 1.7 — ao vivo e audiodescrição em todos os planos (menos a avaliação)
 - [x] Servidor 1.6 — instalador por sistema (download e atualização)

@@ -91,6 +91,7 @@
 - [x] 2.19.0: audiodescrição no editor — espaços sem fala na forma de onda, perfil e verificação de audiodescrição, ouvir com a voz do sistema, sugestão por IA a partir de quadros, exportar roteiro (.docx/.txt), .ttml, faixa e áudio mixado
 - [x] 2.20.0: tradução ao vivo (segunda faixa na página de legenda e `.srt` traduzido) e audiodescrição gravada com a própria voz
 - [x] 2.21.0: legenda ao vivo e audiodescrição viram recursos da licença (todos os planos, menos a avaliação)
+- [x] CNT Dubla 0.1 (programa separado, `python -m dubla`): roteiro de dublagem, personagens (sugestão pela voz), anéis, escalação, estúdio de gravação com takes, direção, M&E, mixagem e entregas, vozes por IA (sistema/serviço) e termo de consentimento de voz
 - Próximos passos (família CNT, Mac/Linux, ao vivo, audiodescrição, dublagem, API e pendências antigas): ver [[Tarefas]] e [[Pendências]]
 - [x] 2.11.0: janela própria (WebView2), sem abas nem barra de endereço; o X pergunta antes de fechar
 - [x] 2.12.0: bandeja do sistema (menu Exibir/Reabrir último/Novo projeto/Atualizar/Reiniciar/Sair), aviso de versão nova com o programa aberto (salvar antes, reabrir onde estava); X encerra o processo de vez

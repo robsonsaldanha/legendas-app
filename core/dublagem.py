@@ -17,7 +17,7 @@ from pathlib import Path
 MARCACOES = ["RI", "RISOS", "ON", "OFF", "RESPIRA", "RESP", "AD-LIB", "ADLIB", "SOBREPOSTO", "SOBREP", "GRITA", "SUSSURRA", "CHORA",
              "ESFORÇO", "TOSSE", "SUSPIRA", "BEIJO", "PAUSA", "VOZ", "TV", "RÁDIO", "TELEFONE", "CONT", "INT", "EXT"]
 _MARCA = re.compile(r"\(([^()]{1,40})\)")
-SILABAS_POR_SEGUNDO = 6.0        # fala natural em dublagem (PT/ES): ~5 a 7 sílabas por segundo
+SILABAS_POR_SEGUNDO = 5.5        # fala natural em dublagem (PT/ES): ~5 a 6 sílabas por segundo
 
 
 @dataclass
@@ -94,7 +94,7 @@ def ajuste(texto: str, duracao: float, original: str = "", idioma: str = "pt", i
     s = silabas(texto, idioma)
     ref = silabas(original, idioma_original or idioma) if original else round(duracao * SILABAS_POR_SEGUNDO)
     diff = s - ref
-    margem = max(2, round(ref * 0.15))
+    margem = max(2, round(ref * (0.15 if original else 0.3)))      # sem o original, a referência é só uma estimativa
     situacao = "ok" if abs(diff) <= margem else ("longo" if diff > 0 else "curto")
     return {"silabas": s, "referencia": ref, "diferenca": diff, "situacao": situacao,
             "por_segundo": round(s / duracao, 1) if duracao > 0 else 0}

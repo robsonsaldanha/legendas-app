@@ -1,0 +1,64 @@
+/* CNT Dubla — mesmo tema do CNT Legendas, com as telas de roteiro, elenco e estúdio. */
+.db-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 6px 0 18px; flex-wrap: wrap; }
+.db-tabs a { padding: 10px 16px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; font-weight: 600; }
+.db-tabs a[aria-current="page"] { color: var(--accent); border-color: var(--accent); }
+.db-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.db-card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; cursor: pointer; display: flex; flex-direction: column; gap: 8px; }
+.db-card:hover { border-color: var(--accent-line); }
+.db-barra { height: 6px; background: var(--panel-3); border-radius: 3px; overflow: hidden; }
+.db-barra i { display: block; height: 100%; background: var(--accent); }
+.db-split { display: grid; grid-template-columns: minmax(280px, 420px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.db-video { position: sticky; top: 10px; background: #000; border-radius: 12px; overflow: hidden; }
+.db-video video { width: 100%; display: block; max-height: 46vh; background: #000; }
+.db-video .db-legenda { position: absolute; left: 6%; right: 6%; bottom: 14%; text-align: center; color: #fff; font: 600 20px/1.3 var(--font);
+  text-shadow: 0 0 4px #000, 0 2px 3px #000; pointer-events: none; white-space: pre-line; }
+.db-video .db-contagem { position: absolute; inset: 0; display: grid; place-items: center; font: 400 120px var(--font-title, "Anton"); color: var(--accent);
+  text-shadow: 0 0 20px #000; pointer-events: none; }
+.db-video .db-rec { position: absolute; top: 10px; left: 10px; background: #d33; color: #fff; font: 700 12px var(--font-mono); padding: 4px 10px; border-radius: 6px; }
+.db-falas { width: 100%; border-collapse: collapse; font-size: 14px; }
+.db-falas th { text-align: left; font: 600 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 6px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.db-falas td { padding: 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.db-falas tr.ativa td { background: var(--accent-soft); }
+.db-falas textarea, .db-falas input[type="text"] { width: 100%; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.db-falas textarea { resize: vertical; min-height: 40px; }
+.db-falas .orig { color: var(--muted); font-size: 13px; }
+.db-tc { font: 12px var(--font-mono); color: var(--muted); white-space: nowrap; cursor: pointer; }
+.db-tc:hover { color: var(--accent); }
+.db-sil { font: 600 11px var(--font-mono); padding: 2px 6px; border-radius: 4px; white-space: nowrap; display: inline-block; }
+.db-sil.ok { background: rgba(80,200,120,.15); color: #6fd38f; }
+.db-sil.longo { background: rgba(240,90,80,.15); color: #ff7a6b; }
+.db-sil.curto { background: rgba(255,182,39,.15); color: #ffb627; }
+.db-pers { display: inline-flex; align-items: center; gap: 6px; }
+.db-pers i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+.db-aneis { display: flex; flex-direction: column; gap: 4px; max-height: 70vh; overflow: auto; }
+.db-anel { display: grid; grid-template-columns: 52px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.db-anel[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.db-anel .n { font: 700 14px var(--font-mono); }
+.db-sit { font: 600 10px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; padding: 3px 7px; border-radius: 4px; background: var(--panel-3); color: var(--muted); }
+.db-sit.gravado { background: rgba(91,192,235,.15); color: #5bc0eb; }
+.db-sit.aprovado { background: rgba(80,200,120,.15); color: #6fd38f; }
+.db-sit.refazer { background: rgba(240,90,80,.15); color: #ff7a6b; }
+.db-estudio { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+.db-texto-anel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 18px; line-height: 1.5; }
+.db-texto-anel p { margin: 0 0 8px; }
+.db-texto-anel .q { font: 11px var(--font-mono); color: var(--muted); }
+.db-takes { display: flex; flex-direction: column; gap: 6px; }
+.db-take { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); flex-wrap: wrap; }
+.db-take.aprovado { border-color: #6fd38f; }
+.db-take .grow { flex: 1; }
+.btn.rec { background: #c62828; border-color: #c62828; color: #fff; }
+.btn.rec:hover { background: #e53935; }
+.db-medidor { width: 120px; height: 8px; background: var(--panel-3); border-radius: 4px; overflow: hidden; }
+.db-medidor i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .1s; }
+.db-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+.db-tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
+.db-tabela th { text-align: left; font: 600 11px var(--font-mono); text-transform: uppercase; color: var(--muted); padding: 8px 6px; border-bottom: 1px solid var(--line); }
+.db-tabela td { padding: 8px 6px; border-bottom: 1px solid var(--line); }
+.db-tabela select, .db-tabela input { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+.db-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 50; }
+.db-modal { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; width: min(560px, 92vw); max-height: 90vh; overflow: auto; }
+.db-modal h2 { margin: 0 0 14px; }
+@media (max-width: 1100px) { .db-split, .db-estudio { grid-template-columns: 1fr; } .db-video { position: static; } }
+
+.db-grid2 > .panel { margin-top: 0; }
+.db-falas td:nth-last-child(2) { min-width: 240px; }

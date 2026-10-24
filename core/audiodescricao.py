@@ -185,45 +185,10 @@ def roteiro_txt(descs: list[Descricao], titulo: str = "") -> str:
 
 
 def roteiro_docx(descs: list[Descricao], destino: str | Path, titulo: str = "") -> Path:
-    """Roteiro em .docx (tabela Nº / Entrada / Saída / Descrição). Montado à mão (só zip + XML), sem biblioteca extra."""
-    import zipfile
-
-    def par(texto: str, negrito: bool = False, tam: int = 20) -> str:
-        rpr = f"<w:rPr>{'<w:b/>' if negrito else ''}<w:sz w:val=\"{tam}\"/></w:rPr>"
-        linhas = escape(texto).split("\n")
-        runs = "<w:r>" + rpr + "<w:br/>".join(f"<w:t xml:space=\"preserve\">{l}</w:t>" for l in linhas) + "</w:r>"
-        return f"<w:p>{runs}</w:p>"
-
-    def cel(texto: str, largura: int, negrito: bool = False) -> str:
-        return (f"<w:tc><w:tcPr><w:tcW w:w=\"{largura}\" w:type=\"dxa\"/></w:tcPr>{par(texto, negrito)}</w:tc>")
-
-    larg = (700, 1500, 1500, 5900)
-    borda = "".join(f"<w:{x} w:val=\"single\" w:sz=\"4\" w:color=\"999999\"/>" for x in ("top", "left", "bottom", "right", "insideH", "insideV"))
-    linhas = ["<w:tr>" + "".join(cel(t, w, True) for t, w in zip(("Nº", "Entrada", "Saída", "Descrição"), larg)) + "</w:tr>"]
-    for d in sorted(descs, key=lambda d: d.inicio):
-        linhas.append("<w:tr>" + "".join(cel(t, w) for t, w in zip((str(d.n), _tc(d.inicio), _tc(d.fim), d.texto.strip()), larg)) + "</w:tr>")
-    corpo = (par("Roteiro de audiodescrição", True, 32) + (par(titulo) if titulo else "")
-             + f"<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders>{borda}</w:tblBorders></w:tblPr>"
-             + "".join(linhas) + "</w:tbl><w:sectPr/>")
-    doc = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-           '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-           f"<w:body>{corpo}</w:body></w:document>")
-    tipos = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-             '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-             '<Default Extension="xml" ContentType="application/xml"/>'
-             '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
-             '</Types>')
-    rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
-            '</Relationships>')
-    destino = Path(destino)
-    with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("[Content_Types].xml", tipos)
-        z.writestr("_rels/.rels", rels)
-        z.writestr("word/document.xml", doc)
-    return destino
+    """Roteiro em .docx (tabela Nº / Entrada / Saída / Descrição)."""
+    from .docx_simples import tabela_docx
+    linhas = [[str(d.n), _tc(d.inicio), _tc(d.fim), d.texto.strip()] for d in sorted(descs, key=lambda d: d.inicio)]
+    return tabela_docx(destino, "Roteiro de audiodescrição", ["Nº", "Entrada", "Saída", "Descrição"], linhas, [700, 1500, 1500, 5900], titulo)
 
 
 def ttml(descs: list[Descricao], idioma: str = "pt-BR") -> str:

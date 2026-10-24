@@ -24,18 +24,19 @@ def nome() -> str:
     return "linux"
 
 
-def pasta_dados() -> Path:
-    """Dados de um usuário (banco, configurações, editor, registro)."""
+def pasta_dados(app: str = APP) -> Path:
+    """Dados de um usuário (banco, configurações, editor, registro). `app`: "CNT Legendas" ou "CNT Dubla"."""
     s = nome()
     if s == "windows":
-        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / APP
-    antiga = Path.home() / ".legendas"           # até a 2.16 o Mac/Linux usavam esta; continua valendo se existir
-    if antiga.is_dir():
-        return antiga
+        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / app
+    if app == APP:
+        antiga = Path.home() / ".legendas"       # até a 2.16 o Mac/Linux usavam esta; continua valendo se existir
+        if antiga.is_dir():
+            return antiga
     if s == "mac":
-        return Path.home() / "Library" / "Application Support" / APP
+        return Path.home() / "Library" / "Application Support" / app
     base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
-    return base / "cnt-legendas"
+    return base / app.lower().replace(" ", "-")
 
 
 def pasta_comum() -> Path | None:

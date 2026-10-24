@@ -71,6 +71,12 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 
 O atalho chama `pythonw -m cntboot`: escolhe o código mais novo (instalado ou atualização baixada em `%ProgramData%\CNT Legendas\versoes\<versão>`, com volta automática se não abrir) e roda `app.__main__`. `CNT_INSTALL_ROOT` aponta a pasta do programa (ffmpeg, modelos, Python); `CNT_VERSAO_DIR` a pasta da versão (código e `lib/` com bibliotecas em Python puro do pacote).
 
+## CNT Dubla (`dubla/`) — programa separado (P-07)
+
+- `python -m dubla` abre o servidor local (127.0.0.1, mesma proteção do Legendas: cookie + `X-Token`) e a janela (Windows) ou o navegador. Dados em "CNT Dubla" (Windows `%APPDATA%`, Mac Application Support, Linux `~/.local/share/cnt-dubla`; `CNT_DUBLA_HOME` sobrescreve).
+- `dubla/db.py` (SQLite: projetos, personagens, dubladores, falas, anéis, takes, consentimentos), `dubla/servico.py` (o que a tela pede + tarefas), `dubla/server.py` (rotas `/api/...`, `/media/video|take/<id>`), `dubla/vozes.py` (voz do sistema, serviço pago, clonada), `dubla/clonagem.py` (motor local opcional), `dubla/static/` (tela; fontes, ícones e estilo base vêm de `app/static`).
+- Núcleo: `core/dublagem.py` (sílabas, marcações, importação, anéis, escalação), `core/falantes.py` (sugestão de quem fala pela voz), `core/dublagem_audio.py` (takes, faixas, mix, vídeo), `core/docx_simples.py` (tabelas .docx sem biblioteca), `core/separate.py` (M&E = original − voz).
+
 ## Interface (`app/`)
 
 - `app/ad.py` + `static/ad.js` (2.19): audiodescrição dentro do editor — rotas `/api/editor/<sid>/ad/{verificar,voz,sugerir}`, tarefas `ad_espacos`/`ad_exportar`, áudio da voz em `/media/<sid>/ad/<arquivo>.wav`.

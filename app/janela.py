@@ -390,3 +390,24 @@ def icone_do_programa() -> Path | None:
     from core.config import app_root
     p = app_root() / "legendas.ico"
     return p if p.exists() else None
+
+
+def abrir_simples(url: str, titulo: str, armazenamento: Path | None = None, app_id: str = "CNT.Dubla") -> None:
+    """Janela sem bandeja (CNT Dubla): fecha o programa ao fechar a janela. Bloqueia até fechar."""
+    import ctypes
+
+    import webview
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except Exception:  # noqa: BLE001
+        pass
+    _ligar_menus_e_atalhos()
+    webview.settings["ALLOW_DOWNLOADS"] = True
+    webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
+    webview.create_window(titulo, url, width=1366, height=860, min_size=(1024, 640), maximized=True, text_select=True,
+                          background_color="#16191D")
+    pasta = armazenamento or Path(os.environ.get("APPDATA", Path.home())) / titulo / "janela"
+    pasta.mkdir(parents=True, exist_ok=True)
+    webview.start(gui="edgechromium", private_mode=False, storage_path=str(pasta),
+                  localization={"global.quitConfirmation": f"Fechar a {titulo}?", "global.ok": "OK", "global.cancel": "Cancelar",
+                                "global.quit": "Fechar", "global.saveFile": "Salvar arquivo"})
