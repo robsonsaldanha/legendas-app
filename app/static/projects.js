@@ -332,7 +332,7 @@ async function renderNewProject() {
         const steps = W.dst ? ["transcrever", "traduzir"] : ["transcrever"];
         const j = await api("POST", "/api/jobs", { inputs: [fresh.video], params: { steps, source_lang: W.src || "auto",
           target_lang: W.dst || "es-419", profile_key: (S.projects || []).find((x) => x.id === clientId)?.profile_key || "",
-          project_id: clientId, out_dir: fresh.folder } });
+          project_id: clientId, obra_id: o.id, out_dir: fresh.folder } });
         toast("Legendando o vídeo em segundo plano. Você pode fazer outra coisa enquanto isso.");
         location.hash = `#/trabalho/${j.id}`;
         return;
@@ -498,6 +498,7 @@ async function renderObra(id) {
       if (a === "more") { toggleMenu(b, epMenu(o.items.find((x) => x.id === itemId))); return; }
       if (a === "omore") {
         toggleMenu(b, `<div class="ds-menu" role="menu">
+          <button role="menuitem" data-o="glossario">Glossário do projeto…</button>
           <button role="menuitem" data-o="client">Mudar o cliente…</button>
           <button role="menuitem" data-o="tab-met">Números e histórico</button>
           ${o.status === "finalizado" ? `<button role="menuitem" data-o="status" data-st="andamento">Reabrir o projeto</button>`
@@ -506,6 +507,7 @@ async function renderObra(id) {
         return;
       }
       closeMenus();
+      if (a === "glossario") { await glossarioProjeto(id, o.name); return; }
       if (a === "tab-met") { OBRA_TAB = "met"; renderObra(id); }
       if (a === "folder") await api("POST", "/api/open", { path: o.folder });
       if (a === "ifolder") await api("POST", "/api/open", { path: b.dataset.path });

@@ -70,11 +70,12 @@ class Worker:
         project = self.db.get_project(int(pid)) if pid else None
         context_parts = []
         instructions = ""
-        entries = None
         if project:
             context_parts = [project.get("context", "")]
             instructions = project.get("instructions", "")
-            entries = self.db.glossary_entries(project["id"])
+        # glossário geral + do cliente + do projeto (série/filme), o mais específico vale
+        entries, _ = self.db.glossario_efetivo(project["id"] if project else None, params.get("obra_id"))
+        entries = entries or None
         if params.get("context"):
             context_parts.append(params["context"])
         profile = self.db.get_profile(params.get("profile_key") or "netflix-pt-br")

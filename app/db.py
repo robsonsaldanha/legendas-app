@@ -33,6 +33,14 @@ CREATE TABLE IF NOT EXISTS glossary (
     note TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS glossario_extra (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    obra_id INTEGER REFERENCES obras(id) ON DELETE CASCADE,   -- NULL = glossário geral (todos os trabalhos)
+    term TEXT NOT NULL,
+    translation TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS profiles (
     key TEXT PRIMARY KEY,
     data TEXT NOT NULL
@@ -278,6 +286,44 @@ class Database:
         return [Entry(r["term"], r["translation"], r["note"]) for r in self._q(
             "SELECT term, translation, note FROM glossary WHERE project_id = ? ORDER BY position, id",
             (pid,))]
+
+    # ------------------------------------------------------------ glossário geral e do projeto
+
+    def glossario(self, obra_id: int | None) -> list[dict]:
+        """Geral (obra_id None) ou de um projeto (série/filme)."""
+        where = "obra_id IS NULL" if obra_id is None else "obra_id = ?"
+        args = () if obra_id is None else (int(obra_id),)
+        return [dict(r) for r in self._q(f"SELECT term, translation, note FROM glossario_extra WHERE {where} ORDER BY position, id", args)]
+
+    def set_glossario(self, obra_id: int | None, entries: list[dict]) -> int:
+        with self._lock:
+            if obra_id is None:
+                self.conn.execute("DELETE FROM glossario_extra WHERE obra_id IS NULL")
+            else:
+                self.conn.execute("DELETE FROM glossario_extra WHERE obra_id = ?", (int(obra_id),))
+            n = 0
+            for i, e in enumerate(entries or []):
+                term = str(e.get("term", "")).strip()
+                if term:
+                    self.conn.execute("INSERT INTO glossario_extra (obra_id, term, translation, note, position) VALUES (?, ?, ?, ?, ?)",
+                                      (obra_id, term, str(e.get("translation", "")).strip(), str(e.get("note", "")).strip(), i))
+                    n += 1
+            self.conn.commit()
+        return n
+
+    def glossario_efetivo(self, client_id: int | None, obra_id: int | None) -> tuple[list[Entry], dict]:
+        """Geral + cliente + projeto. O mesmo termo em mais de um: vale o mais específico (projeto > cliente > geral).
+        Devolve também quantos termos vieram de cada nível (para mostrar na tela)."""
+        niveis = [("geral", self.glossario(None)),
+                  ("cliente", [{"term": e.term, "translation": e.translation, "note": e.note}
+                               for e in (self.glossary_entries(int(client_id)) if client_id else [])]),
+                  ("projeto", self.glossario(int(obra_id)) if obra_id else [])]
+        junto: dict[str, tuple[str, dict]] = {}
+        for nivel, lista in niveis:
+            for e in lista:
+                junto[e["term"].strip().lower()] = (nivel, e)
+        contagem = {n: sum(1 for v in junto.values() if v[0] == n) for n, _ in niveis}
+        return [Entry(e["term"], e["translation"], e["note"]) for _, e in junto.values()], contagem
 
     # ------------------------------------------------------------ profiles
 

@@ -804,6 +804,7 @@ async function openTranslate(opts = {}) {
           <label class="field"><span>Perfil de regras</span>
             <select id="tr-profile">${S.state.profiles.map((p) => `<option value="${esc(p.key)}" ${p.key === profFor(dst) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
         </div>
+        <p class="muted small" id="tr-gloss"></p>
       </div>
       <div id="tr-body"></div>
       <div class="row modal-actions" id="tr-actions">
@@ -817,6 +818,9 @@ async function openTranslate(opts = {}) {
   const opt = () => ({ source_lang: $("#tr-src").value, target_lang: $("#tr-dst").value,
     profile_key: $("#tr-profile").value, project_id: $("#tr-project").value ? Number($("#tr-project").value) : null, cues: ED.cues });
   let busy = false, timer = null, jobId = null;
+  const glossInfo = async () => { const el = $("#tr-gloss"); if (el) el.textContent = await textoGlossarioEfetivo({ cliente: $("#tr-project").value, sid: ED.sid }); };
+  $("#tr-project").addEventListener("change", glossInfo);
+  glossInfo();
   const close = () => { clearInterval(timer); ov.remove(); document.removeEventListener("keydown", onKey); };
   const onKey = (e) => { if (e.key === "Escape" && !busy) close(); };
   document.addEventListener("keydown", onKey);

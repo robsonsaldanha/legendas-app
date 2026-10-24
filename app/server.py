@@ -953,6 +953,42 @@ class Handler(BaseHTTPRequestHandler):
         self.app.db.delete_project(int(pid))
         return {"ok": True}
 
+    # ------------------------------------------------------------ glossário geral e do projeto
+
+    @route("GET", r"/api/glossario/geral")
+    def api_gloss_geral(self):
+        return {"glossario": self.app.db.glossario(None)}
+
+    @route("PUT", r"/api/glossario/geral")
+    def api_gloss_geral_set(self):
+        n = self.app.db.set_glossario(None, self._body().get("glossario") or [])
+        self.app.sincronia.avisar_mudanca()
+        return {"ok": True, "termos": n}
+
+    @route("GET", r"/api/obras/(\d+)/glossario")
+    def api_gloss_obra(self, oid):
+        self.app.projects.get(int(oid))          # confere que existe
+        return {"glossario": self.app.db.glossario(int(oid))}
+
+    @route("PUT", r"/api/obras/(\d+)/glossario")
+    def api_gloss_obra_set(self, oid):
+        self.app.projects.get(int(oid))
+        n = self.app.db.set_glossario(int(oid), self._body().get("glossario") or [])
+        self.app.sincronia.avisar_mudanca()
+        return {"ok": True, "termos": n}
+
+    @route("GET", r"/api/glossario/efetivo")
+    def api_gloss_efetivo(self):
+        """Quantos termos entram na tradução: geral, cliente e projeto (do episódio aberto no editor)."""
+        cid = self.query.get("cliente")
+        obra = self.query.get("obra")
+        sid = self.query.get("sid")
+        if sid and not obra:
+            sess = self.app.editor.sessions.get(sid)
+            obra = self.app.editor._obra_of(sess) if sess else None
+        entries, cont = self.app.db.glossario_efetivo(int(cid) if cid else None, int(obra) if obra else None)
+        return {"total": len(entries), "niveis": cont, "obra_id": int(obra) if obra else None}
+
     @route("POST", r"/api/glossary/import")
     def api_glossary_import(self):
         path = self._body().get("path", "")
@@ -1279,7 +1315,9 @@ class Handler(BaseHTTPRequestHandler):
         b = self._body()
         pid = b.get("project_id")
         project = self.app.db.get_project(int(pid)) if pid else None
-        glossary = self.app.db.glossary_entries(int(pid)) if pid else []
+        sess = self.app.editor.sessions.get(sid)
+        obra = self.app.editor._obra_of(sess) if sess else None
+        glossary, _ = self.app.db.glossario_efetivo(int(pid) if pid else None, obra)
         return self.app.editor.chat_start(sid, b.get("cues", []), b, project, glossary)
 
     @route("GET", r"/api/editor/(\w+)/chat/(\d+)")

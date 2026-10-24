@@ -54,8 +54,14 @@ def montar(db) -> dict:
     perfis = {r["key"]: json.loads(r["data"]) for r in db._q("SELECT key, data FROM profiles ORDER BY key")
               if not r["key"].startswith(PREFIXO_EMPRESA)}
     clientes = [cliente_dados(db, p["id"]) for p in db.list_projects()]
+    projetos = {}
+    for o in db._q("SELECT id, name FROM obras ORDER BY id"):
+        g = db.glossario(o["id"])
+        if g:
+            projetos.setdefault(o["name"].strip().lower(), {"nome": o["name"], "glossario": g})
     return {"v": S.VERSAO_PERFIL, "settings": {k: getattr(s, k) for k in SETTINGS_SINCRONIZADAS if hasattr(s, k)},
-            "clientes": clientes, "perfis": perfis}
+            "clientes": clientes, "perfis": perfis, "glossario_geral": db.glossario(None),
+            "glossarios_projeto": list(projetos.values())}
 
 
 def _salvar_cliente(db, dados: dict, existentes: dict) -> str:
@@ -100,6 +106,20 @@ def aplicar(db, perfil: dict) -> dict:
             out["perfis"] += 1
         except Exception:  # noqa: BLE001
             out["perfis_com_erro"] += 1
+    geral = perfil.get("glossario_geral")
+    if isinstance(geral, list) and geral and S.resumo(geral) != S.resumo(db.glossario(None)):
+        # junta: os termos que vieram valem; os que só existem aqui ficam
+        junto = {e["term"].strip().lower(): e for e in db.glossario(None)}
+        junto.update({str(e.get("term", "")).strip().lower(): e for e in geral if isinstance(e, dict) and str(e.get("term", "")).strip()})
+        db.set_glossario(None, list(junto.values()))
+        out["glossario_geral"] = len(junto)
+    for gp in perfil.get("glossarios_projeto") or []:
+        if not isinstance(gp, dict) or not isinstance(gp.get("glossario"), list):
+            continue
+        for o in db._q("SELECT id FROM obras WHERE lower(trim(name)) = ?", (str(gp.get("nome", "")).strip().lower(),)):
+            if not db.glossario(o["id"]):            # projeto com o mesmo nome e sem glossário aqui: recebe
+                db.set_glossario(o["id"], gp["glossario"])
+                out["glossarios_projeto"] = out.get("glossarios_projeto", 0) + 1
     existentes = {p["name"].lower(): p["id"] for p in db.list_projects()}
     for c in perfil.get("clientes") or []:
         if isinstance(c, dict):

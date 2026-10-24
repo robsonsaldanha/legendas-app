@@ -1137,6 +1137,8 @@ async function renderSettings() {
         `<a class="ds-btn sm" href="#/bemvindo">Trocar</a>`)}
       ${setRow("cfg-clientes", "Clientes", nClients ? `${nClients} cadastrado${nClients === 1 ? "" : "s"}: ${esc((S.projects || []).slice(0, 4).map((c) => c.name).join(", "))}${nClients > 4 ? "…" : ""}` : "Nenhum ainda",
         `<a class="ds-btn sm" href="#/clientes">Abrir</a>`)}
+      ${setRow("cfg-glossario", "Glossário geral", "Termos que valem em todos os trabalhos (o do cliente e o do projeto ficam nas telas deles)",
+        `<button class="ds-btn sm" data-action="glossario-geral">Abrir</button>`)}
       ${setRow("cfg-perfis", "Perfis de regras", `${(st.profiles || []).length} perfis (limites e manual de cada cliente)`,
         `<a class="ds-btn sm" href="#/perfis">Abrir</a>`)}
       ${setRow("cfg-ia", "Tradução automática", `Pelo seu ChatGPT (sem custo) ou pela API${prov ? ` · serviço: ${esc(prov.name || prov.id)}${prov.ready ? " (pronto)" : " (falta a chave)"}` : ""}`,
@@ -1279,6 +1281,7 @@ async function renderSettings() {
       }
       if (a === "check-update") await checkUpdate(true);
       if (a === "perfil") await perfilModal();
+      if (a === "glossario-geral") await glossarioGeral();
       if (a === "open-data") await api("POST", "/api/open", { path: st.data_dir });
       if (a === "quit") {
         if (!confirm("Fechar o programa? Trabalhos em andamento serão interrompidos (dá para retomar depois).")) return;

@@ -68,7 +68,7 @@ O programa é um servidor local (só `127.0.0.1`). No Windows a tela abre numa *
 | `__main__.py` | `python -m app`: sobe o servidor na porta 8765 (ou outra livre), abre o navegador, limpa temporários antigos. Se já estiver aberto, só abre a página. `--dialog` é o modo auxiliar das janelas de arquivo |
 | `server.py` | HTTP + API JSON (biblioteca padrão, sem framework). Token por sessão no cabeçalho `X-Token`, checagem do `Host`, CSP |
 | `worker.py` | Fila: um trabalho por vez numa thread; progresso e registro em memória para a tela |
-| `db.py` | SQLite `legendas.db`: clientes (tabela `projects`), glossários, perfis próprios, histórico, recentes |
+| `db.py` | SQLite `legendas.db`: clientes (tabela `projects`), glossários (do cliente em `glossary`; geral e do projeto em `glossario_extra`), perfis próprios, histórico, recentes |
 | `dialogs.py` | Janelas "Abrir" e "Salvar como" do Windows (tkinter) num processo separado, para obter o caminho real do arquivo |
 | `projects.py` | Projetos (tabelas `obras`, `itens`, `metricas`, `tempo`, `eventos`): criar, abrir pela pasta, episódios, status, copiar arquivos, relatórios |
 | `editor.py` | Sessões do editor: lê o SRT, prepara o vídeo para o player (cópia leve quando o navegador não toca o formato), forma de onda + sinal de fala, cliente, operações de sincronia, tarefas em segundo plano (sincronia automática, cortes de cena), entrega, rascunho, salvar com cópia de segurança, QC, quebra de linhas |

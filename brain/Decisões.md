@@ -266,3 +266,9 @@
 - Três níveis, do mais amplo ao mais específico: **Geral** (vale em todos os trabalhos; Configurações → Glossário geral), **Cliente** (o que já existe) e **Projeto** (série/filme; menu ⋯ do projeto → Glossário do projeto). Na tradução (API e ChatGPT) e na transcrição entram os três juntos; se o mesmo termo aparecer em mais de um, vale o mais específico (projeto > cliente > geral).
 - O projeto é descoberto pelo episódio aberto no editor (ou pelo trabalho criado em "Novo trabalho"); legenda solta, sem projeto, usa geral + cliente.
 - Perfil na nuvem: o glossário geral e os glossários de projeto (pelo nome do projeto) entram no perfil do usuário.
+
+## 2026-10-24 — 2.14 pronta: glossário geral, do cliente e do projeto
+- Como planejado. Tabela `glossario_extra` (`obra_id` NULL = geral; senão, do projeto; some junto com o projeto). `Database.glossario_efetivo(cliente, projeto)` junta os três (o mais específico vale) e conta quantos termos vieram de cada nível.
+- Entram na tradução pela API (trabalhos do editor e do "Novo trabalho": `obra_id` nos parâmetros), na tradução pelo ChatGPT (projeto do episódio aberto) e na transcrição (palavras-chave).
+- Telas: Configurações → **Glossário geral**; projeto → menu ⋯ → **Glossário do projeto…**; a janela de tradução mostra "Glossário: N termos (X geral · Y do cliente · Z do projeto)". Editor de glossário com importar/exportar CSV (`app/static/glossario.js`).
+- Perfil na nuvem: `glossario_geral` (junta com o daqui) e `glossarios_projeto` pelo nome do projeto (só preenche projeto com o mesmo nome que ainda não tem glossário).

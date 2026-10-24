@@ -444,7 +444,7 @@ class EditorManager:
         params = {"steps": ["traduzir"], "source_lang": opts.get("source_lang") or s.detected or "auto",
                   "target_lang": opts.get("target_lang") or opposite_language(s.detected),
                   "profile_key": opts.get("profile_key") or "",
-                  "project_id": opts.get("project_id") or None,
+                  "project_id": opts.get("project_id") or None, "obra_id": self._obra_of(s),
                   "out_dir": str(base.parent), "output_stem": stem, "name": base.stem}
         if not params["profile_key"]:
             params["profile_key"] = _auto_key(params["target_lang"], s.profile_key, self._keys())
