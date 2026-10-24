@@ -770,8 +770,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _media(self, path: str) -> None:
         """Vídeo para o player, com suporte a Range (avançar/voltar)."""
-        sid = path.split("/")[2] if len(path.split("/")) > 2 else ""
-        target = self.app.editor.media_file(sid)
+        partes = path.split("/")
+        sid = partes[2] if len(partes) > 2 else ""
+        if len(partes) > 3 and partes[3] == "ad":        # voz de uma descrição (audiodescrição)
+            from . import ad
+            target = ad.arquivo_voz(self.app.editor._get(sid), "/".join(partes[4:]))
+        else:
+            target = self.app.editor.media_file(sid)
         size = target.stat().st_size
         ctype = mimetypes.guess_type(target.name)[0] or "video/mp4"
         if target.suffix.lower() in (".mov", ".m4v"):
@@ -1380,6 +1385,25 @@ class Handler(BaseHTTPRequestHandler):
             return self.app.worker.estimate(params, inputs)
         jid = self.app.worker.submit(params, inputs)
         return self.app.job_detail(jid)
+
+    # ------------------------------------------------------------ audiodescrição (P-06, 2.19)
+
+    @route("POST", r"/api/editor/(\w+)/ad/verificar")
+    def api_ad_verificar(self, sid):
+        from . import ad
+        b = self._body()
+        return ad.verificar(self.app.editor, self.app.editor._get(sid), b.get("cues") or [], b)
+
+    @route("POST", r"/api/editor/(\w+)/ad/voz")
+    def api_ad_voz(self, sid):
+        from . import ad
+        return ad.voz(self.app.editor, self.app.editor._get(sid), self._body())
+
+    @route("POST", r"/api/editor/(\w+)/ad/sugerir")
+    def api_ad_sugerir(self, sid):
+        need("ia_traducao")
+        from . import ad
+        return ad.sugerir(self.app.editor, self.app.editor._get(sid), self._body())
 
     @route("GET", r"/api/editor/(\w+)/versoes")
     def api_editor_versoes(self, sid):

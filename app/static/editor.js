@@ -148,7 +148,7 @@ async function renderEditor(sid) {
     sel: 0, dirty: false, undo: [], redo: [], peaks: null, savedAt: "", playUntil: null,
     hasVideo: data.has_video, hasAudio: data.has_audio,
     detected: data.detected, suggested: data.suggested_target,
-    clientId: data.client_id || null, shots: data.shots || null, itemId: data.item_id || null, prazo: data.prazo || "", lastAct: Date.now(),
+    clientId: data.client_id || null, shots: data.shots || null, adEspacos: null, itemId: data.item_id || null, prazo: data.prazo || "", lastAct: Date.now(),
   });
   ED.hasOrig = ED.cues.some((c) => c.orig != null);
   ED.wave.start = 0;
@@ -192,6 +192,7 @@ async function renderEditor(sid) {
       </span>
       <button class="btn" data-ed="verify" title="Problemas e correção automática">Verificar <span class="count" id="ed-issn" hidden></span></button>
       <button class="btn" data-ed="deliver" title="Salvar com o nome do cliente, assinatura e verificação final">Entregar</button>
+      <button class="btn" data-ed="ad" title="Roteiro de audiodescrição: espaços sem fala, verificação, voz e exportação">Audiodescrição</button>
       ${helpBtn("editor", "O que faz cada botão do editor?")}
       <span class="sep"></span>
       <button class="btn ghost icon" data-ed="undo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer">↶</button>
@@ -726,6 +727,7 @@ function act(name) {
     case "syncmenu": toggleSyncMenu(); break;
     case "verify": openVerify(); break;
     case "deliver": openDeliver(); break;
+    case "ad": abrirAD(); break;
     case "find": openFind(); break;
     case "versoes": abrirVersoes(); break;
   }
@@ -1084,6 +1086,15 @@ function drawWave() {
     const x = Math.round(xOf(s)) + 0.5;
     if (EDP.wave.grid) { g.strokeStyle = C.grid; g.beginPath(); g.moveTo(x, top); g.lineTo(x, bot); g.stroke(); }
     if (Math.abs(s - Math.round(s)) < 1e-6) { g.fillStyle = C.text; g.globalAlpha = .7; g.fillText(String(Math.round(s)), x + 3, H - RULER / 2); g.globalAlpha = 1; }
+  }
+
+  // audiodescrição: espaços sem fala (faixa embaixo da onda)
+  if (ED.adEspacos) {
+    g.fillStyle = "rgba(80, 200, 120, .18)";
+    for (const e of ED.adEspacos) {
+      if (e.fim < t0 || e.inicio > t1) continue;
+      g.fillRect(xOf(e.inicio), bot - 6, xOf(e.fim) - xOf(e.inicio), 6);
+    }
   }
 
   // legendas (fundo)

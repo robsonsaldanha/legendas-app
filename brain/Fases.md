@@ -88,6 +88,7 @@
 - [x] 2.16.0: status da conexão no topo (pings alinhados servidor/Google), ⚠ de atualização no lugar da janela, códigos de erro ER-RS/ER-RA, modo de depuração e diagnóstico (zip em Documentos); servidor 1.4 com modo manutenção
 - [x] 2.17.0: Mac e Linux — camada por sistema, pacotes `.dmg` (Apple Silicon) e `.tar.gz`/`.AppImage` montados e testados no CI; abre no navegador padrão
 - [x] 2.18.0: legenda ao vivo — menu "Ao vivo": entrada de áudio (microfone, som do computador, placa, arquivo, endereço), reconhecimento contínuo local, fila para corrigir antes de ir à tela, texto pronto, página de legenda para o programa de transmissão e janela com fundo de recorte, arquivo `.srt` do evento que abre no editor
+- [x] 2.19.0: audiodescrição no editor — espaços sem fala na forma de onda, perfil e verificação de audiodescrição, ouvir com a voz do sistema, sugestão por IA a partir de quadros, exportar roteiro (.docx/.txt), .ttml, faixa e áudio mixado
 - Próximos passos (família CNT, Mac/Linux, ao vivo, audiodescrição, dublagem, API e pendências antigas): ver [[Tarefas]] e [[Pendências]]
 - [x] 2.11.0: janela própria (WebView2), sem abas nem barra de endereço; o X pergunta antes de fechar
 - [x] 2.12.0: bandeja do sistema (menu Exibir/Reabrir último/Novo projeto/Atualizar/Reiniciar/Sair), aviso de versão nova com o programa aberto (salvar antes, reabrir onde estava); X encerra o processo de vez

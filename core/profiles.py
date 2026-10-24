@@ -132,6 +132,18 @@ NETFLIX_PT_BR_KIDS = Profile(
     max_cps=13.0,
 )
 
+AUDIODESCRICAO_PT_BR = Profile(
+    name="Audiodescrição — Português (Brasil)",
+    language="pt-BR",
+    max_chars_per_line=90,
+    max_lines=4,
+    max_cps=25.0,
+    min_duration=1.0,
+    max_duration=30.0,
+    notes="Roteiro de audiodescrição: cada legenda é uma descrição. As regras de tempo e estilo da "
+          "audiodescrição ficam em Audiodescrição → Verificar.",
+)
+
 # Perfis de clientes (manuais próprios) não ficam no código: a usuária importa um arquivo
 # .cnt.json em Perfis de regras → Importar (ver core/profiles.py: read_pack).
 
@@ -140,6 +152,7 @@ BUILTIN_PROFILES: dict[str, Profile] = {
     "netflix-es-419-kids": NETFLIX_ES_419_KIDS,
     "netflix-pt-br": NETFLIX_PT_BR,
     "netflix-pt-br-kids": NETFLIX_PT_BR_KIDS,
+    "audiodescricao-pt-br": AUDIODESCRICAO_PT_BR,
 }
 
 

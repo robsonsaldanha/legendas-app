@@ -873,6 +873,9 @@ class EditorManager:
         elif kind == "shots":
             if s.video is None or not s.info.get("vcodec"):
                 raise EditorError("Abra o vídeo para analisar os cortes de cena.", 409)
+        elif kind in ("ad_espacos", "ad_exportar"):            # audiodescrição (app/ad.py)
+            if kind == "ad_espacos" and (s.video is None or not s.info.get("acodec")):
+                raise EditorError("Abra o vídeo (com áudio) no editor para achar os espaços sem fala.", 409)
         else:
             raise EditorError("Tarefa desconhecida.")
         tid = uuid.uuid4().hex[:8]
@@ -896,6 +899,13 @@ class EditorManager:
                     (s.cache / "cortes.json").write_text(json.dumps(shots), encoding="utf-8")
                     task["result"] = {"shots": shots}
                     task["message"] = f"{len(shots)} cortes de cena encontrados."
+                elif kind == "ad_espacos":
+                    from . import ad
+                    task["message"] = "Procurando a fala no vídeo…"
+                    task["result"], task["message"] = ad.espacos(self, s, raw, p, prog)
+                elif kind == "ad_exportar":
+                    from . import ad
+                    task["result"], task["message"] = ad.exportar(self, s, raw, p, task, prog)
                 elif kind in ("fit", "audio", "precise"):
                     task["result"], task["message"] = self._voice_sync(s, prof, kind, raw, cues, p, task, prog)
                 else:

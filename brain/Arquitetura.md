@@ -60,6 +60,7 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 | `ortografia.py` | Corretor ortográfico (2.15, `pyspellchecker`): aponta e sugere; ignora nomes no meio da frase, siglas, números, glossários, dicionário pessoal e fala coloquial |
 | `aovivo.py` | Legenda ao vivo (2.18): lista as entradas de áudio do sistema, sessão, fila do operador (espera, correção que segura, apagar, mandar já, texto pronto), divisão pelas regras do perfil, `.srt` do evento, avisos para a página de legenda |
 | `aovivo_worker.py` | Processo separado da legenda ao vivo: ffmpeg → detector de fala por energia (piso de ruído adaptativo) → reconhecimento local em pedaços; eventos JSON (`pronto`, `nivel`, `parcial`, `final`, `erro`, `fim`). `CNT_AOVIVO_FALSO=1` para testes |
+| `audiodescricao.py` | Audiodescrição (2.19): espaços sem fala, verificação (tempo e estilo do guia brasileiro), voz do sistema (Windows/Mac/Linux; `CNT_VOZ_FALSA=1` nos testes), faixa e mixagem pelo ffmpeg, roteiro .txt/.docx, .ttml, quadros + sugestão por IA |
 | `plataforma.py` | O que muda entre Windows, Mac e Linux (2.17): pastas, id da máquina, Documentos, abrir no gerenciador de arquivos |
 | `conexao.py` | Status da conexão (2.16): pings em horário fechado (servidor :00/:30, Google :15/:45) e o estado (online, lenta, reconectando, sem internet, servidor fora, manutenção) |
 | `erros.py` | Códigos ER-RS/ER-RA (2.16): catálogo e classificação de exceções, HTTP e falhas de rede/arquivo |
@@ -71,6 +72,9 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 O atalho chama `pythonw -m cntboot`: escolhe o código mais novo (instalado ou atualização baixada em `%ProgramData%\CNT Legendas\versoes\<versão>`, com volta automática se não abrir) e roda `app.__main__`. `CNT_INSTALL_ROOT` aponta a pasta do programa (ffmpeg, modelos, Python); `CNT_VERSAO_DIR` a pasta da versão (código e `lib/` com bibliotecas em Python puro do pacote).
 
 ## Interface (`app/`)
+
+- `app/ad.py` + `static/ad.js` (2.19): audiodescrição dentro do editor — rotas `/api/editor/<sid>/ad/{verificar,voz,sugerir}`, tarefas `ad_espacos`/`ad_exportar`, áudio da voz em `/media/<sid>/ad/<arquivo>.wav`.
+- `static/aovivo.js` + `static/aovivo-legenda.*` (2.18): legenda ao vivo e página de legenda.
 
 O programa é um servidor local (só `127.0.0.1`). No Windows a tela abre numa **janela própria** (WebView2, `app/janela.py`) com ícone na bandeja do sistema; sem WebView2, abre no navegador (decisão original: página no navegador em vez de PySide6; ver [[Decisões]]).
 

@@ -338,3 +338,14 @@
 - Arquivo do evento: `.srt` gravado a cada legenda publicada, com os tempos reais da fala, em `<pasta dos projetos>/Ao vivo/` (ou Documentos/Ao vivo); botão "Abrir no editor" ao parar.
 - Licença: por enquanto exige o recurso `transcricao`; recurso próprio `ao_vivo` fica para T-035 (precisa do servidor).
 - Falta: tradução ao vivo (T-033) e a validação de 1 h em uso real (T-034).
+
+## 2026-10-24 — 2.19: audiodescrição (P-06)
+- **Dentro do editor**, não numa tela nova: o roteiro é uma legenda `.srt` em que cada legenda é uma descrição. Assim ela usa o que já conhece (vídeo, forma de onda, Criar/Ajustar, desfazer, salvar, versões). Botão **Audiodescrição** abre o painel lateral.
+- Perfil pronto **"Audiodescrição — Português (Brasil)"** (90 caracteres por linha, 4 linhas, até 30 s): para a verificação de legenda não reclamar de tudo; o painel oferece trocar.
+- **Espaços sem fala:** detector de voz no áudio do vídeo (o mesmo da sincronia; sem ele, os silêncios do ffmpeg), menos as legendas (opcional), com 0,2 s de respiro; mínimo 1,5 s. Aparecem numa faixa verde embaixo da forma de onda e numa lista ("Criar nos vazios" cria descrições vazias).
+- **Quantas palavras cabem:** velocidade da voz em palavras por minuto (padrão 150, 80–260), guardada por computador.
+- **Verificação (guia brasileiro)** como apontamentos: erro se não cabe, sobrepõe ou está vazia; aviso se cai em cima da fala, parece passado (lista de formas comuns + terminações -ou/-eu/-iu com exceções), interpreta (parece, provavelmente, triste, lindo…), usa "vemos / a câmera mostra", ou tem menos de 1 s. Regras de estilo só em português.
+- **Voz:** a do próprio sistema, sem internet e sem custo (Windows: voz do sistema via PowerShell; Mac: `say`; Linux: `espeak-ng`, que a pessoa instala). Gravar com a própria voz fica para T-044.
+- **Sugestão por IA:** 3 quadros do trecho (512 px) vão para o serviço de IA escolhido (mesma chave da tradução; formato de imagem de cada tipo de serviço), com as regras do guia e o limite de palavras. É rascunho: ela clica em Usar ou Descartar.
+- **Exportar** (ao lado do vídeo, com "- audiodescricao" no nome; originais não mudam): roteiro `.docx` (tabela) e `.txt` com tempos, `.ttml` marcado como descrição, faixa só da audiodescrição (`.wav` 48 kHz, escrita aos poucos — filme inteiro não precisa caber na memória) e áudio **mixado** (estéreo, original abaixado para 20–70% durante as descrições, com rampa de 0,3 s; filtro em arquivo para não estourar a linha de comando). Avisa quantas descrições a voz não coube no espaço.
+- Licença: sem trava nesta versão (a sugestão exige `ia_traducao`); recurso próprio `audiodescricao` em T-045.
