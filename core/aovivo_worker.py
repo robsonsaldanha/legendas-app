@@ -102,6 +102,7 @@ def principal(argv: list[str] | None = None) -> int:
     except OSError as e:
         emitir(tipo="erro", mensagem=f"Não consegui abrir a entrada de áudio: {e}")
         return 2
+    print("ffmpeg:", " ".join(cmd), file=sys.stderr, flush=True)
     emitir(tipo="pronto")
     piso = None              # piso de ruído (dB), se adapta
     fala: list[np.ndarray] = []
@@ -114,6 +115,8 @@ def principal(argv: list[str] | None = None) -> int:
         raw = ff.stdout.read(BLOCO * 2)
         if not raw:
             break
+        if t == 0.0:
+            print("primeiro bloco de áudio recebido", file=sys.stderr, flush=True)
         x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
         dur = len(x) / TAXA
         db = 20 * np.log10(max(1e-6, float(np.sqrt(np.mean(x * x)))))
@@ -153,6 +156,7 @@ def principal(argv: list[str] | None = None) -> int:
     ff.wait()
     if ff.returncode not in (0, None) and erro:
         emitir(tipo="erro", mensagem=f"A entrada de áudio parou: {erro[-300:]}")
+    print(f"fim: {t:.1f} s lidos, ffmpeg saiu com {ff.returncode}", file=sys.stderr)
     emitir(tipo="fim", segundos=round(t, 1))
     return 0
 

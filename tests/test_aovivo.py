@@ -68,7 +68,8 @@ def test_sessao_completa_com_reconhecedor_falso(tmp_path, monkeypatch):
     monkeypatch.setenv("CNT_AOVIVO_FALSO", "1")
     wav = tmp_path / "evento.wav"
     _wav_com_falas(wav, 2)
-    av = AoVivo(lambda: shutil.which("ffmpeg"), module_cmd, sys.executable)
+    from core.media import ffmpeg
+    av = AoVivo(ffmpeg, module_cmd, sys.executable)
     eventos = []
     av.ouvir(eventos.append)
     av.iniciar(Sessao(fonte=f"arquivo:{wav}", atraso=0.3, pasta=tmp_path / "saida"))
@@ -76,7 +77,10 @@ def test_sessao_completa_com_reconhecedor_falso(tmp_path, monkeypatch):
     while av.estado()["ativo"] and time.time() < fim:
         time.sleep(0.2)
     e = av.estado()
-    assert not e["ativo"] and not e["erro"], e
+    log = av.sessao.log.read_text(encoding="utf-8", errors="replace") if av.sessao.log and av.sessao.log.exists() else ""
+    if e["ativo"]:
+        av.parar()
+    assert not e["ativo"] and not e["erro"], (e, eventos, log)
     legendas = [ev["texto"] for ev in eventos if ev["tipo"] == "legenda"]
     assert legendas == ["Fala 1.", "Fala 2."]
     cues = read_srt(e["srt"])

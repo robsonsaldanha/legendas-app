@@ -145,6 +145,7 @@ class Sessao:
     erro: str = ""
     inicio: float = 0.0
     srt: Path | None = None
+    log: Path | None = None
     traduzir_para: str = ""                          # tradução ao vivo (segunda faixa), ex.: "es-419"
     glossario: list = field(default_factory=list)    # [(termo, tradução)] para a tradução ao vivo
     srt_trad: Path | None = None
@@ -237,7 +238,9 @@ class AoVivo:
             self.sessao = sessao
             cmd = self._module_cmd(self._python, "core.aovivo_worker", "--fonte", sessao.fonte, "--idioma", sessao.idioma,
                                    "--modelo", sessao.modelo, "--prompt", prompt[:800], "--ffmpeg", str(self._ffmpeg()))
-            self._proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            sessao.log = sessao.srt.with_suffix(".log")          # o que o processo de captura reclamar (para o suporte)
+            self._proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                          stderr=open(sessao.log, "w", encoding="utf-8"),
                                           text=True, encoding="utf-8",
                                           creationflags=0x08000000 if sys.platform == "win32" else 0)
         threading.Thread(target=self._ler, args=(self._proc, sessao), daemon=True, name="aovivo-ler").start()
@@ -265,10 +268,18 @@ class AoVivo:
                 elif tipo == "erro":
                     s.erro = ev.get("mensagem", "")
                     log.warning("Ao vivo: %s", s.erro)
+        proc.wait()
         with self._lock:
+            if proc.returncode not in (0, None) and not s.erro:
+                s.erro = f"A captura parou (código {proc.returncode})."
             if s.ativo:
                 self._publicar_vencidas(s, forcar=True)
                 s.ativo = False
+        try:
+            if s.log and s.log.exists() and (proc.returncode in (0, None) or s.log.stat().st_size == 0) and not s.erro:
+                s.log.unlink()                       # deu tudo certo: não deixa arquivo a mais na pasta
+        except OSError:
+            pass
 
     def _relogio(self, s: Sessao) -> None:
         while s.ativo:
