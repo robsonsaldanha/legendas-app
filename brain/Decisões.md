@@ -223,3 +223,12 @@
 - Passos do episódio (para a tela): Arquivos (tem vídeo/legenda) → Traduzir (houve tradução, ou há uma legenda gerada pelo programa) → Revisar (último registro foi "salvar") → Entregar (entregue, pasta Entrega ou status finalizado). O botão de cada episódio é o próximo passo.
 - Telas: menu com 4 itens (Início, Editor, Relatórios, Configurações; Clientes, Perfis e Em segundo plano abrem por Configurações). Início = o mês (setas, resumo, uma linha por projeto com progresso e próximo passo, outros meses). Projeto = trilha de passos por episódio + menu ⋯. Novo trabalho = 3 perguntas (o que fazer, para quem/qual episódio, arquivos); "Legendar um vídeo" já dispara a transcrição em segundo plano na pasta do episódio. Configurações = linhas com "?"; tradução pela API e Avançado recolhidos. Dicas "?" em todas as telas e no editor (`app/static/ds.js`, uma por vez, Esc fecha).
 - Também: o aviso de download do modelo dizia "~480 MB" (era o large-v3, ~3 GB) e a barra parecia travada; agora mostra o tamanho certo e "Preparando a transcrição…" depois do download.
+
+## 2026-10-23 — Licença e atualização automática (2.10.0)
+- Especificação e decisões do Róbson em `Licenciamento.md` (planos, preços, venda por PIX, canais).
+- Partida pelo `cntboot.py` (fica na pasta do programa; o patch não o troca): escolhe a versão baixada mais nova em `%ProgramData%\CNT Legendas\versoes`, com volta automática se ela não abrir. Atalhos do instalador chamam `pythonw -m cntboot`.
+- Canal e número da montagem em `core/canal.json`, gravado pelo `packaging/build.ps1` (variáveis `CNT_CANAL`, `CNT_BUILD`); sem o arquivo, é desenvolvimento e sem atualização.
+- Recursos pagos bloqueados no servidor local (`app/server.py`, `need(recurso)` → 402) e explicados na tela ("Recurso da licença paga", com "Ver os planos" e "Tenho um código"). Grátis continua: criar projeto, editor e tradução à mão.
+- Na tela: etiqueta "Avaliação: N h restantes"/"Modo grátis" na barra de cima e linha "Licença" em Configurações. Ao abrir, se houver versão nova, a tela "Atualizando…" bloqueia o uso até terminar; a página recarrega sozinha.
+- Instalador pela atualização: roda com o aviso de administrador do Windows (`ShellExecute runas`), em silêncio, e reabre o programa (`/ABRIR`).
+- Testes: `tests/test_licenca.py`, `tests/test_atualizacao.py`; os demais testes rodam com uma licença de teste com tudo liberado (`tests/conftest.py`). No CI, o programa instalado tem de mostrar a versão completa e o canal certos.

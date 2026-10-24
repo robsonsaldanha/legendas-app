@@ -28,6 +28,8 @@ const HELP = {
     "Vêm do projeto ou do cliente. Se o idioma de origem ficar em “Detectar automaticamente”, o programa descobre pela legenda ou pela fala do vídeo."],
   arquivos: ["Arquivos",
     "São copiados para a pasta do episódio. Os seus originais continuam onde estão. Dá para pôr depois também."],
+  "cfg-licenca": ["Licença",
+    "Todo computador tem 1 dia de avaliação com tudo liberado. Depois, criar projetos e traduzir à mão continuam grátis; o resto precisa de licença. O código de ativação chega por e-mail depois da compra e ativa um computador, uma vez. O programa confere a licença ao abrir e funciona até 30 dias sem internet."],
   "cfg-nome": ["Seu nome na legenda",
     "Algumas entregas pedem o nome de quem traduziu no fim da legenda (“Traducción: …”). É este nome que o programa usa."],
   "cfg-pasta": ["Pasta dos trabalhos",

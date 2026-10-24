@@ -15,3 +15,5 @@ dist/
 !tests/fixtures/**
 # Obsidian
 brain/.obsidian/workspace*.json
+# gerado pelo build (canal e número da montagem)
+core/canal.json

@@ -9,3 +9,5 @@ httpx>=0.27,<1
 onnxruntime>=1.18; sys_platform != "win32"
 onnxruntime-directml>=1.18; sys_platform == "win32"
 scipy>=1.11
+# Licença e atualização: assinatura Ed25519 do servidor
+cryptography>=42

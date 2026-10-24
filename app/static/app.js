@@ -42,6 +42,10 @@ async function api(method, path, body) {
     throw new Error("O CNT Legendas não está respondendo. Ele foi fechado? Abra de novo pelo atalho.");
   }
   const data = await res.json().catch(() => ({}));
+  if (res.status === 402 && data.licenca) {       // recurso pago sem licença: explica e oferece ativar
+    showLicenseBlocked(data.error, data.recurso);
+    const e = new Error(""); e.licenca = true; throw e;
+  }
   if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
   return data;
 }
@@ -69,6 +73,7 @@ function renderSubHtml(text) {
 
 let toastTimer;
 function toast(msg, isErr = false) {
+  if (!msg) return;                                 // (erro de licença já mostrado na janela própria)
   const t = document.getElementById("toast");
   t.textContent = msg;
   t.className = "toast" + (isErr ? " err" : "");
@@ -1115,6 +1120,11 @@ async function renderSettings() {
       <p class="ds-sub">O dia a dia fica aqui em cima. O técnico fica em “Avançado”, lá embaixo.</p></div></header>
 
     <section class="ds-set" aria-label="Configurações principais">
+      ${setRow("cfg-licenca", "Licença", (() => { const l = st.licenca || {}; return l.modo === "licenciada"
+        ? `${esc(l.licenca)} · plano ${esc(l.plano)} · ${l.valido_ate ? `válida até ${esc(new Date(l.valido_ate).toLocaleDateString("pt-BR"))}` : "sem vencimento"}`
+        : l.modo === "avaliacao" ? `Avaliação até ${esc(new Date(l.valido_ate).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}`
+        : "Modo grátis: projetos e tradução manual. IA, sincronia pela fala, regras e relatórios precisam de licença."; })(),
+        `<button class="ds-btn sm ${(st.licenca || {}).modo === "licenciada" ? "" : "primary"}" data-action="licenca">${(st.licenca || {}).modo === "licenciada" ? "Ver" : "Ativar"}</button>`)}
       ${setRow("cfg-nome", "Seu nome na legenda", `<input type="text" id="s-who" value="${esc(s.translator_name || "")}" placeholder="Como você assina as legendas" aria-label="Seu nome na legenda">`,
         `<button class="ds-btn sm" data-action="save-who">Salvar</button>`)}
       ${setRow("cfg-pasta", "Pasta dos trabalhos", `<span class="mono small">${esc(st.projects_root || "não escolhida")}</span> — um mês por pasta (${esc(monthFolder(thisMonth()))}…)`,
@@ -1207,6 +1217,7 @@ async function renderSettings() {
     try {
       if (a.startsWith("ai-")) { await aiAction(a, b); return; }
       if (a === "edprefs") { openEdPrefs(); return; }
+      if (a === "licenca") { openLicenseModal(); return; }
       if (a === "open-ai") { const d = document.getElementById("ai-wrap"); d.open = true; d.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
       if (a === "save-key") {
         const v = document.getElementById("key-in").value.trim();
@@ -1410,6 +1421,8 @@ document.addEventListener("drop", (e) => e.preventDefault());
   drawNav();
   try {
     await loadState();
+    await updateGate();          // atualização obrigatória antes de trabalhar
+    drawLicenseBadge();
     if (!location.hash) { location.hash = S.state.projects_root ? "#/inicio" : "#/bemvindo"; }
     else router();
   } catch (e) { router(); }

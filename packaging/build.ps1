@@ -31,7 +31,13 @@ $Py    = Join-Path $App "python"
 $Dl    = Join-Path $Build "downloads"
 
 $Version = (& python -c "import sys; sys.path.insert(0, r'$Root'); import core; print(core.__version__)").Trim()
-Write-Host "== CNT Legendas $Version =="
+# Canal e número da montagem (o CI define): "producao" no ramo main, "desenvolvimento" no dev.
+# A versão completa é <versão>.<montagem> (ex.: 2.10.0.57); a atualização automática compara por ela.
+$Canal = if ($env:CNT_CANAL) { $env:CNT_CANAL } else { "desenvolvimento" }
+$BuildNum = if ($env:CNT_BUILD) { [int]$env:CNT_BUILD } else { 0 }
+if ($Canal -notin @("producao", "desenvolvimento")) { throw "CNT_CANAL inválido: $Canal" }
+$FullVersion = if ($BuildNum) { "$Version.$BuildNum" } else { $Version }
+Write-Host "== CNT Legendas $FullVersion ($Canal) =="
 
 Remove-Item $App -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $App, $Py, $Dl, (Join-Path $App "bin"), (Join-Path $Build "redist") | Out-Null
@@ -96,8 +102,21 @@ Remove-Item (Join-Path $site "torch\test") -Recurse -Force -ErrorAction Silently
 $Stage = "código"
 Copy-Item (Join-Path $Root "core") (Join-Path $App "core") -Recurse
 Copy-Item (Join-Path $Root "app") (Join-Path $App "app") -Recurse
+Copy-Item (Join-Path $Root "cntboot.py") (Join-Path $App "cntboot.py")
 Get-ChildItem $App -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
+Remove-Item (Join-Path $App "core\canal.json") -ErrorAction SilentlyContinue
+$canalJson = @{ canal = $Canal; build = $BuildNum } | ConvertTo-Json -Compress
+[IO.File]::WriteAllText((Join-Path $App "core\canal.json"), $canalJson, (New-Object Text.UTF8Encoding $false))
 & python -m compileall -q -f (Join-Path $App "core") (Join-Path $App "app") | Out-Null
+
+# pacote de atualização (patch): só app\ e core\, para o programa já instalado baixar e aplicar
+New-Item -ItemType Directory -Force -Path (Join-Path $Build "Output") | Out-Null
+$patch = Join-Path $Build "Output\Atualizacao_CNT_Legendas_$FullVersion.zip"
+Remove-Item $patch -ErrorAction SilentlyContinue
+# (zip pelo Python: nomes com "/", que funcionam em qualquer descompactador)
+& python -c "import sys, zipfile, pathlib; r = pathlib.Path(sys.argv[1]); z = zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED, compresslevel=9); [z.write(f, f.relative_to(r).as_posix()) for d in ('app', 'core') for f in sorted((r / d).rglob('*')) if f.is_file()]; z.close()" $App $patch
+if ($LASTEXITCODE) { throw "falha ao gerar o pacote de atualização" }
+Write-Host "Pacote de atualização: $([math]::Round((Get-Item $patch).Length / 1MB, 1)) MB"
 
 # ---------------------------------------------------------------- detector de voz
 $Stage = "detector de voz"
@@ -138,6 +157,6 @@ $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\I
 if (-not $iscc) { throw "Inno Setup 6 não encontrado (choco install innosetup)" }
 $size = [math]::Round(((Get-ChildItem $App -Recurse | Measure-Object Length -Sum).Sum / 1MB))
 Write-Host "Programa montado: $size MB"
-& $iscc /Q "/DAppVersion=$Version" "/DBuildDir=$Build" (Join-Path $PSScriptRoot "legendas.iss")
+& $iscc /Q "/DAppVersion=$FullVersion" "/DBuildDir=$Build" (Join-Path $PSScriptRoot "legendas.iss")
 if ($LASTEXITCODE) { throw "falha ao gerar o instalador" }
 Get-ChildItem (Join-Path $Build "Output")

@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import logging
 import sys
 import urllib.request
 import webbrowser
+from pathlib import Path
 
 
 def _ping(port: int, token: str = "") -> str:
@@ -35,6 +37,20 @@ def _existing_session() -> dict | None:
     if _ping(int(data.get("port", 0)), data.get("token", "")) == "legendas-ok":
         return data
     return None
+
+
+def _depois_de_abrir(app, port: int) -> None:
+    """Licença (conferir/avaliação) e atualização em segundo plano; marca que esta versão abriu."""
+    from core import atualizacao, licenca
+    vdir = os.environ.get("CNT_VERSAO_DIR")
+    if vdir:
+        try:
+            Path(vdir, "iniciou").write_text("ok", encoding="utf-8")
+        except OSError:
+            pass
+    licenca.conferir_em_segundo_plano()
+    if atualizacao.build_info() and not os.environ.get("CNT_SEM_ATUALIZACAO"):
+        app.start_update(port)     # só na cópia instalada (o CI grava core/canal.json)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -71,13 +87,15 @@ def main(argv: list[str] | None = None) -> int:
     except OSError:
         pass
 
-    port = args.port or preferred_port()
+    reuse = os.environ.pop("CNT_REUSE_PORT", "")
+    port = int(reuse) if reuse.isdigit() else (args.port or preferred_port())
     try:
         srv = make_server(app, port)
     except OSError:
         srv = make_server(app, 0)  # porta ocupada (outro programa): usa uma livre
     port = srv.server_address[1]
     app.write_session(port)
+    _depois_de_abrir(app, port)
     url = f"http://127.0.0.1:{port}/open?k={app.token}"
     logging.getLogger("legendas").info("CNT Legendas aberto na porta %s", port)
     if sys.stdout is not None:

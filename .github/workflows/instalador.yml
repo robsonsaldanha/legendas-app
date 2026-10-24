@@ -1,16 +1,24 @@
 name: Instalador
 
-# Em todo push na main: monta, instala, testa e desinstala.
-# Se tudo passar, publica o instalador na página de versões (Releases) como
-# v<versão do core/__init__.py>; a mesma versão é atualizada até o número mudar.
+# Em todo push na main ou na dev: monta, instala, testa e desinstala. Se tudo passar:
+# - dev  → canal "desenvolvimento": o pacote de atualização vai para dev-legendas.cntoficial.com.br
+#          e o instalador fica na pré-versão "desenvolvimento" (substituída a cada montagem);
+# - main → canal "producao": publica a versão v<versão>.<montagem> e, quando o servidor de
+#          produção estiver ligado (variável CNT_PROD_ATIVO = 1), envia o pacote para ele.
+# Um commit com "[instalador]" na mensagem obriga quem atualiza a rodar o instalador inteiro
+# (use quando mudar bibliotecas, o Python embutido ou o cntboot.py).
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: write
+
+env:
+  CNT_CANAL: ${{ github.ref == 'refs/heads/dev' && 'desenvolvimento' || 'producao' }}
+  CNT_BUILD: ${{ github.run_number }}
 
 jobs:
   instalador:
@@ -64,8 +72,17 @@ jobs:
         run: |
           $env:PATH = ($env:PATH -split ";" | Where-Object { $_ -notmatch "Python|hostedtoolcache|ffmpeg" }) -join ";"
           $py = "$env:ProgramFiles\CNT Legendas\python\python.exe"
+          $env:CNT_SEM_ATUALIZACAO = "1"
           & $py packaging\smoke_test.py "$env:RUNNER_TEMP\fala.wav" "The quick brown fox jumps over the lazy dog."
           if ($LASTEXITCODE) { throw "teste do programa instalado falhou" }
+          # partida, canal e assinatura (licença e atualização)
+          Push-Location "$env:ProgramFiles\CNT Legendas"
+          $info = & $py -c "import cntboot, core.licenca as L, core.atualizacao as A; from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey; print(A.versao_atual(), L.canal(), cntboot.versao_instalada())"
+          Pop-Location
+          if ($LASTEXITCODE) { throw "partida/licença não carregam no programa instalado" }
+          $esperado = "$((& $py -c 'import core; print(core.__version__)').Trim()).$env:CNT_BUILD"
+          if ($info -notmatch [regex]::Escape("$esperado $env:CNT_CANAL $esperado")) { throw "versão/canal errados: $info (esperado $esperado $env:CNT_CANAL)" }
+          "::notice title=Partida::$info"
 
       - name: Desinstalar
         shell: pwsh
@@ -84,16 +101,64 @@ jobs:
         run: |
           $v = (python -c "import core; print(core.__version__)").Trim()
           "v=$v" >> $env:GITHUB_OUTPUT
+          "full=$v.$env:CNT_BUILD" >> $env:GITHUB_OUTPUT
+          $msg = git log -1 --format=%B
+          "requer=$(if ($msg -match '\[instalador\]') { '1' } else { '0' })" >> $env:GITHUB_OUTPUT
+          $notas = (($msg -split "`n") | Where-Object { $_ -notmatch '^(Co-Authored-By|Claude-Session):' }) -join "`n"
+          "notas=$([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($notas.Trim())))" >> $env:GITHUB_OUTPUT
 
       - name: Publicar versão (página de downloads)
+        id: release
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: build/Output/*.exe
-          tag_name: v${{ steps.versao.outputs.v }}
+          tag_name: v${{ steps.versao.outputs.full }}
           target_commitish: ${{ github.sha }}
-          name: CNT Legendas ${{ steps.versao.outputs.v }}
+          name: CNT Legendas ${{ steps.versao.outputs.full }}
           make_latest: true
           body: |
             Baixe o **Instalador_CNT_Legendas** abaixo e dê dois cliques. Ele instala tudo
             (não precisa de Python nem de mais nada) para todos os perfis do Windows.
+            Depois de instalado, o programa se atualiza sozinho.
+
+      - name: Publicar pré-versão de desenvolvimento
+        if: github.ref == 'refs/heads/dev'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # uma só pré-versão "desenvolvimento", trocada a cada montagem (o instalador tem ~1 GB)
+          gh release delete desenvolvimento --cleanup-tag --yes 2>$null
+          $exe = (Get-ChildItem build\Output\Instalador_CNT_Legendas_*.exe | Select-Object -First 1).FullName
+          gh release create desenvolvimento $exe --prerelease --latest=false --target $env:GITHUB_SHA `
+            --title "CNT Legendas ${{ steps.versao.outputs.full }} (desenvolvimento)" `
+            --notes "Versão de testes. Não instale no computador de trabalho; ela se atualiza sozinha pelo canal de desenvolvimento."
+          if ($LASTEXITCODE) { throw "falha ao publicar a pré-versão" }
+
+      - name: Enviar ao servidor de licenças
+        if: github.ref == 'refs/heads/dev' || (github.ref == 'refs/heads/main' && vars.CNT_PROD_ATIVO == '1')
+        shell: pwsh
+        env:
+          CNT_TOKEN: ${{ github.ref == 'refs/heads/dev' && secrets.CNT_TOKEN_DEV || secrets.CNT_TOKEN_PROD }}
+          CNT_URL: ${{ github.ref == 'refs/heads/dev' && 'https://dev-legendas.cntoficial.com.br' || 'https://legendas.cntoficial.com.br' }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (-not $env:CNT_TOKEN) { throw "falta o segredo do servidor (CNT_TOKEN_DEV / CNT_TOKEN_PROD)" }
+          $full = "${{ steps.versao.outputs.full }}"
+          $tag = if ($env:GITHUB_REF -eq "refs/heads/dev") { "desenvolvimento" } else { "v$full" }
+          $h = @{ Authorization = "Bearer $env:CNT_TOKEN"; "X-Notas" = "${{ steps.versao.outputs.notas }}"; "X-Requer-Instalador" = "${{ steps.versao.outputs.requer }}" }
+          # 1) instalador: só o endereço no GitHub e a soma de conferência (o arquivo é grande demais para o servidor)
+          $exe = Get-ChildItem build\Output\Instalador_CNT_Legendas_*.exe | Select-Object -First 1
+          $names = gh release view $tag --json assets --jq ".assets[].name"
+          if ($names -notcontains $exe.Name) { throw "instalador não encontrado na versão $tag" }
+          $url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/releases/download/$tag/$($exe.Name)"
+          $meta = @{ url = $url; sha256 = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower(); tamanho = $exe.Length } | ConvertTo-Json -Compress
+          $r = Invoke-RestMethod -Method Put -Uri "$env:CNT_URL/v1/admin/versoes/$full/instalador" -Headers $h `
+            -ContentType "application/octet-stream" -Body ([Text.Encoding]::UTF8.GetBytes($meta))
+          "::notice title=Servidor::instalador $full registrado ($($r.url))"
+          # 2) pacote de atualização (app\ e core\)
+          $zip = "build\Output\Atualizacao_CNT_Legendas_$full.zip"
+          $r = Invoke-RestMethod -Method Put -Uri "$env:CNT_URL/v1/admin/versoes/$full/patch" -Headers $h `
+            -ContentType "application/octet-stream" -InFile $zip
+          "::notice title=Servidor::pacote $full publicado ({0:N1} MB, sha256 $($r.sha256.Substring(0,12))…)" -f ($r.tamanho / 1MB)

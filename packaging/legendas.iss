@@ -47,18 +47,23 @@ Name: "desktopicon"; Description: "Criar atalho na área de trabalho (para todos
 ; Modelos de alinhamento compartilhados entre os perfis: todos podem gravar
 Name: "{commonappdata}\CNT Legendas"; Permissions: users-modify
 Name: "{commonappdata}\CNT Legendas\modelos"; Permissions: users-modify
+; atualizações baixadas pelo programa (patches) e a licença deste computador
+Name: "{commonappdata}\CNT Legendas\versoes"; Permissions: users-modify
+Name: "{commonappdata}\CNT Legendas\licenca"; Permissions: users-modify
 
 [Files]
 Source: "{#BuildDir}\CNTLegendas\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#BuildDir}\redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: VCRedistNeeded
 
 [Icons]
-Name: "{commonprograms}\CNT Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m app"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"
-Name: "{commondesktop}\CNT Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m app"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"; Tasks: desktopicon
+Name: "{commonprograms}\CNT Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m cntboot"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"
+Name: "{commondesktop}\CNT Legendas"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m cntboot"; WorkingDir: "{app}"; IconFilename: "{app}\legendas.ico"; Comment: "Legendagem automática"; Tasks: desktopicon
 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Instalando componentes do Windows (Visual C++)..."; Flags: waituntilterminated; Check: VCRedistNeeded
-Filename: "{app}\python\pythonw.exe"; Parameters: "-m app"; WorkingDir: "{app}"; Description: "Abrir o CNT Legendas agora"; Flags: nowait postinstall skipifsilent runasoriginaluser
+Filename: "{app}\python\pythonw.exe"; Parameters: "-m cntboot"; WorkingDir: "{app}"; Description: "Abrir o CNT Legendas agora"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; atualização automática: o programa roda este instalador em silêncio com /ABRIR e espera reabrir
+Filename: "{app}\python\pythonw.exe"; Parameters: "-m cntboot"; WorkingDir: "{app}"; Flags: nowait runasoriginaluser; Check: AbrirDepois
 
 [InstallDelete]
 ; versão antiga, com o nome "Legendas": programa e atalhos (os dados ficam e são migrados)
@@ -76,6 +81,8 @@ Type: files; Name: "{commondesktop}\Legendas.lnk"
 Type: filesandordirs; Name: "{app}\core"
 Type: filesandordirs; Name: "{app}\app"
 Type: filesandordirs; Name: "{app}\python"
+Type: files; Name: "{app}\cntboot.py"
+Type: filesandordirs; Name: "{app}\__pycache__"
 Type: dirifempty; Name: "{app}"
 
 [Code]
@@ -91,6 +98,16 @@ begin
     if DirExists(OldDir) and not DirExists(NewDir) then
       RenameFile(OldDir, NewDir);
   end;
+end;
+
+function AbrirDepois: Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/ABRIR') = 0 then
+      Result := True;
 end;
 
 function VCRedistNeeded: Boolean;

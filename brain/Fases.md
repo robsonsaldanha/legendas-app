@@ -79,5 +79,8 @@
 - [x] 2.7.0: transcrição de vídeo sem legenda no computador (Whisper large-v3, sem custo; OpenAI vira opção)
 - [x] 2.8.0: 20 idiomas + detectar automaticamente; falas em outro idioma no mesmo episódio; japonês/chinês sem espaço
 - [x] 2.9.0: pastas por mês (e trabalhos antigos encontrados nas pastas), interface simplificada com dicas "?" (ver Design.md)
+- [x] 2.10.0: licença (1 dia de avaliação, modo grátis, ativação por código, recursos pagos) e atualização automática obrigatória pelos canais desenvolvimento/produção (ver Licenciamento.md). Precisa ser instalada uma vez pelo instalador.
+- [ ] Ligar a produção (nginx + certificado de legendas.cntoficial.com.br, variável CNT_PROD_ATIVO) quando o Róbson aprovar; termos revisados por advogado
+- [ ] Nuitka nos módulos de licença; repositório privado + runner próprio
 - [ ] Calibrar com legendas acertadas à mão por ela (quanto antes da fala ela gosta de entrar)
 - [ ] Janela própria (sem navegador), se ela preferir

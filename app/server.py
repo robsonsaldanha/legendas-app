@@ -49,6 +49,21 @@ class ApiError(Exception):
         self.status = status
 
 
+class LicenseBlocked(ApiError):
+    """Recurso pago sem licença (avaliação terminada, grátis, vencida…)."""
+
+    def __init__(self, recurso: str):
+        from core import licenca
+        super().__init__(licenca.mensagem_bloqueio(recurso), 402)
+        self.recurso = recurso
+
+
+def need(recurso: str) -> None:
+    from core import licenca
+    if not licenca.atual().tem(recurso):
+        raise LicenseBlocked(recurso)
+
+
 def _file_kind(p: Path) -> str:
     ext = p.suffix.lower()
     if ext in MEDIA_EXT:
@@ -102,7 +117,8 @@ class App:
 
     def __init__(self, db: Database | None = None, transcriber_factory=None,
                  translator_factory=None):
-        self.token = secrets.token_urlsafe(24)
+        # depois de uma atualização a nova instância reaproveita a sessão: a página só recarrega
+        self.token = os.environ.pop("CNT_REUSE_TOKEN", None) or secrets.token_urlsafe(24)
         self.cookie_name = "legendas_" + user_id()
         self.db = db or Database()
         self.uploads = data_dir() / UPLOADS_SUBDIR
@@ -116,6 +132,8 @@ class App:
         self.editor.projects = self.projects
         self.downloads: dict[str, str] = {}  # idioma -> status do download do modelo
         self.server: ThreadingHTTPServer | None = None
+        from core.atualizacao import Atualizador
+        self.updater = Atualizador()
 
     # ---------------------------------------------------------- sessão
 
@@ -166,7 +184,37 @@ class App:
             "projects_root": Settings.load().projects_root,
             "ai": self.ai_status(),
             "home_dir": str(Path.home()),
+            "licenca": self.license_state(),
+            "atualizacao": self.updater.to_dict(),
         }
+
+    # ---------------------------------------------------------- licença e atualização
+
+    def license_state(self) -> dict:
+        from core import licenca
+        d = licenca.atual().estado.to_dict()
+        d["canal"] = licenca.canal()
+        d["site"] = licenca.servidor()
+        return d
+
+    def start_update(self, port: int) -> None:
+        """Atualização obrigatória: se o servidor tiver versão nova, baixa, aplica e reabre.
+        A página fica na tela "Atualizando…" enquanto isso (ver /api/atualizacao)."""
+        from core import atualizacao
+
+        def reiniciar(pacote: str, exe=None):
+            import threading as _t
+            if pacote == "instalador":
+                atualizacao.rodar_instalador(exe)
+            else:
+                atualizacao.reabrir(port, self.token)
+            _t.Timer(1.5, lambda: os._exit(0)).start()   # a página vê "reiniciando" e espera a nova instância
+
+        def run():
+            info = self.updater.verificar()
+            if info["estado"] == "disponivel":
+                self.updater.executar(reiniciar)
+        threading.Thread(target=run, daemon=True, name="atualizacao").start()
 
     def recent(self) -> list[dict]:
         out = []
@@ -402,13 +450,18 @@ class Handler(BaseHTTPRequestHandler):
                    "application/json; charset=utf-8")
 
     def _body(self) -> dict:
+        cached = getattr(self, "_body_cache", None)
+        if cached is not None:      # lido uma vez (a trava de licença também olha o corpo)
+            return cached
         n = int(self.headers.get("Content-Length") or 0)
         if not n:
-            return {}
+            self._body_cache = {}
+            return self._body_cache
         try:
-            return json.loads(self.rfile.read(n).decode("utf-8"))
+            self._body_cache = json.loads(self.rfile.read(n).decode("utf-8"))
         except ValueError as e:
             raise ApiError("Requisição inválida.") from e
+        return self._body_cache
 
     def _host_ok(self) -> bool:
         host = (self.headers.get("Host") or "").split(":")[0].lower()
@@ -443,6 +496,7 @@ class Handler(BaseHTTPRequestHandler):
         self._dispatch("DELETE")
 
     def _dispatch(self, method: str) -> None:
+        self._body_cache = None     # a conexão pode ser reaproveitada para outro pedido
         if not self._host_ok():
             self._send(403, b"forbidden", "text/plain")
             return
@@ -472,6 +526,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._media(path)
                 return
             self._static(path)
+        except LicenseBlocked as e:
+            self._json({"error": str(e), "licenca": True, "recurso": e.recurso}, 402)
         except ApiError as e:
             self._json({"error": str(e)}, e.status)
         except LegendasError as e:
@@ -581,9 +637,46 @@ class Handler(BaseHTTPRequestHandler):
 
     # ================================================================ API
 
+    def _need_steps(self, steps) -> None:
+        for st, feat in (("transcrever", "transcricao"), ("traduzir", "ia_traducao"), ("sincronizar", "sincronia_fala")):
+            if st in steps:
+                need(feat)
+        need("lote")
+
     @route("GET", r"/api/state")
     def api_state(self):
         return self.app.state()
+
+    @route("GET", r"/api/licenca")
+    def api_licenca(self):
+        return self.app.license_state()
+
+    @route("POST", r"/api/licenca/ativar")
+    def api_licenca_ativar(self):
+        from core import licenca
+        codigo = str(self._body().get("codigo") or "").strip()
+        if not codigo:
+            raise ApiError("Cole o código de ativação.")
+        try:
+            licenca.atual().ativar(codigo)
+        except licenca.LicencaError as e:
+            raise ApiError(str(e)) from e
+        except Exception as e:  # noqa: BLE001  (sem internet)
+            raise ApiError(f"Não consegui falar com o servidor de licenças ({e}). Confira a internet e tente de novo.") from e
+        return self.app.license_state()
+
+    @route("POST", r"/api/licenca/conferir")
+    def api_licenca_conferir(self):
+        from core import licenca
+        try:
+            licenca.atual().conferir()
+        except licenca.LicencaError as e:
+            raise ApiError(str(e)) from e
+        return self.app.license_state()
+
+    @route("GET", r"/api/atualizacao")
+    def api_atualizacao(self):
+        return self.app.updater.to_dict()
 
     @route("POST", r"/api/key")
     def api_key_set(self):
@@ -753,6 +846,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/projects")
     def api_project_create(self):
+        need("clientes")
         pid = self.app.db.save_project(self._body())
         return self.app.db.get_project(pid)
 
@@ -765,11 +859,13 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("PUT", r"/api/projects/(\d+)")
     def api_project_update(self, pid):
+        need("clientes")
         self.app.db.save_project(self._body(), int(pid))
         return self.app.db.get_project(int(pid))
 
     @route("DELETE", r"/api/projects/(\d+)")
     def api_project_delete(self, pid):
+        need("clientes")
         self.app.db.delete_project(int(pid))
         return {"ok": True}
 
@@ -819,6 +915,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/profiles/import")
     def api_profile_import(self):
+        need("regras")
         try:
             keys = self.app.db.import_profiles(self._body().get("data"))
         except ValueError as e:
@@ -827,16 +924,19 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/profiles")
     def api_profile_create(self):
+        need("regras")
         key = self.app.db.save_profile(None, self._body())
         return {"key": key, "profiles": self.app.db.list_profiles()}
 
     @route("PUT", r"/api/profiles/([\w\-]+)")
     def api_profile_update(self, key):
+        need("regras")
         self.app.db.save_profile(key, self._body())
         return {"key": key, "profiles": self.app.db.list_profiles()}
 
     @route("DELETE", r"/api/profiles/([\w\-]+)")
     def api_profile_delete(self, key):
+        need("regras")
         self.app.db.delete_profile(key)
         return {"profiles": self.app.db.list_profiles()}
 
@@ -849,6 +949,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/jobs")
     def api_job_create(self):
+        self._need_steps(self._body().get("params", {}).get("steps") or [])
         b = self._body()
         jid = self.app.worker.submit(b.get("params", {}), b.get("inputs", []))
         return self.app.job_detail(jid)
@@ -877,6 +978,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/jobs/(\d+)/retry")
     def api_job_retry(self, jid):
+        need("lote")
         self.app.worker.retry(int(jid))
         return self.app.job_detail(int(jid))
 
@@ -954,6 +1056,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("GET", r"/api/obras/(\d+)/report")
     def api_obra_report(self, oid):
+        need("relatorios")
         return self.app.projects.obra_report(int(oid))
 
     @route("PUT", r"/api/itens/(\d+)")
@@ -974,6 +1077,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("GET", r"/api/itens/(\d+)/report")
     def api_item_report(self, iid):
+        need("relatorios")
         return self.app.projects.item_report(int(iid))
 
     @route("POST", r"/api/itens/(\d+)/open")
@@ -989,6 +1093,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("GET", r"/api/report")
     def api_report(self):
+        need("relatorios")
         q = self.query
         return self.app.projects.general_report(q.get("from", ""), q.get("to", ""), q.get("client") or None,
                                                 q.get("status", ""))
@@ -1013,6 +1118,8 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/editor/(\w+)/task")
     def api_editor_task(self, sid):
+        if self._body().get("kind") in ("precise", "audio", "fit"):
+            need("sincronia_fala")
         b = self._body()
         return self.app.editor.task_start(sid, b.get("kind", ""), b.get("cues", []), b)
 
@@ -1026,6 +1133,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/editor/(\w+)/script")
     def api_editor_script(self, sid):
+        need("transcricao")
         b = self._body()
         inputs, params = self.app.editor.script_job(sid, b.get("path", ""), b)
         if b.get("estimate"):
@@ -1039,6 +1147,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/editor/(\w+)/deliver")
     def api_editor_deliver(self, sid):
+        need("regras")
         b = self._body()
         return self.app.editor.deliver(sid, b.get("cues", []), b)
 
@@ -1066,11 +1175,13 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/editor/(\w+)/qc")
     def api_editor_qc(self, sid):
+        need("regras")
         b = self._body()
         return self.app.editor.qc(sid, b.get("cues", []), b.get("profile_key") or None)
 
     @route("POST", r"/api/editor/(\w+)/translate")
     def api_editor_translate(self, sid):
+        need("ia_traducao")
         b = self._body()
         inputs, params = self.app.editor.translation_job(sid, b.get("cues", []), b)
         if b.get("estimate"):
@@ -1080,6 +1191,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/editor/(\w+)/chat/start")
     def api_chat_start(self, sid):
+        need("ia_traducao")
         b = self._body()
         pid = b.get("project_id")
         project = self.app.db.get_project(int(pid)) if pid else None
@@ -1097,6 +1209,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/editor/(\w+)/chat/(\d+)/api")
     def api_chat_api(self, sid, n):
+        need("ia_traducao")
         st = Settings.load()
         factory = self.app.worker._translator_factory
         from core.translate import make_translator, translate_prices
