@@ -58,6 +58,9 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 | `versoes.py` | Histórico de versões (2.15): cópia a cada Salvar/Entregar em `editor\versoes\<arquivo>` (50 por arquivo, sem repetir a igual) e comparação legenda a legenda |
 | `memoria.py` | Memória de tradução (2.15): normalização do original e semelhança; a tabela `tm` fica no `legendas.db` (só no computador) |
 | `ortografia.py` | Corretor ortográfico (2.15, `pyspellchecker`): aponta e sugere; ignora nomes no meio da frase, siglas, números, glossários, dicionário pessoal e fala coloquial |
+| `conexao.py` | Status da conexão (2.16): pings em horário fechado (servidor :00/:30, Google :15/:45) e o estado (online, lenta, reconectando, sem internet, servidor fora, manutenção) |
+| `erros.py` | Códigos ER-RS/ER-RA (2.16): catálogo e classificação de exceções, HTTP e falhas de rede/arquivo |
+| `depuracao.py` | Modo de depuração (2.16): pasta em Documentos com um .log por tipo de ação (gravado na hora), zip ao terminar, recuperação depois de fechamento inesperado |
 | `suporte.py` | "Relatar um problema" (2.15): descrição + e-mail + fim do registro técnico (sem segredos) → `POST /v1/suporte` |
 
 ## Partida (`cntboot.py`)

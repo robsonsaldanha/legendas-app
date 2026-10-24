@@ -83,7 +83,7 @@
 - [x] 2.13.0: perfil na nuvem (um por computador ativado; restaurar em PC novo/formatado; exportar/importar arquivo), Workspace da empresa no programa (perfis "Empresa: …", clientes e glossários compartilhados), métricas de produção no servidor (área do cliente → Produção; Workspace → Produção da equipe)
 - [x] 2.14.0: glossário em três níveis — geral (Configurações), cliente e projeto (menu ⋯ do projeto); o mais específico vale
 - [x] 2.15.0: memória de tradução, formato de entrega (srt padrão; vtt/ttml/ass por global/equipe/cliente/projeto), prazo de entrega (topo e editor), histórico de versões, corretor ortográfico, aviso de trabalho concluído na bandeja, "Relatar um problema" (servidor 1.3, painel Suporte)
-- [ ] 2.16 (em andamento): status da conexão no topo (pings alinhados servidor/Google), ⚠ de atualização no lugar da janela, códigos de erro ER-RS/ER-RA, modo de depuração e diagnóstico (zip em Documentos); servidor 1.4 com modo manutenção
+- [x] 2.16.0: status da conexão no topo (pings alinhados servidor/Google), ⚠ de atualização no lugar da janela, códigos de erro ER-RS/ER-RA, modo de depuração e diagnóstico (zip em Documentos); servidor 1.4 com modo manutenção
 - [ ] **Futuro:** PIX automático + nota fiscal pelo **Mercado Pago** quando o Róbson tiver conta PJ (substitui a aprovação manual do PIX)
 - [ ] **Futuro:** lembrete de renovação (e-mail e aviso no programa alguns dias antes do vencimento, com o link do pagamento)
 - [ ] Apagar cliente/glossário no Workspace propagar para os colegas (hoje apagar não se propaga, de propósito)

@@ -24,6 +24,8 @@ from core import __version__
 from core.atualizacao import versao_atual as versao_completa
 from core.align import ALIGN_MODELS
 from core.config import Settings, data_dir, jobs_dir, models_dir, user_id
+from core import depuracao, erros
+from core.erros import mensagem_arquivo
 from core.errors import LegendasError
 from core.glossary import load_glossary, save_glossary
 from core.media import probe
@@ -146,6 +148,11 @@ class App:
         self.janela = None          # app.janela.Janela quando aberto na janela própria
         from .perfil import Sincronizador
         self.sincronia = Sincronizador(self.db)
+        from core import licenca as _lic
+        from core.conexao import Monitor
+        self.conexao = Monitor(servidor_url=_lic.servidor,
+                               ao_mudar=lambda a, n, info: depuracao.registrar("rede", f"conexão: {a} → {n}", **info))
+        self.worker.ao_registrar = lambda tipo, acao, **d: depuracao.registrar(tipo, acao, **d)
         self.editor_sujo = False    # o editor avisa quando há alterações não salvas (confirmação ao fechar)
 
     # ---------------------------------------------------------- sessão
@@ -198,7 +205,7 @@ class App:
             "ai": self.ai_status(),
             "home_dir": str(Path.home()),
             "licenca": self.license_state(),
-            "atualizacao": self.updater.to_dict(),
+            "atualizacao": self._atualizacao_para_tela(),
             "janela": self.janela is not None,
             "retomar": self._pop_retomar(),
             "versao_completa": versao_completa(),
@@ -236,6 +243,10 @@ class App:
         def sair():
             if self.janela is not None:
                 self.janela.remover_bandeja_antes_de_sair()
+            try:
+                depuracao.DEP.desligar("saida")
+            except Exception:  # noqa: BLE001
+                pass
             os._exit(0)
         _t.Timer(segundos, sair).start()
 
@@ -244,11 +255,25 @@ class App:
         A página fica na tela "Atualizando…" enquanto isso (ver /api/atualizacao)."""
         self.port = port
 
+        self.atualizando_na_partida = True
+
         def run():
-            info = self.updater.verificar()
-            if info["estado"] == "disponivel":
-                self.updater.executar(self._reiniciar_cb(port))
+            try:
+                info = self.updater.verificar()
+                if info["estado"] == "disponivel":
+                    self.updater.executar(self._reiniciar_cb(port))
+            finally:
+                if self.updater.estado not in ("baixando", "aplicando", "reiniciando", "instalando"):
+                    self.atualizando_na_partida = False
         threading.Thread(target=run, daemon=True, name="atualizacao").start()
+
+    def _atualizacao_para_tela(self) -> dict:
+        """A tela "Atualizando…" só cobre a página na atualização obrigatória ao abrir (ou quando ela mandou
+        atualizar). Versão nova achada com o programa aberto vira só o ⚠ ao lado do status (2.16)."""
+        d = self.updater.to_dict()
+        if d["estado"] == "disponivel" and not getattr(self, "atualizando_na_partida", False):
+            return {**d, "estado": "parado"}
+        return d
 
     def check_update(self) -> dict:
         """Com o programa aberto (a cada 30 min ou pelo menu): só pergunta ao servidor."""
@@ -519,6 +544,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _json(self, data, status: int = 200) -> None:
+        self._status_resposta = status
         self._send(status, json.dumps(data, ensure_ascii=False).encode("utf-8"),
                    "application/json; charset=utf-8")
 
@@ -586,7 +612,13 @@ class Handler(BaseHTTPRequestHandler):
                 for m, rx, name in ROUTES:
                     match = rx.match(path)
                     if m == method and match:
+                        if depuracao.DEP.ativo and not path.startswith(("/api/conexao", "/api/depuracao")):
+                            depuracao.registrar("api", f"{method} {path}", campos=sorted(self._body().keys()) if method != "GET" else None,
+                                                consulta=self.query or None)
+                        t0 = time.perf_counter()
                         result = getattr(self, name)(*match.groups())
+                        if depuracao.DEP.ativo and not path.startswith(("/api/conexao", "/api/depuracao")):
+                            depuracao.registrar("api", f"{method} {path} → ok", ms=int((time.perf_counter() - t0) * 1000))
                         if method != "GET" and SINCRONIZA.match(path):
                             self.app.sincronia.avisar_mudanca()     # cliente, perfil ou configuração mudou
                         if result is not None:
@@ -602,16 +634,26 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._static(path)
         except LicenseBlocked as e:
-            self._json({"error": str(e), "licenca": True, "recurso": e.recurso}, 402)
+            self._erro(e, str(e), 402, method, path, licenca=True, recurso=e.recurso)
         except ApiError as e:
-            self._json({"error": str(e)}, e.status)
+            self._erro(e, str(e), e.status, method, path)
         except LegendasError as e:
-            self._json({"error": str(e)}, getattr(e, "status", 400))
+            self._erro(e, str(e), getattr(e, "status", 400), method, path)
         except (ValueError, KeyError) as e:
-            self._json({"error": str(e).strip("'\"")}, 400)
+            self._erro(e, str(e).strip("'\""), 400, method, path)
+        except OSError as e:
+            log.warning("Erro de arquivo em %s %s: %s", method, path, e)
+            self._erro(e, mensagem_arquivo(e), 400, method, path)
         except Exception as e:  # noqa: BLE001
             log.exception("Erro em %s %s", method, path)
-            self._json({"error": f"Erro inesperado: {e}"}, 500)
+            self._erro(e, f"Erro inesperado: {e}", 500, method, path)
+
+    def _erro(self, exc: BaseException, msg: str, status: int, method: str, path: str, **extra) -> None:
+        """Toda resposta de erro leva o código (ER-RA/ER-RS); vai para o registro e para a depuração."""
+        codigo = erros.classificar(exc)
+        log.info("Erro %s em %s %s: %s", codigo, method, path, msg)
+        depuracao.registrar("erros", f"{method} {path}", codigo=codigo, mensagem=msg, excecao=type(exc).__name__, status=status)
+        self._json({"error": erros.com_codigo(msg, codigo), "codigo": codigo, **extra}, status)
 
     def _static(self, path: str) -> None:
         if path == "/ping":
@@ -1118,10 +1160,15 @@ class Handler(BaseHTTPRequestHandler):
     @route("POST", r"/api/editor/open")
     def api_editor_open(self):
         b = self._body()
-        return self.app.editor.open(b.get("srt") or None, b.get("video") or None,
-                                    b.get("profile_key") or None, b.get("job_id"),
-                                    b.get("original") or None, b.get("client_id") or None,
-                                    b.get("item_id") or None)
+        depuracao.registrar("editor.abrir", "pedido", legenda=depuracao.checar(b.get("srt")), video=depuracao.checar(b.get("video")),
+                            trabalho=b.get("job_id"), episodio=b.get("item_id"))
+        r = self.app.editor.open(b.get("srt") or None, b.get("video") or None,
+                                 b.get("profile_key") or None, b.get("job_id"),
+                                 b.get("original") or None, b.get("client_id") or None,
+                                 b.get("item_id") or None)
+        depuracao.registrar("editor.abrir", "aberto", sessao=r.get("sid"), legenda=r.get("srt"), video=r.get("video"),
+                            legendas=len(r.get("cues") or []), idioma=r.get("language"))
+        return r
 
     # ------------------------------------------------------------ projetos (filmes/séries)
 
@@ -1215,8 +1262,12 @@ class Handler(BaseHTTPRequestHandler):
         f = pm.item_files(int(iid))
         if not f["srt"] and not f["video"]:
             raise ApiError("Este episódio ainda não tem vídeo nem legenda. Adicione os arquivos primeiro.", 409)
-        return self.app.editor.open(f["srt"] or None, f["video"] or None, None, None, None,
-                                    o["client_id"], int(iid))
+        depuracao.registrar("editor.abrir", "pedido (episódio)", episodio=int(iid), pasta=depuracao.checar(it["folder"]),
+                            legenda=depuracao.checar(f["srt"] or None), video=depuracao.checar(f["video"] or None))
+        r = self.app.editor.open(f["srt"] or None, f["video"] or None, None, None, None,
+                                 o["client_id"], int(iid))
+        depuracao.registrar("editor.abrir", "aberto", sessao=r.get("sid"), legendas=len(r.get("cues") or []), idioma=r.get("language"))
+        return r
 
     @route("GET", r"/api/report")
     def api_report(self):
@@ -1291,6 +1342,58 @@ class Handler(BaseHTTPRequestHandler):
     def api_memoria_limpar(self):
         self.app.db.tm_limpar()
         return {"total": 0}
+
+    # ------------------------------------------------------------ conexão e depuração (2.16)
+
+    @route("GET", r"/api/conexao")
+    def api_conexao(self):
+        from core import licenca
+        c = self.app.conexao.estado()
+        est = licenca.atual().estado
+        if not c["online"] and est.modo == "licenciada" and est.renovar_ate:
+            c["licenca_offline_ate"] = est.renovar_ate
+        info = self.app.updater.to_dict() if getattr(self.app, "updater", None) is not None else {}
+        c["atualizacao"] = {"disponivel": info.get("estado") == "disponivel", "versao": info.get("versao") or ""}
+        c["depuracao"] = depuracao.DEP.estado()
+        return c
+
+    @route("POST", r"/api/depuracao")
+    def api_depuracao(self):
+        b = self._body()
+        if b.get("ligar"):
+            from core import licenca
+            est = licenca.atual().estado
+            retrato = depuracao.retrato_do_sistema({
+                "licenca": {"modo": est.modo, "plano": est.plano, "valido_ate": est.valido_ate, "renovar_ate": est.renovar_ate},
+                "conexao": self.app.conexao.estado(),
+                "configuracoes": {k: v for k, v in Settings.load().__dict__.items() if k not in ("dicionario", "editor")},
+                "pasta_dos_trabalhos": depuracao.checar(Settings.load().projects_root or None),
+                "trabalhos_ativos": self.app.db.count_active_jobs(),
+            })
+            return depuracao.DEP.ligar(retrato)
+        z = depuracao.DEP.desligar("manual")
+        return {**depuracao.DEP.estado(), "zip": z}
+
+    @route("POST", r"/api/depuracao/eventos")
+    def api_depuracao_eventos(self):
+        """Cliques e erros da tela (a página manda em lotes enquanto a depuração está ligada)."""
+        evs = self._body().get("eventos") or []
+        if not isinstance(evs, list):
+            raise ApiError("Pedido inválido.")
+        for e in evs[:200]:
+            if isinstance(e, dict):
+                depuracao.registrar(f"interface.{e.get('tipo') or 'acao'}", str(e.get("acao") or "")[:300],
+                                    **{k: v for k, v in (e.get("dados") or {}).items() if isinstance(k, str)}, hora_tela=e.get("hora"))
+        return {"ok": True, "ativo": depuracao.DEP.ativo}
+
+    @route("POST", r"/api/depuracao/abrir")
+    def api_depuracao_abrir(self):
+        """Abre a pasta dos relatórios no Windows (com o zip selecionado, se houver)."""
+        z = depuracao.DEP.ultimo_zip or (depuracao.DEP.recuperados[-1] if depuracao.DEP.recuperados else "")
+        alvo = z if z and Path(z).exists() else str(depuracao.logs_dir())
+        depuracao.logs_dir().mkdir(parents=True, exist_ok=True)
+        open_path(alvo, bool(z))
+        return {"ok": True, "caminho": alvo}
 
     @route("GET", r"/api/suporte/registros")
     def api_suporte_registros(self):

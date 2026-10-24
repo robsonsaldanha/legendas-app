@@ -142,7 +142,19 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .topbar .crumb { font-weight: 500; font-size: 14px; }
 .topbar .crumb .muted { font-weight: 400; }
 .topbar .grow { flex: 1; }
-.prazo-topo { font-size: 13px; color: var(--ink); text-decoration: none; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+.net-slot { display: inline-flex; align-items: center; gap: 8px; }
+.net { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; cursor: default; color: var(--ink); }
+.net .net-sub { color: var(--muted); }
+.net-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.net.ok .net-dot { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
+.net.warn .net-dot { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-bg); }
+.net.err { border-color: var(--err); }
+.net.err .net-dot { background: var(--err); box-shadow: 0 0 0 3px var(--err-bg); }
+.net-upd { font-size: 14px; line-height: 1; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--warn); background: var(--warn-bg); color: var(--warn); cursor: pointer; }
+.net-upd:hover { background: var(--warn); color: var(--on-accent); }
+.net-dep { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--info); color: var(--info); background: transparent; cursor: pointer; white-space: nowrap; }
+.ed-status .net-slot .net { padding: 1px 9px; font-size: 12px; }
+.prazo-topo { font-size: 13px; color: var(--ink); text-decoration: none; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; max-width: 30vw; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .prazo-topo:hover { border-color: var(--muted); }
 .prazo-topo.urgente { border-color: var(--warn); background: var(--warn-bg); }
 .prazo-topo.atrasado { border-color: var(--err); background: var(--err-bg); }
@@ -1024,3 +1036,7 @@ details.ds-adv > .ds-adv-body > .panel { margin: 0; }
   animation: upd-spin 0.9s linear infinite; }
 @keyframes upd-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .upd-spin { animation: none; } }
+
+.topbar .lic-pill { white-space: nowrap; }
+.topbar { gap: 10px; }
+@media (max-width: 1200px) { .prazo-topo .muted { display: none; } }

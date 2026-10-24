@@ -67,7 +67,10 @@ def enviar(descricao: str, email: str = "", com_registros: bool = False, versao:
     try:
         r = cli.post(licenca.servidor() + "/v1/suporte", json=corpo)
     except Exception as e:  # noqa: BLE001
-        raise SuporteError("Sem conexão com o servidor agora. Tente de novo mais tarde.") from e
+        from .erros import de_rede
+        err = SuporteError("Sem conexão com o servidor agora. Tente de novo mais tarde.")
+        err.codigo = de_rede(e)
+        raise err from e
     finally:
         if http is None:
             cli.close()
@@ -76,5 +79,8 @@ def enviar(descricao: str, email: str = "", com_registros: bool = False, versao:
     except ValueError:
         data = {}
     if r.status_code >= 400:
-        raise SuporteError(data.get("erro") or f"O servidor respondeu {r.status_code}.")
+        from .erros import de_http
+        err = SuporteError(data.get("erro") or f"O servidor respondeu {r.status_code}.")
+        err.codigo = de_http(r.status_code)
+        raise err
     return data

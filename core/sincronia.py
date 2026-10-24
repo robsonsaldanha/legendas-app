@@ -49,7 +49,10 @@ class Cliente:
         try:
             r = http.post(licenca.servidor() + "/v1/sync" + path, json=corpo)
         except Exception as e:  # noqa: BLE001
-            raise SincroniaError("Sem conexão com o servidor agora.") from e
+            from .erros import de_rede
+            err = SincroniaError("Sem conexão com o servidor agora.")
+            err.codigo = de_rede(e)
+            raise err from e
         finally:
             if self._http is None:
                 http.close()
@@ -58,7 +61,10 @@ class Cliente:
         except ValueError:
             data = {}
         if r.status_code >= 400:
-            raise SincroniaError(data.get("erro") or f"O servidor respondeu {r.status_code}.")
+            from .erros import de_http
+            err = SincroniaError(data.get("erro") or f"O servidor respondeu {r.status_code}.")
+            err.codigo = de_http(r.status_code)
+            raise err
         return data
 
     def estado(self) -> dict:

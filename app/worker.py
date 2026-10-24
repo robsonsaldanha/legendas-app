@@ -58,6 +58,7 @@ class Worker:
         self._transcriber_factory = transcriber_factory  # testes injetam uma API falsa
         self._translator_factory = translator_factory
         self.ao_terminar = None   # (job, status, erro) → aviso na bandeja (2.15); nunca derruba a fila
+        self.ao_registrar = None  # depuração (2.16): (tipo, ação, **dados)
         self._thread = threading.Thread(target=self._loop, name="fila", daemon=True)
         self._thread.start()
 
@@ -153,6 +154,12 @@ class Worker:
                 log.exception("Falha inesperada no trabalho %s", jid)
 
     def _avisar(self, job: dict, status: str, erro: str) -> None:
+        if self.ao_registrar is not None:
+            try:
+                self.ao_registrar("trabalhos", f"terminou: {status}", id=job.get("id"), nome=job.get("name"),
+                                  etapas=job.get("steps"), erro=erro or None)
+            except Exception:  # noqa: BLE001
+                pass
         if self.ao_terminar is None:
             return
         try:
@@ -169,6 +176,12 @@ class Worker:
             return
         now = time.strftime("%Y-%m-%d %H:%M:%S")
         self.db.update_job(jid, status="rodando", started_at=now, error=None)
+        if self.ao_registrar is not None:
+            try:
+                self.ao_registrar("trabalhos", "começou", id=jid, nome=job.get("name"), etapas=job.get("steps"),
+                                  entradas=job.get("inputs"))
+            except Exception:  # noqa: BLE001
+                pass
 
         def progress(step: str, done: int, total: int) -> None:
             live.steps[step] = [done, total]

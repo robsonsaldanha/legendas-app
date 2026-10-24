@@ -1245,7 +1245,8 @@ function drawStatus() {
     <span class="muted">${esc(ED.profile.name)}</span>
     ${ED.prazo ? (() => { const t = prazoTexto(ED.prazo); return `<span class="ds-prazo ${t.nivel}" title="Prazo de entrega deste episódio">Entrega ${esc(t.texto)}</span>`; })() : ""}
     <span class="grow"></span>
-    <span class="${ED.dirty ? "warn" : "muted"}">${ED.dirty ? "Alterações não salvas" : ED.savedAt ? `Salvo às ${ED.savedAt}` : "Sem alterações"}</span>`;
+    <span class="${ED.dirty ? "warn" : "muted"}">${ED.dirty ? "Alterações não salvas" : ED.savedAt ? `Salvo às ${ED.savedAt}` : "Sem alterações"}</span>
+    <span class="net-slot">${typeof NET !== "undefined" ? NET.html : ""}</span>`;
 }
 
 function drawAll() { drawRows(); drawEdit(); drawWave(); drawStatus(); tick(); }

@@ -30,6 +30,10 @@ log = logging.getLogger(__name__)
 
 
 class AtualizacaoError(RuntimeError):
+    def __init__(self, msg: str, codigo: str = "ER-RA-440"):
+        super().__init__(msg)
+        self.codigo = codigo
+
     pass
 
 
@@ -127,7 +131,8 @@ class Atualizador:
         got = 0
         with httpx.stream("GET", m["url"], timeout=60, follow_redirects=True, headers={"User-Agent": "CNT-Legendas"}) as r:
             if r.status_code != 200:
-                raise AtualizacaoError(f"O download da atualização falhou ({r.status_code}).")
+                from .erros import de_http
+                raise AtualizacaoError(f"O download da atualização falhou ({r.status_code}).", de_http(r.status_code))
             with open(destino, "wb") as f:
                 for chunk in r.iter_bytes(1 << 20):
                     f.write(chunk)
@@ -137,7 +142,7 @@ class Atualizador:
                         self.progresso = min(0.99, got / total)
         if h.hexdigest() != m["sha256"]:
             destino.unlink(missing_ok=True)
-            raise AtualizacaoError("O arquivo baixado não confere (pode ter sido corrompido). Tente de novo.")
+            raise AtualizacaoError("O arquivo baixado não confere (pode ter sido corrompido). Tente de novo.", "ER-RS-603")
         self.progresso = 1.0
         return destino
 
@@ -151,11 +156,11 @@ class Atualizador:
             for n in z.namelist():
                 p = Path(n)
                 if p.is_absolute() or ".." in p.parts:
-                    raise AtualizacaoError("Pacote de atualização inválido.")
+                    raise AtualizacaoError("Pacote de atualização inválido.", "ER-RS-604")
             z.extractall(tmp)
         if not (tmp / "app" / "__main__.py").exists() or not (tmp / "core" / "__init__.py").exists():
             shutil.rmtree(tmp, ignore_errors=True)
-            raise AtualizacaoError("Pacote de atualização incompleto.")
+            raise AtualizacaoError("Pacote de atualização incompleto.", "ER-RS-604")
         shutil.rmtree(final, ignore_errors=True)
         tmp.rename(final)
         (final / "pronto").write_text(versao, encoding="utf-8")

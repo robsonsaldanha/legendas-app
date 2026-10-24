@@ -405,7 +405,7 @@ class EditorManager:
             stamp = time.strftime("%Y%m%d-%H%M%S")
             shutil.copy2(target, bdir / f"{target.stem}.{stamp}.srt")
             s.backed_up = True
-        write_srt(cues, target)
+        self._gravar(cues, target, "srt", s.language, "editor.salvar")
         self._mark(target)
         s.srt = target
         self._guardar_versao(target, cues, "salvar", raw, s)
@@ -605,6 +605,37 @@ class EditorManager:
         return s.profile
 
     # ------------------------------------------------------------ projeto
+
+    def _gravar(self, cues: list[Cue], target: Path, fmt: str, lang: str | None, tipo: str) -> None:
+        """Grava e confere (relê o arquivo). Na depuração, anota antes, depois e o motivo de qualquer falha."""
+        import time as _t
+
+        from core import depuracao, erros
+        t0 = _t.perf_counter()
+        depuracao.registrar(tipo, "gravando", destino=depuracao.checar(target), formato=fmt, legendas=len(cues))
+        try:
+            formatos.escrever(cues, target, fmt, lang or "")
+        except OSError as e:
+            depuracao.registrar(tipo, "FALHOU ao gravar", codigo=erros.de_arquivo(e), erro=str(e), errno=e.errno,
+                                winerror=getattr(e, "winerror", None), destino=depuracao.checar(target))
+            raise
+        depois = depuracao.checar(target)
+        ok = bool(depois.get("existe")) and (depois.get("tamanho") or 0) > 0
+        conferidas = None
+        if ok and fmt == "srt":
+            try:
+                conferidas = len(read_srt(target))
+                ok = conferidas == len(cues)
+            except (OSError, ValueError, UnicodeDecodeError):
+                ok = False
+        if not ok:
+            depuracao.registrar(tipo, "FALHOU na conferência", codigo="ER-RA-107", destino=depois,
+                                esperadas=len(cues), conferidas=conferidas)
+            err = EditorError(f"O arquivo {target.name} foi gravado, mas a conferência não bateu. Salve de novo ou escolha outra pasta.")
+            err.codigo = "ER-RA-107"
+            raise err
+        depuracao.registrar(tipo, "gravou e conferiu", destino=depois, legendas_conferidas=conferidas,
+                            ms=int((_t.perf_counter() - t0) * 1000))
 
     def _guardar_versao(self, arquivo: Path, cues: list[Cue], origem: str, raw: list[dict] | None, s: Session) -> None:
         """Histórico de versões e memória de tradução. Nunca impede salvar."""
@@ -1119,7 +1150,7 @@ class EditorManager:
             bdir = data_dir() / "editor" / "copias"
             bdir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(target, bdir / f"{target.stem}.{time.strftime('%Y%m%d-%H%M%S')}{target.suffix}")
-        formatos.escrever(cues, target, fmt, s.language or prof.language)
+        self._gravar(cues, target, fmt, s.language or prof.language, "editor.entregar")
         self._mark(target)
         self._guardar_versao(s.srt or target, cues, "entrega", raw, s)
         issues = check_rules(cues, prof, s.info.get("fps"), language=s.language)

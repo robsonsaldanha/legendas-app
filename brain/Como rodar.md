@@ -57,6 +57,7 @@ python -m pytest -q
 - `tests/test_glossario_niveis.py`: glossário geral/cliente/projeto (prioridade, API, tradução pelo episódio, perfil).
 - `tests/test_formatos.py`: formatos de entrega (conversões, prioridade projeto > cliente > equipe > global, entrega) e prazos.
 - `tests/test_versoes_memoria.py`: histórico de versões, memória de tradução e corretor ortográfico (precisa do `pyspellchecker`).
+- `tests/test_conexao_erros_depuracao.py`: horários dos pings e estados da conexão, códigos de erro, depuração (arquivos por ação, zip, recuperação após queda, API).
 - `tests/test_suporte.py`: "Relatar um problema" (registro sem segredos, envio com servidor simulado).
 - `tests/test_perfil.py`: perfil na nuvem (montar/aplicar, arquivo, perfis da empresa, clientes compartilhados entre dois computadores, sincronizador) com um servidor simulado.
 - `tests/test_editor.py`: editor (vídeo com Range, cópia de pré-visualização de MKV, forma de onda, rascunho, salvar com cópia de segurança, QC).

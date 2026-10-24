@@ -193,7 +193,8 @@ async function checkUpdate(manual = false) {
   let u;
   try { u = await api("POST", "/api/atualizacao/verificar"); } catch (e) { if (manual) toast(e.message, true); return; }
   if (u.estado === "disponivel") {
-    if (!manual && u.versao === UPD_DISPENSADA) return;
+    // 2.16: sozinho, não abre nada na frente do trabalho — o ⚠ ao lado do status avisa; ela clica quando quiser
+    if (!manual) { if (typeof atualizarStatus === "function") atualizarStatus(); return; }
     const k = await ask(`Nova versão ${u.versao}`,
       `<p>Há uma versão nova do CNT Legendas. Atualizar agora leva alguns segundos: o programa salva o que precisar, fecha e reabre onde você está.</p>
        ${u.notas ? `<details><summary>O que muda</summary><p class="small">${esc(u.notas)}</p></details>` : ""}

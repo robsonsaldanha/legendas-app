@@ -36,6 +36,8 @@ const HELP = {
     "Ligado: o ícone do CNT Legendas fica ao lado do relógio enquanto o programa está aberto, e o X só esconde a janela (os trabalhos continuam). Para fechar de vez, clique com o botão direito no ícone e escolha Sair. Desligado: o X pergunta e fecha o programa."],
   formato: ["Formato de entrega",
     "O padrão é .srt. Se um cliente pede outro (WebVTT, TTML/DFXP para streaming, ASS), escolha na tela do cliente; se só um projeto pede, no menu ⋯ do projeto. Vale o mais específico: projeto, depois cliente, depois a equipe (Workspace da empresa), depois o que está nas Configurações. Na hora de entregar dá para trocar só daquela vez. O “Salvar” do editor continua em .srt."],
+  "cfg-depuracao": ["Modo de depuração e diagnóstico",
+    "Quando algo dá errado e você quer mostrar para a CNT: ligue, faça de novo o que deu problema e espere ou clique em “Desligar e salvar”. Por 5 minutos o programa anota cada ação com o horário (cliques, abrir, salvar, entregar, arquivos, pastas, permissões, conexão, erros com o código) em arquivos separados por tipo de ação. No fim vira um .zip em Documentos › CNT Legendas › logs. Se o programa fechar sozinho no meio, o relatório é fechado na próxima vez que abrir, com a última ação anotada. Chaves de IA, senhas e o texto das legendas não entram."],
   "cfg-relatar": ["Relatar um problema",
     "Manda para a CNT o que aconteceu, um e-mail para a resposta e, se você deixar, o registro técnico do programa. Também fica no menu do ícone ao lado do relógio. Legendas, vídeos e chaves de IA não vão."],
   "cfg-glossario": ["Glossário geral",

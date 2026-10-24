@@ -39,14 +39,17 @@ async function api(method, path, body) {
   try {
     res = await fetch(path, opts);
   } catch (e) {
-    throw new Error("O CNT Legendas não está respondendo. Ele foi fechado? Abra de novo pelo atalho.");
+    throw new Error("O CNT Legendas não está respondendo. Ele foi fechado? Abra de novo pelo atalho. (código ER-RA-500)");
   }
   const data = await res.json().catch(() => ({}));
   if (res.status === 402 && data.licenca) {       // recurso pago sem licença: explica e oferece ativar
     showLicenseBlocked(data.error, data.recurso);
     const e = new Error(""); e.licenca = true; throw e;
   }
-  if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
+  if (!res.ok) {
+    if (typeof depEvento === "function" && !path.startsWith("/api/depuracao")) depEvento("resposta-erro", `${method} ${path} → ${res.status}`, { codigo: data.codigo, mensagem: data.error });
+    const e = new Error(data.error || `Erro ${res.status}`); e.codigo = data.codigo; throw e;
+  }
   return data;
 }
 
@@ -1148,6 +1151,9 @@ async function renderSettings() {
         `<a class="ds-btn sm" href="#/perfis">Abrir</a>`)}
       ${setRow("cfg-ia", "Tradução automática", `Pelo seu ChatGPT (sem custo) ou pela API${prov ? ` · serviço: ${esc(prov.name || prov.id)}${prov.ready ? " (pronto)" : " (falta a chave)"}` : ""}`,
         `<button class="ds-btn sm" data-action="open-ai">Configurar</button>`)}
+      ${setRow("cfg-depuracao", "Modo de depuração e diagnóstico", `<span id="dep-estado">${esc(depTexto(NET.info?.depuracao))}</span>`,
+        `<span class="row" style="gap:6px;flex-wrap:nowrap">${NET.info?.depuracao?.ativo ? `<button class="ds-btn sm" data-action="dep-desligar">Desligar e salvar</button>`
+          : `<button class="ds-btn sm" data-action="dep-ligar">Ligar por 5 min</button>`}<button class="ds-btn sm" data-action="dep-pasta">Abrir a pasta</button></span>`)}
       ${setRow("cfg-relatar", "Relatar um problema", "Algo não funcionou? Conte o que aconteceu e a CNT recebe na hora",
         `<button class="ds-btn sm" data-action="relatar">Relatar</button>`)}
       ${setRow("cfg-fila", "Trabalhos em segundo plano", "Transcrições e traduções que rodam sozinhas",
@@ -1296,6 +1302,8 @@ async function renderSettings() {
       if (a === "perfil") await perfilModal();
       if (a === "glossario-geral") await glossarioGeral();
       if (a === "relatar") relatarProblema();
+      if (a === "dep-ligar" || a === "dep-desligar") { await alternarDepuracao(a === "dep-ligar"); renderSettings(); }
+      if (a === "dep-pasta") await api("POST", "/api/depuracao/abrir");
       if (a === "open-data") await api("POST", "/api/open", { path: st.data_dir });
       if (a === "quit") {
         if (!confirm("Fechar o programa? Trabalhos em andamento serão interrompidos (dá para retomar depois).")) return;

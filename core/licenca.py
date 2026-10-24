@@ -46,6 +46,10 @@ CANAIS = {
 
 
 class LicencaError(RuntimeError):
+    def __init__(self, msg: str, codigo: str = "ER-RA-430"):
+        super().__init__(msg)
+        self.codigo = codigo
+
     pass
 
 
@@ -279,8 +283,12 @@ class Licenca:
     def _post(self, path: str, body: dict) -> dict:
         import httpx
         http = self._http or httpx.Client(timeout=15, headers={"User-Agent": "CNT-Legendas"})
+        from .erros import de_http, de_rede
         try:
             r = http.post(servidor() + path, json=body)
+        except Exception as e:  # noqa: BLE001
+            e.codigo = de_rede(e)     # o chamador decide (sem internet: segue com a concessão guardada)
+            raise
         finally:
             if self._http is None:
                 http.close()
@@ -289,14 +297,14 @@ class Licenca:
         except ValueError:
             data = {}
         if r.status_code >= 400:
-            raise LicencaError(data.get("erro") or f"O servidor de licenças respondeu {r.status_code}.")
+            raise LicencaError(data.get("erro") or f"O servidor de licenças respondeu {r.status_code}.", de_http(r.status_code))
         return data
 
     def _aceitar(self, resp: dict) -> Estado:
         env = resp.get("concessao")
         dados = verificar(env) if env else None
         if not dados or dados.get("device") != self.device["id"]:
-            raise LicencaError("A resposta do servidor de licenças não confere. Tente de novo mais tarde.")
+            raise LicencaError("A resposta do servidor de licenças não confere. Tente de novo mais tarde.", "ER-RS-602")
         self._write("concessao.json", env)
         st = self._read("estado.json") or {}
         self._write("estado.json", {**st, "ultima_conferencia": _now().isoformat()})

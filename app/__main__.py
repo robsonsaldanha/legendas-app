@@ -51,6 +51,13 @@ def _depois_de_abrir(app, port: int) -> None:
             pass
     licenca.conferir_em_segundo_plano()
     app.sincronia.iniciar()          # perfil, Workspace e métricas com o servidor (só com licença ativada)
+    app.conexao.iniciar()            # status no canto da tela: servidor :00/:30, Google :15/:45
+    from core import depuracao
+    try:
+        if depuracao.DEP.recuperar():    # a depuração estava ligada e o programa caiu: fecha o zip com o aviso
+            logging.getLogger("legendas").warning("Relatório de depuração recuperado: %s", depuracao.DEP.recuperados)
+    except Exception:  # noqa: BLE001
+        logging.getLogger("legendas").exception("recuperar a depuração")
     if atualizacao.build_info() and not os.environ.get("CNT_SEM_ATUALIZACAO"):
         app.start_update(port)     # só na cópia instalada (o CI grava core/canal.json)
 
@@ -187,6 +194,11 @@ def _rodar_na_janela(app, srv, url: str, teste: str = "") -> int:
         srv.server_close()
     # Encerra o processo de vez: o .NET da janela e fios auxiliares (conferência da licença, fila)
     # podiam manter o programa vivo em segundo plano depois do X, sem janela e sem atualizar.
+    try:
+        from core import depuracao
+        depuracao.DEP.desligar("saida")   # fechou normalmente: o relatório vira zip agora
+    except Exception:  # noqa: BLE001
+        pass
     logging.shutdown()
     os._exit(0)
 
