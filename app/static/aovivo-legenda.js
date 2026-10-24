@@ -1,5 +1,5 @@
 /* Página de legenda ao vivo (fonte de navegador / janela para capturar).
-   Opções no endereço: modo=bloco|rolando, fundo=00ff00|transparente, cor=ffffff, tam=44, linhas=3, pos=baixo|cima, caixa=1 */
+   Opções no endereço: faixa=traducao, modo=bloco|rolando, fundo=00ff00|transparente, cor=ffffff, tam=44, linhas=3, pos=baixo|cima, caixa=1 */
 "use strict";
 (() => {
   const q = new URLSearchParams(location.search);
@@ -12,6 +12,7 @@
   const area = document.getElementById("area");
   area.style.color = hex(q.get("cor"), "#ffffff");
   area.style.fontSize = Math.max(14, Math.min(160, parseInt(q.get("tam") || "44", 10) || 44)) + "px";
+  const faixa = q.get("faixa") === "traducao" ? "traducao" : "";   // segunda faixa: a tradução ao vivo
   const maxLinhas = Math.max(1, Math.min(8, parseInt(q.get("linhas") || "3", 10) || 3));
   let timer = null;
 
@@ -41,7 +42,7 @@
     es.onerror = () => { aviso.style.display = q.get("avisos") === "0" ? "none" : "block"; };
     es.onmessage = (m) => {
       let ev; try { ev = JSON.parse(m.data); } catch { return; }
-      if (ev.tipo === "legenda") mostrar(ev.texto || "");
+      if (ev.tipo === "legenda" && (ev.faixa || "") === faixa) mostrar(ev.texto || "");
       else if (ev.tipo === "limpar") { clearTimeout(timer); area.innerHTML = ""; }
     };
   }

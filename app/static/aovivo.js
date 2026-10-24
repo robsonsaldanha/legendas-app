@@ -10,6 +10,7 @@ function avSalvar(p) { setPref(AV_PREF, JSON.stringify(p)); }
 
 function avEstilo(p) {
   const q = new URLSearchParams({ modo: p.modo, fundo: p.fundo, cor: p.cor, tam: String(p.tam), pos: p.pos });
+  if (p.faixa === "traducao") q.set("faixa", "traducao");
   if (p.caixa) q.set("caixa", "1");
   return q.toString();
 }
@@ -33,6 +34,7 @@ async function renderAoVivo() {
           <div class="row" style="gap:12px;flex-wrap:wrap">
             <label class="field"><span>Idioma falado</span><select id="av-idioma">${[["pt-BR", "Português"], ["en", "Inglês"], ["es", "Espanhol"]].map(([v, t]) => `<option value="${v}" ${v === p.idioma ? "selected" : ""}>${t}</option>`).join("")}</select></label>
             <label class="field"><span>Precisão</span><select id="av-modelo">${[["base", "Rápida (computador simples)"], ["small", "Equilibrada"], ["medium", "Alta (precisa de placa de vídeo)"]].map(([v, t]) => `<option value="${v}" ${v === p.modelo ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+            <label class="field"><span>Tradução ao vivo</span><select id="av-traducao">${[["", "Nenhuma"], ["es-419", "Espanhol"], ["pt-BR", "Português"], ["en", "Inglês"]].map(([v, t]) => `<option value="${v}" ${v === (p.traducao || "") ? "selected" : ""}>${t}</option>`).join("")}</select></label>
             <label class="field"><span>Espera para corrigir</span><select id="av-atraso">${[0, 2, 3, 5, 8, 12].map((v) => `<option value="${v}" ${Number(p.atraso) === v ? "selected" : ""}>${v ? `${v} segundos` : "Sem espera"}</option>`).join("")}</select></label>
           </div>
           <label class="field"><span>Cliente (nomes certos do glossário)</span><select id="av-cliente"><option value="">Nenhum</option>${(S.projects || []).map((c) => `<option value="${c.id}" ${String(c.id) === String(p.cliente || "") ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
@@ -49,6 +51,7 @@ async function renderAoVivo() {
           <label class="field"><span>Fundo</span><select id="av-fundo">${[["transparente", "Transparente"], ["00ff00", "Verde (para recorte)"], ["0000ff", "Azul (para recorte)"], ["000000", "Preto"]].map(([v, t]) => `<option value="${v}" ${v === p.fundo ? "selected" : ""}>${t}</option>`).join("")}</select></label>
           <label class="field"><span>Tamanho</span><input type="number" id="av-tam" min="14" max="160" value="${esc(p.tam)}" style="width:90px"></label>
           <label class="field"><span>Posição</span><select id="av-pos"><option value="baixo" ${p.pos === "baixo" ? "selected" : ""}>Embaixo</option><option value="cima" ${p.pos === "cima" ? "selected" : ""}>Em cima</option></select></label>
+          <label class="field"><span>Faixa</span><select id="av-faixa"><option value="">Original</option><option value="traducao" ${p.faixa === "traducao" ? "selected" : ""}>Tradução ao vivo</option></select></label>
           <label class="field" style="justify-content:end"><span><input type="checkbox" id="av-caixa" ${p.caixa ? "checked" : ""}> Tarja escura atrás</span></label>
         </div>
         <label class="field"><span>Endereço para o programa de transmissão <em>(fonte de navegador)</em></span>
@@ -70,7 +73,8 @@ async function renderAoVivo() {
   const $ = (id) => document.getElementById(id);
   const ler = () => ({ ...avPrefs(), fonte: fonteAtual(), idioma: $("av-idioma").value, modelo: $("av-modelo").value, atraso: Number($("av-atraso").value),
     cliente: $("av-cliente").value, filtro: $("av-filtro").value, modo: $("av-modo").value, fundo: $("av-fundo").value,
-    tam: Number($("av-tam").value) || 44, pos: $("av-pos").value, caixa: $("av-caixa").checked });
+    tam: Number($("av-tam").value) || 44, pos: $("av-pos").value, caixa: $("av-caixa").checked,
+    traducao: $("av-traducao").value, faixa: $("av-faixa").value });
   function fonteAtual() {
     const v = $("av-fonte").value;
     return v === "arquivo:" || v === "url:" ? v + $("av-extra").value.trim() : v;
@@ -115,7 +119,7 @@ async function renderAoVivo() {
         const s = d.querySelector(".mono"); if (l && s) s.textContent = l.segurada ? "corrigindo" : `${l.faltam.toFixed(1)} s`;
       });
     }
-    $("av-pub").innerHTML = (e.publicadas || []).slice().reverse().map((l) => `<div class="av-linha">${esc(l.texto).replace(/\n/g, "<br>")}${l.manual ? ` <span class="muted small">(digitada)</span>` : l.editada ? ` <span class="muted small">(corrigida)</span>` : ""}</div>`).join("") || `<p class="muted small">Nada ainda.</p>`;
+    $("av-pub").innerHTML = (e.publicadas || []).slice().reverse().map((l) => `<div class="av-linha">${esc(l.texto).replace(/\n/g, "<br>")}${(e.traducoes || {})[l.id] ? `<div class="av-trad">${esc(e.traducoes[l.id]).replace(/\n/g, "<br>")}</div>` : ""}${l.manual ? ` <span class="muted small">(digitada)</span>` : l.editada ? ` <span class="muted small">(corrigida)</span>` : ""}</div>`).join("") || `<p class="muted small">Nada ainda.</p>`;
     $("av-fim").hidden = !(e.srt && !ativo && e.total);
     $("av-arquivo").textContent = e.srt ? `Arquivo do evento: ${e.srt}` : "";
   }
@@ -154,7 +158,7 @@ async function renderAoVivo() {
       if (a === "iniciar") {
         const p2 = ler(); avSalvar(p2);
         if (p2.fonte.endsWith(":")) { toast("Escolha o arquivo ou escreva o endereço."); return; }
-        desenhar(await api("POST", "/api/aovivo/iniciar", { fonte: p2.fonte, idioma: p2.idioma, modelo: p2.modelo, atraso: p2.atraso, cliente: p2.cliente || null, filtro: p2.filtro }));
+        desenhar(await api("POST", "/api/aovivo/iniciar", { fonte: p2.fonte, idioma: p2.idioma, modelo: p2.modelo, atraso: p2.atraso, cliente: p2.cliente || null, filtro: p2.filtro, traducao: p2.traducao }));
       }
       if (a === "parar") desenhar(await api("POST", "/api/aovivo/parar"));
       if (a === "ja") desenhar(await api("POST", `/api/aovivo/linha/${b.dataset.id}`, { acao: "publicar" }));

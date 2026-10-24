@@ -138,3 +138,30 @@ def test_rotas_audiodescricao(server, monkeypatch):  # noqa: F811
     assert nomes == ["Episódio - audiodescricao (mixada).wav", "Episódio - audiodescricao.ttml", "Episódio - audiodescricao.txt"]
     assert not (tmp / "Episódio - audiodescricao (faixa).wav").exists()       # só a mixada foi pedida
     assert video.exists() and srt.read_text(encoding="utf-8-sig").count("-->") == 2   # originais intactos
+
+
+def test_gravar_com_a_propria_voz(server, monkeypatch, tmp_path):  # noqa: F811
+    import base64
+    import subprocess
+    monkeypatch.setenv("CNT_VOZ_FALSA", "1")
+    app, port, tmp = server
+    video = _make_video(tmp / "Filme.mp4")
+    srt = tmp / "Filme - roteiro.srt"
+    write_srt([Cue(3.1, 4.9, ["Uma porta se abre."])], srt)
+    sid = _abrir(port, app.token, video, srt)
+    gravado = tmp_path / "voz.webm"           # o que a tela manda (gravador do navegador)
+    subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=440:d=1.2", "-c:a", "libopus", str(gravado)], check=True)
+    body = {"inicio": 3.1, "audio": base64.b64encode(gravado.read_bytes()).decode()}
+    st, r = call(port, "POST", f"/api/editor/{sid}/ad/gravacao", body, token=app.token)
+    assert st == 200 and 1.0 < r["duracao"] < 1.5, r
+    st, wav = call(port, "GET", r["url"], headers={"Cookie": COOKIE[port]})
+    assert st == 200
+    st, r = call(port, "GET", f"/api/editor/{sid}/ad/gravacoes", token=app.token)
+    assert [g["inicio"] for g in r["gravacoes"]] == [3.1]
+    st, r = call(port, "POST", f"/api/editor/{sid}/ad/gravacao", {"inicio": 3.1, "audio": "nada"}, token=app.token)
+    assert st == 400
+    cues = [{"start": 3.1, "end": 4.9, "text": "Uma porta se abre."}]
+    t = _tarefa(port, app.token, sid, {"kind": "ad_exportar", "cues": cues, "formatos": ["faixa"]})
+    assert t["status"] == "pronto" and "sua voz gravada" in t["message"], t
+    st, _ = call(port, "POST", f"/api/editor/{sid}/ad/gravacao/apagar", {"inicio": 3.1}, token=app.token)
+    assert call(port, "GET", f"/api/editor/{sid}/ad/gravacoes", token=app.token)[1]["gravacoes"] == []

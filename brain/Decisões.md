@@ -353,3 +353,7 @@
 ## 2026-10-24 — Downloads de Mac e Linux (T-023)
 - O CI, depois de publicar os pacotes de Mac e Linux na versão do GitHub, registra no servidor (`X-Sistema: mac|linux`) o `.dmg` e o `.AppImage` com a soma de conferência. O `.tar.gz` do Linux fica só na página de versões, para quem preferir.
 - Servidor 1.6: download e atualização por sistema (ver o `brain/` do servidor). O site escolhe o botão pelo sistema de quem visita.
+
+## 2026-10-24 — 2.20: tradução ao vivo e voz gravada na audiodescrição
+- **Tradução ao vivo (T-033):** opção "Tradução ao vivo" (espanhol, português, inglês). Cada legenda que **já passou pela fila do operador** vai para o serviço de IA escolhido (mesma chave da tradução; exige o recurso `ia_traducao`), em lotes pequenos e em ordem, com as 3 anteriores de contexto e o glossário. Sai como segunda faixa: na página de legenda, `faixa=traducao` (campo "Faixa" na tela); no arquivo, `ao-vivo_….<idioma>.srt` com os mesmos tempos. Se a tradução falhar, a faixa original continua e o erro aparece no painel.
+- **Voz gravada (T-044):** no painel de audiodescrição, "Gravar com a minha voz" usa o microfone pela própria tela; o áudio vai em base64, vira wav 48 kHz e fica guardado por vídeo, ligado ao início da descrição (meio segundo de tolerância). Na exportação, a gravação vale no lugar da voz do sistema. Dá para ouvir e apagar.

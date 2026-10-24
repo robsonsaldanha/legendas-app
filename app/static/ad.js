@@ -13,7 +13,9 @@ async function abrirAD() {
   dr.className = "drawer ad-drawer"; dr.id = "ed-drawer";
   dr.setAttribute("aria-label", "Audiodescrição");
   document.body.appendChild(dr);
-  let issues = null, ultimaSel = -1, audio = null, sugestao = null;
+  let issues = null, ultimaSel = -1, audio = null, sugestao = null, gravs = [], gravador = null;
+  const gravDe = (c) => c && gravs.find((g) => Math.abs(g.inicio - c.start) <= 0.5);
+  const carregarGravs = async () => { try { gravs = (await api("GET", `/api/editor/${ED.sid}/ad/gravacoes`)).gravacoes; } catch { gravs = []; } };
   const perfilAD = ED.profile?.key === "audiodescricao-pt-br";
 
   const desenhar = () => {
@@ -39,8 +41,11 @@ async function abrirAD() {
       <div class="ad-sec" id="ad-sel">
         ${c ? `<b class="small">Descrição nº ${ED.sel + 1}</b> <span class="tnum small muted">${fmtTC(c.start)} → ${fmtTC(c.end)} (${dur.toFixed(1)} s)</span>
           <p class="small ${pal > cabe ? "err" : "muted"}">${pal} de ${cabe} palavras${pal > cabe ? " — não cabe nesse tempo" : ""}</p>
-          <div class="row" style="gap:6px"><button class="btn sm" data-ad="ouvir" ${c.text?.trim() ? "" : "disabled"}>▶ Ouvir</button>
-            <button class="btn sm" data-ad="sugerir" title="A IA olha alguns quadros do trecho e sugere um rascunho (você revisa)">Sugerir com IA</button></div>
+          <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sm" data-ad="ouvir" ${c.text?.trim() ? "" : "disabled"} title="Voz do sistema">▶ Ouvir</button>
+            <button class="btn sm" data-ad="sugerir" title="A IA olha alguns quadros do trecho e sugere um rascunho (você revisa)">Sugerir com IA</button>
+            <button class="btn sm ${gravador ? "danger" : ""}" data-ad="gravar" title="Gravar esta descrição com a sua voz (microfone)">${gravador ? "■ Parar a gravação" : "● Gravar com a minha voz"}</button></div>
+          ${gravDe(c) ? `<p class="small">Sua voz gravada (${gravDe(c).duracao.toFixed(1)} s)${gravDe(c).duracao > dur + 0.3 ? ` <span class="err">— passa do trecho</span>` : ""}
+            · <a href="#" data-ad="ouvir-grav">ouvir</a> · <a href="#" data-ad="apagar-grav">apagar</a> <span class="muted">(vale na exportação no lugar da voz do sistema)</span></p>` : ""}
           ${sugestao && sugestao.i === ED.sel ? `<div class="ad-sug"><p>${esc(sugestao.texto)}</p>
             <div class="row" style="gap:6px"><button class="btn sm primary" data-ad="usar">Usar</button><button class="btn sm ghost" data-ad="descartar">Descartar</button></div></div>` : ""}`
         : `<p class="small muted">Selecione uma descrição para ouvir ou pedir sugestão.</p>`}
@@ -57,7 +62,7 @@ async function abrirAD() {
   };
 
   const vigia = setInterval(() => {
-    if (!document.body.contains(dr)) { clearInterval(vigia); audio?.pause(); return; }
+    if (!document.body.contains(dr)) { clearInterval(vigia); audio?.pause(); gravador?.stop(); return; }
     if (ED.sel !== ultimaSel && !dr.contains(document.activeElement)) desenhar();
   }, 400);
 
@@ -106,6 +111,31 @@ async function abrirAD() {
         const dur = c.end - c.start;
         if (r.duracao > dur + 0.3) toast(`A voz leva ${r.duracao.toFixed(1)} s e o trecho tem ${dur.toFixed(1)} s.`, true);
       }
+      if (a === "gravar") {
+        if (gravador) { gravador.stop(); return; }
+        const c = ED.cues[ED.sel];
+        let stream;
+        try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+        catch { throw new Error("Não consegui usar o microfone. Confira se ele está ligado e se o programa tem permissão."); }
+        const pedacos = [];
+        gravador = new MediaRecorder(stream);
+        gravador.ondataavailable = (ev) => { if (ev.data.size) pedacos.push(ev.data); };
+        gravador.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          gravador = null; desenhar();
+          const blob = new Blob(pedacos, { type: pedacos[0]?.type || "audio/webm" });
+          const b64 = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1] || ""); fr.readAsDataURL(blob); });
+          try {
+            const r = await api("POST", `/api/editor/${ED.sid}/ad/gravacao`, { inicio: c.start, audio: b64 });
+            await carregarGravs(); desenhar();
+            toast(`Gravação guardada (${r.duracao.toFixed(1)} s).`);
+          } catch (e2) { toast(e2.message, true); }
+        };
+        gravador.start(); desenhar();
+        return;
+      }
+      if (a === "ouvir-grav") { e.preventDefault(); const g = gravDe(ED.cues[ED.sel]); if (g) { audio?.pause(); audio = new Audio(g.url + "?t=" + Date.now()); audio.play().catch(() => {}); } }
+      if (a === "apagar-grav") { e.preventDefault(); await api("POST", `/api/editor/${ED.sid}/ad/gravacao/apagar`, { inicio: ED.cues[ED.sel].start }); await carregarGravs(); desenhar(); }
       if (a === "sugerir") {
         const c = ED.cues[ED.sel];
         b.disabled = true; b.textContent = "Olhando o vídeo…";
@@ -125,6 +155,7 @@ async function abrirAD() {
       toast(err.message, true);
     }
   });
+  await carregarGravs();
   desenhar();
 }
 

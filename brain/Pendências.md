@@ -104,7 +104,7 @@ Caminho recomendado (em duas etapas):
 
 **Pronto quando (etapa 1):** instaladores de Mac e Linux publicados pelo CI, licença e atualização funcionando, testes passando nos três sistemas.
 
-## P-05 — Legenda ao vivo (TV, transmissões, eventos) · feito na 2.18 (falta tradução ao vivo e validação: T-033…T-035)
+## P-05 — Legenda ao vivo (TV, transmissões, eventos) · feito na 2.18/2.20 (falta validação e recurso na licença: T-034, T-035)
 
 Gerar legenda em tempo real a partir do áudio de uma transmissão, com uma pessoa corrigindo se quiser.
 - **Entrada de áudio:** microfone, áudio do sistema, placa de captura ou entrada de rede de vídeo profissional (o que o ffmpeg do sistema conseguir ler); escolha do canal de áudio.
@@ -122,7 +122,7 @@ Gerar legenda em tempo real a partir do áudio de uma transmissão, com uma pess
 
 **Pronto quando:** 1 hora de transmissão contínua sem travar, atraso médio ≤ 3 s, janela e página de legenda funcionando, arquivo final correto.
 
-## P-06 — Audiodescrição · feito na 2.19 (falta gravar com a própria voz, recurso na licença e validação: T-044…T-046)
+## P-06 — Audiodescrição · feito na 2.19/2.20 (falta recurso na licença e validação: T-045, T-046)
 
 Roteiro e áudio de audiodescrição (descrição das cenas para pessoas cegas), dentro do Legendas.
 - **Achar os espaços:** usa a fala (detector de voz) e a legenda para marcar os trechos sem diálogo onde cabe descrição; mostra a duração disponível de cada um.

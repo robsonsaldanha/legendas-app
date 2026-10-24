@@ -34,14 +34,14 @@ _(nada no momento)_
 - [x] T-030 · P-05 · Captura de áudio ao vivo (microfone, sistema, placa, arquivo, endereço) e transcrição contínua em processo separado — 2.18
 - [x] T-031 · P-05 · Saídas ao vivo: página local de legenda (fonte de navegador) e janela com fundo transparente/verde/azul/preto, modos "inteira" e "rolando" — 2.18
 - [x] T-032 · P-05 · Painel do operador (espera para corrigir, correção que segura a legenda, apagar, mandar já, texto pronto, glossário do cliente, palavras escondidas) — 2.18
-- [ ] T-033 · P-05 · ~~Arquivo do evento e abrir no editor~~ (2.18); falta a tradução ao vivo (opcional)
+- [x] T-033 · P-05 · Arquivo do evento e abrir no editor (2.18); tradução ao vivo em segunda faixa, com glossário, e `.srt` traduzido do evento (2.20)
 - [ ] T-034 · P-05 · Validar ao vivo de verdade: 1 h contínua sem travar, atraso médio ≤ 3 s, em Windows dela (microfone e som do computador)
 - [ ] T-035 · P-05 · Recurso próprio na licença (`ao_vivo`) e minutos ao vivo nas métricas — hoje usa o recurso `transcricao`
 - [x] T-040 · P-06 · Achar espaços sem fala e editor do roteiro de audiodescrição (no próprio editor: botão Audiodescrição) — 2.19
 - [x] T-041 · P-06 · Perfil "Audiodescrição — Português (Brasil)" + verificação (cabe no tempo, cai na fala, sobreposição, presente, sem interpretar, sem "vemos") — 2.19
 - [x] T-042 · P-06 · Sugestão por IA a partir de 3 quadros do trecho (rascunho; ela aceita ou descarta) — 2.19 (precisa de modelo de IA que aceite imagens)
 - [x] T-043 · P-06 · Voz sintética do sistema (ouvir e gerar) e exportações: roteiro .docx/.txt, .ttml, faixa .wav, áudio mixado com o original abaixado — 2.19
-- [ ] T-044 · P-06 · Gravar a descrição com a própria voz (microfone) e voz de serviço externo opcional
+- [x] T-044 · P-06 · Gravar a descrição com a própria voz (microfone); a gravação vale na exportação no lugar da voz do sistema — 2.20 (voz de serviço externo fica para depois, se ela pedir)
 - [ ] T-045 · P-06 · Recurso próprio na licença (`audiodescricao`) — hoje a audiodescrição não tem trava; a sugestão usa `ia_traducao`
 - [ ] T-046 · P-06 · Validar um episódio inteiro com ela (roteiro, verificação, faixa mixada, exportações)
 
@@ -85,5 +85,7 @@ Resumo por versão (detalhes em [[Fases]] e [[Decisões]]).
 - [x] 2.17 — Mac e Linux (pacotes `.dmg`, `.tar.gz`, `.AppImage`)
 - [x] 2.18 — legenda ao vivo (entrada de áudio, fila do operador, página de legenda, arquivo do evento)
 - [x] 2.19 — audiodescrição no editor (espaços sem fala, verificação, voz, sugestão por IA, exportações e áudio mixado)
+- [x] 2.20 — tradução ao vivo (segunda faixa) e gravar a audiodescrição com a própria voz
+- [x] Servidor 1.6 — instalador por sistema (download e atualização)
 - [x] Servidor 1.0–1.4 — licenças, site, área do cliente, painel, status, termos/LGPD, sincronia, suporte, modo manutenção
 - [x] 24/10/2026 — especificações da família CNT ([[Pendências]] P-01 a P-08) e este kanban

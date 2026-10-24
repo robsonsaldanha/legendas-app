@@ -174,3 +174,39 @@ def test_rotas_do_operador(server):
     assert st == 404
     st, d = api("POST", "/api/aovivo/texto", {"texto": "oi"})
     assert st == 409 and "não está rodando" in d["error"]
+
+
+class _TradutorFalso:
+    def __init__(self):
+        self.pedidos = []
+
+    def translate_batch(self, system, user):
+        d = json.loads(user)
+        self.pedidos.append((system, d))
+        return {"itens": [{"id": x["id"], "texto": "ES: " + x["texto"]} for x in d["itens"]]}, None
+
+
+def test_traducao_ao_vivo(tmp_path):
+    av = AoVivo(lambda: "ffmpeg", module_cmd, sys.executable)
+    trad = _TradutorFalso()
+    av.tradutor = lambda: trad
+    s = Sessao(fonte="arquivo:x", atraso=0, pasta=tmp_path, traduzir_para="es-419", glossario=[("Narizinho", "Naricita")])
+    s.ativo, s.inicio = True, time.time() - 10
+    s.srt = tmp_path / "e.srt"
+    s.srt_trad = tmp_path / "e.es-419.srt"
+    av.sessao = s
+    threading.Thread(target=av._traduzir_continuo, args=(s,), daemon=True).start()
+    eventos = []
+    av.ouvir(eventos.append)
+    av.inserir("Bom dia, Narizinho.")
+    av.inserir("Vamos começar.")
+    for _ in range(50):
+        if len(s.traducoes) == 2:
+            break
+        time.sleep(0.05)
+    trads = [e["texto"] for e in eventos if e.get("faixa") == "traducao"]
+    assert trads == ["ES: Bom dia, Narizinho.", "ES: Vamos começar."]
+    assert "Narizinho → Naricita" in trad.pedidos[0][0]
+    assert [c.text for c in read_srt(s.srt_trad)] == ["ES: Bom dia, Narizinho.", "ES: Vamos começar."]
+    assert av.estado()["traducoes"]
+    s.ativo = False

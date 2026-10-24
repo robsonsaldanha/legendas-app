@@ -1399,6 +1399,21 @@ class Handler(BaseHTTPRequestHandler):
         from . import ad
         return ad.voz(self.app.editor, self.app.editor._get(sid), self._body())
 
+    @route("POST", r"/api/editor/(\w+)/ad/gravacao")
+    def api_ad_gravacao(self, sid):
+        from . import ad
+        return ad.gravar(self.app.editor, self.app.editor._get(sid), self._body())
+
+    @route("POST", r"/api/editor/(\w+)/ad/gravacao/apagar")
+    def api_ad_gravacao_apagar(self, sid):
+        from . import ad
+        return ad.apagar_gravacao(self.app.editor, self.app.editor._get(sid), self._body())
+
+    @route("GET", r"/api/editor/(\w+)/ad/gravacoes")
+    def api_ad_gravacoes(self, sid):
+        from . import ad
+        return ad.gravacoes(self.app.editor, self.app.editor._get(sid))
+
     @route("POST", r"/api/editor/(\w+)/ad/sugerir")
     def api_ad_sugerir(self, sid):
         need("ia_traducao")
@@ -1517,7 +1532,15 @@ class Handler(BaseHTTPRequestHandler):
         prompt = ", ".join(transcription_keywords(entries, 60))
         pasta = Path(b.get("pasta") or (Path(Settings.load().projects_root or depuracao.documentos()) / "Ao vivo"))
         filtro = [w for w in str(b.get("filtro") or "").replace(";", ",").split(",") if w.strip()]
+        traducao = str(b.get("traducao") or "")
+        if traducao:
+            need("ia_traducao")
+            if traducao not in ("pt-BR", "es-419", "en"):
+                raise ApiError("Idioma da tradução inválido.")
+            from core import ai
+            self.app.aovivo.tradutor = lambda: ai.make_translator(Settings.load())
         s = Sessao(fonte=fonte, idioma=str(b.get("idioma") or "pt-BR"), modelo=str(b.get("modelo") or "small"),
+                   traduzir_para=traducao, glossario=[(e.term, e.translation) for e in entries if e.translation],
                    atraso=max(0.0, min(30.0, float(b.get("atraso", 3)))), max_len=int(b.get("max_len") or max_len),
                    max_lines=int(b.get("max_lines") or max_lines), filtro=filtro, pasta=pasta)
         try:

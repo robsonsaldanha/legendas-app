@@ -82,6 +82,33 @@ def dividir(texto: str, max_len: int, max_lines: int, idioma: str) -> list[list[
     return [l for l in legendas if l]
 
 
+IDIOMA_NOME = {"pt": "português do Brasil", "es": "espanhol latino-americano", "en": "inglês"}
+
+
+def traduzir_lote(tradutor, lote: list, s) -> list:
+    """[(Linha, texto traduzido já quebrado em linhas)] na ordem do lote."""
+    import json as _json
+    de = IDIOMA_NOME.get(s.idioma.split("-")[0], s.idioma)
+    para = IDIOMA_NOME.get(s.traduzir_para.split("-")[0], s.traduzir_para)
+    gl = "; ".join(f"{a} → {b}" for a, b in s.glossario[:80] if a and b)
+    limite = s.max_len * s.max_lines
+    system = (f"Você traduz legendas AO VIVO de {de} para {para}. Frases curtas e naturais, sem explicar nada, "
+              f"cada item com no máximo {limite} caracteres (resuma se precisar). Mantenha nomes próprios."
+              + (f" Glossário obrigatório: {gl}." if gl else "")
+              + ' Responda só com JSON: {"itens": [{"id": ..., "texto": "..."}]}')
+    antes = [l for l in s.linhas if l.estado == "publicada" and l.id < lote[0].id][-3:]
+    user = _json.dumps({"contexto_anterior": [l.texto.replace("\n", " ") for l in antes],
+                        "itens": [{"id": l.id, "texto": l.texto.replace("\n", " ")} for l in lote]}, ensure_ascii=False)
+    dados, _ = tradutor.translate_batch(system, user)
+    por_id = {int(x.get("id")): str(x.get("texto") or "").strip() for x in (dados.get("itens") or []) if str(x.get("id", "")).isdigit()}
+    out = []
+    for l in lote:
+        t = por_id.get(l.id)
+        if t:
+            out.append((l, "\n".join(break_lines(t, s.max_len, s.max_lines, s.traduzir_para))))
+    return out
+
+
 @dataclass
 class Linha:
     id: int
@@ -118,6 +145,10 @@ class Sessao:
     erro: str = ""
     inicio: float = 0.0
     srt: Path | None = None
+    traduzir_para: str = ""                          # tradução ao vivo (segunda faixa), ex.: "es-419"
+    glossario: list = field(default_factory=list)    # [(termo, tradução)] para a tradução ao vivo
+    srt_trad: Path | None = None
+    traducoes: dict = field(default_factory=dict)    # id da legenda → texto traduzido
     _seq: int = 0
 
     def _filtrar(self, t: str) -> str:
@@ -170,6 +201,9 @@ class AoVivo:
         self._lock = threading.RLock()
         self._ouvintes: list = []
         self.ao_publicar = None          # (Linha) → depuração/registro
+        self.tradutor = None             # () → objeto com translate_batch(system, user) (core.ai.make_translator)
+        self._fila_trad: list = []
+        self._trad_evento = threading.Event()
 
     # -------------------------------------------------------------- ouvintes (SSE)
     def ouvir(self, fn) -> None:
@@ -196,6 +230,10 @@ class AoVivo:
             sessao.ativo, sessao.inicio = True, time.time()
             sessao.pasta.mkdir(parents=True, exist_ok=True)
             sessao.srt = sessao.pasta / time.strftime("ao-vivo_%Y%m%d-%H%M%S.srt")
+            if sessao.traduzir_para:
+                self._fila_trad = []
+                sessao.srt_trad = sessao.srt.with_name(sessao.srt.stem + f".{sessao.traduzir_para}.srt")
+                threading.Thread(target=self._traduzir_continuo, args=(sessao,), daemon=True, name="aovivo-traducao").start()
             self.sessao = sessao
             cmd = self._module_cmd(self._python, "core.aovivo_worker", "--fonte", sessao.fonte, "--idioma", sessao.idioma,
                                    "--modelo", sessao.modelo, "--prompt", prompt[:800], "--ffmpeg", str(self._ffmpeg()))
@@ -249,23 +287,52 @@ class AoVivo:
         l.estado = "publicada"
         self._gravar_srt(s)
         self._avisar({"tipo": "legenda", "id": l.id, "texto": l.texto})
+        if s.traduzir_para:
+            self._fila_trad.append(l)
+            self._trad_evento.set()
         if self.ao_publicar:
             try:
                 self.ao_publicar(l)
             except Exception:  # noqa: BLE001
                 pass
 
-    def _gravar_srt(self, s: Sessao) -> None:
+    def _gravar_srt(self, s: Sessao, traducao: bool = False) -> None:
         from .subtitle import Cue, write_srt
-        pub = sorted((l for l in s.linhas if l.estado == "publicada"), key=lambda l: l.t0)
+        pub = sorted((l for l in s.linhas if l.estado == "publicada" and (not traducao or l.id in s.traducoes)),
+                     key=lambda l: l.t0)
         cues = []
         for i, l in enumerate(pub):
             fim = l.t1 if i + 1 >= len(pub) else min(l.t1 + 0.5, pub[i + 1].t0 - 0.084)
-            cues.append(Cue(start=l.t0, end=max(l.t0 + 0.7, fim), lines=l.texto.split("\n")))
+            texto = s.traducoes[l.id] if traducao else l.texto
+            cues.append(Cue(start=l.t0, end=max(l.t0 + 0.7, fim), lines=texto.split("\n")))
         try:
-            write_srt(cues, s.srt)
+            write_srt(cues, s.srt_trad if traducao else s.srt)
         except OSError as e:
             s.erro = f"Não consegui gravar o arquivo do evento: {e}"
+
+    # -------------------------------------------------------------- tradução ao vivo (segunda faixa)
+    def _traduzir_continuo(self, s: Sessao) -> None:
+        """Traduz em ordem o que já foi para a tela, em lotes pequenos (o que chegou enquanto a anterior traduzia),
+        com as 3 legendas anteriores como contexto. Se a tradução falhar, a faixa original continua normalmente."""
+        tradutor = None
+        while s.ativo or self._fila_trad:
+            if not self._fila_trad:
+                self._trad_evento.wait(0.5)
+                self._trad_evento.clear()
+                continue
+            lote, self._fila_trad = self._fila_trad[:6], self._fila_trad[6:]
+            try:
+                tradutor = tradutor or self.tradutor()
+                feitos = traduzir_lote(tradutor, lote, s)
+            except Exception as e:  # noqa: BLE001
+                s.erro = f"Tradução ao vivo parou: {e}"
+                log.warning("Ao vivo: tradução falhou: %s", e)
+                continue
+            with self._lock:
+                for l, t in feitos:
+                    s.traducoes[l.id] = t
+                    self._avisar({"tipo": "legenda", "faixa": "traducao", "id": l.id, "texto": t})
+                self._gravar_srt(s, traducao=True)
 
     def parar(self) -> dict:
         with self._lock:
@@ -338,4 +405,6 @@ class AoVivo:
             return {"ativo": s.ativo, "pronto": s.pronto, "fonte": s.fonte, "modelo": s.modelo, "atraso": s.atraso,
                     "parcial": s.parcial, "nivel": s.nivel, "erro": s.erro, "fila": fila, "publicadas": pub,
                     "segundos": round(agora - s.inicio, 1) if s.inicio else 0, "srt": str(s.srt or ""),
-                    "total": sum(1 for l in s.linhas if l.estado == "publicada")}
+                    "total": sum(1 for l in s.linhas if l.estado == "publicada"),
+                    "traduzir_para": s.traduzir_para, "srt_trad": str(s.srt_trad or ""),
+                    "traducoes": {str(l["id"]): s.traducoes[l["id"]] for l in pub if l["id"] in s.traducoes}}

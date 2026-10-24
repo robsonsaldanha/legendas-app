@@ -107,10 +107,83 @@ def voz(editor, s, p: dict) -> dict:
 def arquivo_voz(s, nome: str) -> Path:
     if not nome.endswith(".wav") or "/" in nome or "\\" in nome or ".." in nome:
         raise ADError("Arquivo inválido.", 404)
-    f = s.cache / "ad_voz" / nome
-    if not f.exists():
-        raise ADError("Áudio não encontrado.", 404)
-    return f
+    for pasta in ("ad_voz", "ad_gravadas"):
+        f = s.cache / pasta / nome
+        if f.exists():
+            return f
+    raise ADError("Áudio não encontrado.", 404)
+
+
+# ---------------------------------------------------------------- gravação com a própria voz (T-044)
+
+def _indice_gravacoes(s) -> tuple[Path, dict]:
+    pasta = s.cache / "ad_gravadas"
+    pasta.mkdir(parents=True, exist_ok=True)
+    f = pasta / "indice.json"
+    try:
+        return pasta, json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return pasta, {}
+
+
+def gravacao_de(s, inicio: float) -> Path | None:
+    """A gravação feita para a descrição que começa em `inicio` (tolerância de meio segundo)."""
+    if s.cache is None:
+        return None
+    pasta, idx = _indice_gravacoes(s)
+    perto = [(abs(float(k) - inicio), v) for k, v in idx.items()]
+    perto = [x for x in perto if x[0] <= 0.5]
+    if not perto:
+        return None
+    f = pasta / min(perto, key=lambda x: x[0])[1]
+    return f if f.exists() else None
+
+
+def gravar(editor, s, p: dict) -> dict:
+    """Recebe o áudio gravado na tela (base64), converte para wav e guarda para a descrição."""
+    import base64
+    import subprocess
+    from core.media import ffmpeg
+    try:
+        inicio = round(float(p.get("inicio")), 3)
+        dados = base64.b64decode(str(p.get("audio") or ""), validate=True)
+    except (TypeError, ValueError) as e:
+        raise ADError("Gravação inválida.") from e
+    if len(dados) < 200:
+        raise ADError("A gravação ficou vazia. Confira o microfone.")
+    if len(dados) > 20_000_000:
+        raise ADError("Gravação longa demais para uma descrição.")
+    pasta, idx = _indice_gravacoes(s)
+    nome = hashlib.sha1(f"{inicio}|{len(dados)}|{dados[:64]!r}".encode()).hexdigest()[:16]
+    bruto = pasta / f"{nome}.bruto"
+    bruto.write_bytes(dados)
+    wav = pasta / f"{nome}.wav"
+    r = subprocess.run([ffmpeg(), "-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-i", str(bruto),
+                        "-ac", "1", "-ar", "48000", "-c:a", "pcm_s16le", str(wav)], capture_output=True)
+    bruto.unlink(missing_ok=True)
+    if r.returncode != 0 or not wav.exists():
+        raise ADError("Não consegui ler a gravação do microfone.")
+    antigo = idx.get(f"{inicio:.3f}")
+    if antigo and antigo != wav.name:
+        (pasta / antigo).unlink(missing_ok=True)
+    idx[f"{inicio:.3f}"] = wav.name
+    (pasta / "indice.json").write_text(json.dumps(idx), encoding="utf-8")
+    return {"url": f"/media/{s.sid}/ad/{wav.name}", "duracao": round(AD.duracao_wav(wav), 2)}
+
+
+def apagar_gravacao(editor, s, p: dict) -> dict:
+    pasta, idx = _indice_gravacoes(s)
+    inicio = float(p.get("inicio", -1))
+    for k in [k for k in idx if abs(float(k) - inicio) <= 0.5]:
+        (pasta / idx.pop(k)).unlink(missing_ok=True)
+    (pasta / "indice.json").write_text(json.dumps(idx), encoding="utf-8")
+    return {"ok": True}
+
+
+def gravacoes(editor, s) -> dict:
+    pasta, idx = _indice_gravacoes(s)
+    return {"gravacoes": [{"inicio": float(k), "url": f"/media/{s.sid}/ad/{v}", "duracao": round(AD.duracao_wav(pasta / v), 2)}
+                          for k, v in idx.items() if (pasta / v).exists()]}
 
 
 def sugerir(editor, s, p: dict) -> dict:
@@ -154,14 +227,18 @@ def exportar(editor, s, raw: list[dict], p: dict, task, prog) -> tuple[dict, str
         video = _video(s)
         voz_ = AD.Voz(s.language or "pt-BR", _ppm(p))
         pasta_voz = s.cache / "ad_voz"
-        falas_ad, avisos = [], 0
+        falas_ad, avisos, gravadas = [], 0, 0
         for i, d in enumerate(ds):
             if task.get("cancel"):
                 return {"arquivos": feitos}, "Cancelado."
             task["message"] = f"Gerando a voz ({i + 1} de {len(ds)})…"
             prog(0.7 * i / len(ds))
             texto = " ".join(d.texto.split())
-            f = pasta_voz / (hashlib.sha1(f"{_ppm(p)}|{s.language}|{texto}".encode()).hexdigest()[:16] + ".wav")
+            f = gravacao_de(s, d.inicio)                 # gravada com a própria voz vale mais que a sintética
+            if f is not None:
+                gravadas += 1
+            else:
+                f = pasta_voz / (hashlib.sha1(f"{_ppm(p)}|{s.language}|{texto}".encode()).hexdigest()[:16] + ".wav")
             if not f.exists():
                 try:
                     voz_.falar(texto, f)
@@ -184,9 +261,13 @@ def exportar(editor, s, raw: list[dict], p: dict, task, prog) -> tuple[dict, str
             feitos.append(str(AD.mixar(video, faixa, trechos, saida(" (mixada).wav"), ffmpeg(), abaixar, s.cache)))
             if "faixa" not in formatos:
                 faixa.unlink(missing_ok=True)
+        if gravadas:
+            task["gravadas"] = gravadas
         if avisos:
             task["aviso"] = f"{avisos} descrição(ões) ficaram mais longas que o espaço na voz escolhida."
     msg = f"{len(feitos)} arquivo(s) gravados em {pasta}."
+    if task.get("gravadas"):
+        msg += f" {task['gravadas']} descrição(ões) com a sua voz gravada."
     if task.get("aviso"):
         msg += " " + task["aviso"]
     return {"arquivos": feitos, "pasta": str(pasta)}, msg

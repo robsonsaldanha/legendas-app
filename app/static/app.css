@@ -1062,3 +1062,4 @@ details.ds-adv > .ds-adv-body > .panel { margin: 0; }
 .ad-sug { background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: 8px; padding: 8px 10px; }
 .ad-sug p { margin: 0 0 6px; }
 .issues .ok { color: var(--ok, #4caf50); }
+.av-trad { color: var(--muted); font-size: 14px; margin-top: 2px; }
