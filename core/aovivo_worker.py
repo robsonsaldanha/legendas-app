@@ -32,7 +32,8 @@ FALA_MAXIMA = 7.0                # s: fecha mesmo sem pausa (legenda não pode e
 
 
 def emitir(**ev) -> None:
-    sys.stdout.write(json.dumps(ev, ensure_ascii=False) + "\n")
+    # sempre UTF-8 (no Windows a saída padrão é cp1252: "…" e acentos chegariam quebrados)
+    sys.stdout.buffer.write((json.dumps(ev, ensure_ascii=False) + "\n").encode("utf-8"))
     sys.stdout.flush()
 
 

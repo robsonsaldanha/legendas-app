@@ -146,6 +146,7 @@ class Sessao:
     inicio: float = 0.0
     srt: Path | None = None
     log: Path | None = None
+    parando: bool = False
     traduzir_para: str = ""                          # tradução ao vivo (segunda faixa), ex.: "es-419"
     glossario: list = field(default_factory=list)    # [(termo, tradução)] para a tradução ao vivo
     srt_trad: Path | None = None
@@ -239,9 +240,9 @@ class AoVivo:
             cmd = self._module_cmd(self._python, "core.aovivo_worker", "--fonte", sessao.fonte, "--idioma", sessao.idioma,
                                    "--modelo", sessao.modelo, "--prompt", prompt[:800], "--ffmpeg", str(self._ffmpeg()))
             sessao.log = sessao.srt.with_suffix(".log")          # o que o processo de captura reclamar (para o suporte)
-            self._proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                          stderr=open(sessao.log, "w", encoding="utf-8"),
-                                          text=True, encoding="utf-8",
+            self._log_arq = open(sessao.log, "w", encoding="utf-8")
+            self._proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=self._log_arq,
+                                          text=True, encoding="utf-8", errors="replace",
                                           creationflags=0x08000000 if sys.platform == "win32" else 0)
         threading.Thread(target=self._ler, args=(self._proc, sessao), daemon=True, name="aovivo-ler").start()
         threading.Thread(target=self._relogio, args=(sessao,), daemon=True, name="aovivo-relogio").start()
@@ -254,23 +255,36 @@ class AoVivo:
                 ev = json.loads(linha)
             except ValueError:
                 continue
-            with self._lock:
-                tipo = ev.get("tipo")
-                if tipo == "pronto":
-                    s.pronto = True
-                elif tipo == "nivel":
-                    s.nivel = ev.get("db")
-                elif tipo == "parcial":
-                    s.parcial = ev.get("texto", "")
-                    self._avisar({"tipo": "parcial", "texto": s.parcial})
-                elif tipo == "final":
-                    s.receber_final(ev.get("texto", ""), float(ev.get("t0", 0)), float(ev.get("t1", 0)), time.time())
-                elif tipo == "erro":
-                    s.erro = ev.get("mensagem", "")
-                    log.warning("Ao vivo: %s", s.erro)
-        proc.wait()
+            try:
+                self._evento(ev, s)
+            except Exception:  # noqa: BLE001  (um evento estranho não pode parar a leitura)
+                log.exception("Ao vivo: evento inválido")
+        self._fim_da_captura(proc, s)
+
+    def _evento(self, ev: dict, s: Sessao) -> None:
         with self._lock:
-            if proc.returncode not in (0, None) and not s.erro:
+            tipo = ev.get("tipo")
+            if tipo == "pronto":
+                s.pronto = True
+            elif tipo == "nivel":
+                s.nivel = ev.get("db")
+            elif tipo == "parcial":
+                s.parcial = ev.get("texto", "")
+                self._avisar({"tipo": "parcial", "texto": s.parcial})
+            elif tipo == "final":
+                s.receber_final(ev.get("texto", ""), float(ev.get("t0", 0)), float(ev.get("t1", 0)), time.time())
+            elif tipo == "erro":
+                s.erro = ev.get("mensagem", "")
+                log.warning("Ao vivo: %s", s.erro)
+
+    def _fim_da_captura(self, proc: subprocess.Popen, s: Sessao) -> None:
+        proc.wait()
+        try:
+            self._log_arq.close()                    # no Windows o arquivo aberto não pode ser apagado
+        except (AttributeError, OSError):
+            pass
+        with self._lock:
+            if proc.returncode not in (0, None) and not s.erro and not s.parando:
                 s.erro = f"A captura parou (código {proc.returncode})."
             if s.ativo:
                 self._publicar_vencidas(s, forcar=True)
@@ -349,6 +363,8 @@ class AoVivo:
     def parar(self) -> dict:
         with self._lock:
             s, proc = self.sessao, self._proc
+            if s:
+                s.parando = True
         if proc and proc.poll() is None:
             proc.terminate()
             try:
