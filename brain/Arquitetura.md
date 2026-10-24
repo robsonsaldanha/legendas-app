@@ -49,10 +49,18 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 | `style.py` | Regras de estilo do cliente: reticências/hífen, avisos (interjeições, pontuação dupla…), nome do arquivo (`_sub_spa`) |
 | `pipeline.py` | `run_job()` para a interface; `main()` para a linha de comando |
 | `config.py` | Pastas em `%APPDATA%\CNT Legendas` e `Settings` (modelos, preços, paralelismo) |
+| `licenca.py` | Licença: identificação do computador, avaliação/ativação/conferência no servidor, concessão assinada (Ed25519) guardada em `%ProgramData%\CNT Legendas\licenca`, recursos pagos |
+| `atualizacao.py` | Atualização automática: manifesto assinado, download com SHA-256, pacote (patch) em `versoes\<versão>` ou instalador silencioso; reabrir a nova instância |
+| `languages.py` | Os 20 idiomas (códigos, nomes, Whisper, limites da Netflix) |
+| `flags.py` | Marcas ⚑ das legendas para conferir (fora do SRT) |
+
+## Partida (`cntboot.py`)
+
+O atalho chama `pythonw -m cntboot`: escolhe o código mais novo (instalado ou atualização baixada em `%ProgramData%\CNT Legendas\versoes\<versão>`, com volta automática se não abrir) e roda `app.__main__`. `CNT_INSTALL_ROOT` aponta a pasta do programa (ffmpeg, modelos, Python); `CNT_VERSAO_DIR` a pasta da versão (código e `lib/` com bibliotecas em Python puro do pacote).
 
 ## Interface (`app/`)
 
-O programa é um servidor local (só `127.0.0.1`) e a tela abre no navegador padrão. Decisão da usuária: página no navegador em vez de janela PySide6 (ver [[Decisões]]).
+O programa é um servidor local (só `127.0.0.1`). No Windows a tela abre numa **janela própria** (WebView2, `app/janela.py`) com ícone na bandeja do sistema; sem WebView2, abre no navegador (decisão original: página no navegador em vez de PySide6; ver [[Decisões]]).
 
 | Arquivo | Papel |
 |---|---|
@@ -63,6 +71,7 @@ O programa é um servidor local (só `127.0.0.1`) e a tela abre no navegador pad
 | `dialogs.py` | Janelas "Abrir" e "Salvar como" do Windows (tkinter) num processo separado, para obter o caminho real do arquivo |
 | `projects.py` | Projetos (tabelas `obras`, `itens`, `metricas`, `tempo`, `eventos`): criar, abrir pela pasta, episódios, status, copiar arquivos, relatórios |
 | `editor.py` | Sessões do editor: lê o SRT, prepara o vídeo para o player (cópia leve quando o navegador não toca o formato), forma de onda + sinal de fala, cliente, operações de sincronia, tarefas em segundo plano (sincronia automática, cortes de cena), entrega, rascunho, salvar com cópia de segurança, QC, quebra de linhas |
+| `janela.py` | Janela WebView2 (pywebview), confirmação ao fechar, bandeja do sistema (NotifyIcon) e o menu dela |
 | `static/` | `index.html`, `app.css`, `app.js` (telas gerais e roteador), `home.js` (Início), `editor.js` (editor), `tools.js` (Sincronizar, Verificar, Entregar, Localizar) — sem dependências externas (funciona offline) |
 
 Telas: **Início** (abrir legenda + vídeo, cliente, recentes) · **Editor** · Clientes (regras, glossário com importar/exportar CSV, instruções) · Trabalhos (fila + histórico; "Trabalho em segundo plano" para transcrever/sincronizar/traduzir sem abrir o editor) · Configurações (nome para a assinatura, chave, modelos de alinhamento, perfis, avançado, fechar o programa).
@@ -96,6 +105,13 @@ Arquivos arrastados para a página são copiados para `%APPDATA%\CNT Legendas\en
 - Modelos de alinhamento (≈1,2 GB por idioma) ficam em `C:\ProgramData\CNT Legendas\modelos`, compartilhados. Se não der para escrever lá, cada perfil usa o seu. O instalador (Fase 5) cria a pasta com permissão de escrita para todos os usuários.
 
 ## Pastas de dados (Windows)
+
+```
+%ProgramData%\CNT Legendas\       (todos os perfis do Windows)
+  licenca\                   concessão assinada e estado da licença deste computador
+  versoes\<versão>\          atualizações baixadas (app\, core\, lib\ e o marcador "pronto")
+  modelos\                   modelos de alinhamento e do Whisper
+```
 
 ```
 %APPDATA%\CNT Legendas\

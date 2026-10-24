@@ -5,8 +5,10 @@
 2. Dois cliques, avançar. Ele pede permissão de administrador porque instala para todos os perfis do Windows.
 3. Abra pelo atalho **CNT Legendas** (menu Iniciar ou área de trabalho). Em cada perfil: Configurações → colar a chave da OpenAI; e, uma vez só no PC, baixar os modelos de alinhamento (PT e ES).
 
-## Gerar o instalador
-`packaging\build.ps1` (Windows, Python 3.12, Inno Setup 6). Normalmente quem gera é o GitHub Actions: criar a tag `vX.Y.Z` publica a versão.
+## Gerar o instalador e publicar
+`packaging\build.ps1` (Windows, Python 3.12, Inno Setup 6) gera o instalador e o pacote de atualização. Quem roda é o GitHub Actions (`instalador.yml`): ramo `dev` → canal desenvolvimento (servidor dev-legendas, pré-versão "desenvolvimento" no GitHub); ramo `main` → produção (quando `CNT_PROD_ATIVO` = 1). Commit com `[instalador]` obriga o instalador completo; `[skip ci]` não monta.
+
+O fluxo de trabalho do Claude: edita na nuvem, roda os testes, leva os arquivos para `C:\Users\robso\OneDrive\DESENVOLVIMENTO\CNT Legendas` (ramo `dev`) e envia por `git push vps dev` (a VPS repassa ao GitHub).
 
 # Desenvolvimento
 
@@ -30,7 +32,7 @@
 ```
 python -m app
 ```
-Ou dois cliques em `Abrir CNT Legendas.bat` (usa o `.venv` se existir). A página abre no navegador; o programa fica rodando em segundo plano até "Fechar o programa" em Configurações. Abrir de novo pelo atalho só reabre a página. Opções: `--port N` (padrão: porta própria do perfil), `--no-browser`.
+Ou dois cliques em `Abrir CNT Legendas.bat` (usa o `.venv` se existir). No Windows abre a janela própria (WebView2); `CNT_NAVEGADOR=1` força o navegador. Com a bandeja ligada, o X esconde a janela; "Sair" no ícone (ou "Fechar o programa" em Configurações) encerra. Abrir de novo pelo atalho só traz a janela para a frente. Opções: `--port N` (padrão: porta própria do perfil), `--no-browser`. `CNT_SEM_ATUALIZACAO=1` desliga a atualização ao abrir; `CNT_CANAL` escolhe o servidor (desenvolvimento/producao).
 
 A página só abre pelo atalho (ele passa a chave da sessão). Digitar o endereço direto mostra "Abra o CNT Legendas pelo atalho".
 

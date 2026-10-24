@@ -80,6 +80,7 @@
 - [x] 2.8.0: 20 idiomas + detectar automaticamente; falas em outro idioma no mesmo episódio; japonês/chinês sem espaço
 - [x] 2.9.0: pastas por mês (e trabalhos antigos encontrados nas pastas), interface simplificada com dicas "?" (ver Design.md)
 - [x] 2.10.0: licença (1 dia de avaliação, modo grátis, ativação por código, recursos pagos) e atualização automática obrigatória pelos canais desenvolvimento/produção (ver Licenciamento.md). Precisa ser instalada uma vez pelo instalador.
+- [ ] **2.13 — perfil sincronizado** (em andamento): perfil do usuário no servidor (um por key/vaga), restaurar em PC novo ou formatado, exportar/importar arquivo; Workspace da empresa no programa (perfis da empresa, clientes e glossários compartilhados); métricas de produção (sem texto) no servidor, na área do cliente e no Workspace
 - [ ] Ligar a produção (nginx + certificado de legendas.cntoficial.com.br, variável CNT_PROD_ATIVO) quando o Róbson aprovar; termos revisados por advogado
 - [ ] Nuitka nos módulos de licença; repositório privado + runner próprio
 - [ ] Calibrar com legendas acertadas à mão por ela (quanto antes da fala ela gosta de entrar)

@@ -117,3 +117,16 @@ A primeira versão com atualização automática (2.10.0) precisa ser instalada 
 3. Atualizações: `cntboot`, pacote assinado no CI, canal dev automático, publicar em produção pelo painel.
 4. Página pública e termos/privacidade.
 5. Nuitka nos módulos sensíveis; repositório privado + runner próprio.
+
+## Perfil do usuário e Workspace no servidor (2.13 — em andamento)
+
+Decisões do Róbson (2026-10-24): **um perfil por key** (o que manda é a key); vai **tudo que não for contra a LGPD** — configurações (exceto as chaves das IAs, que ficam só no PC), regras/perfis de cliente, clientes, glossários e preferências — e **métricas** (quantidades, tempos e nomes de projetos/clientes; nunca o texto das legendas nem arquivos). Renovar ou comprar de novo não pode perder o perfil.
+
+Como funciona:
+- **Perfil = vaga da key** (computador ativado). Guardado cifrado no servidor (`perfis_usuario`), ligado à conta do cliente. O programa envia quando algo muda (alguns segundos depois; sem internet, na próxima vez).
+- **PC novo / formatado / troca de computador:** a key nova é ativada e o programa oferece "Restaurar o perfil de <computador> (última alteração …)" com os perfis guardados daquela conta. Licença vencida e comprada de novo: o painel liga a compra à mesma conta, e os perfis continuam lá (guardados por 12 meses depois do vencimento).
+- **Arquivo:** Configurações → Perfil: exportar/importar `.cnt-perfil.json` (sem servidor; serve também no modo grátis).
+- **O que vai no perfil:** configurações seguras (nome na legenda, método/modelos de tradução, preferências do editor, bandeja…), clientes (com instruções, contexto, idiomas, perfil de regras) e os glossários deles, perfis de regras próprios. Fica fora: chaves de IA, pastas deste PC (pasta dos trabalhos), GPU e o que é do computador.
+- **Workspace da empresa (planos de equipe):** o programa recebe os perfis padrão da empresa (aparecem como perfis "Empresa: …", só leitura) e, se a empresa compartilhar, clientes e glossários: cada computador envia os seus e recebe os dos colegas (o mais recente vale; apagar não se propaga). Métricas: se compartilhadas, a conta compradora vê a produção de cada usuário no Workspace.
+- **Métricas:** cada episódio/filme (projeto, cliente, tipo, temporada/episódio, mês, situação, nº de legendas, minutos de vídeo, tempo de trabalho, data de entrega) vai para o servidor; a área do cliente ganha "Produção".
+- API do programa: `/v1/sync/*`, autenticada por licença + computador ativo nela.
