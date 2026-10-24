@@ -169,7 +169,12 @@ EOS
   # assinatura local (sem conta de desenvolvedor: na 1ª vez o Mac pede "Abrir" pelo botão direito)
   codesign --force --deep -s - "$APP" || true
   DMG="$BUILD/dmg"; rm -rf "$DMG"; mkdir -p "$DMG"; cp -R "$APP" "$DMG/"; ln -s /Applications "$DMG/Aplicativos"
-  hdiutil create -volname "CNT Legendas" -srcfolder "$DMG" -ov -format UDZO "$SAIDA/CNT_Legendas_${COMPLETA}_mac_${ARQ}.dmg" >/dev/null
+  # o hdiutil às vezes falha com "Resource busy" nas máquinas do CI: tenta de novo
+  for tentativa in 1 2 3 4; do
+    hdiutil create -volname "CNT Legendas" -srcfolder "$DMG" -ov -format UDZO "$SAIDA/CNT_Legendas_${COMPLETA}_mac_${ARQ}.dmg" >/dev/null && break
+    [ "$tentativa" = 4 ] && false
+    echo "hdiutil ocupado; tentando de novo ($tentativa)"; sleep $((tentativa * 10))
+  done
 fi
 ls -la "$SAIDA"
 echo "PROG=$PROG" >> "${GITHUB_ENV:-/dev/null}"
