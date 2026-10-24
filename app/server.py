@@ -21,6 +21,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from core import __version__
+from core.atualizacao import versao_atual as versao_completa
 from core.align import ALIGN_MODELS
 from core.config import Settings, data_dir, jobs_dir, models_dir, user_id
 from core.errors import LegendasError
@@ -559,7 +560,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/", "/index.html"):
             html = (STATIC / "index.html").read_text(encoding="utf-8")
-            html = html.replace("{{TOKEN}}", self.app.token).replace("{{VERSION}}", __version__)
+            html = html.replace("{{TOKEN}}", self.app.token).replace("{{VERSION}}", versao_completa())
             self._send(200, html.encode("utf-8"), "text/html; charset=utf-8", {
                 "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; "
                                            "style-src 'self' 'unsafe-inline'; script-src 'self'; "

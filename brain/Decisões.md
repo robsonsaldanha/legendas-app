@@ -232,3 +232,4 @@
 - Na tela: etiqueta "Avaliação: N h restantes"/"Modo grátis" na barra de cima e linha "Licença" em Configurações. Ao abrir, se houver versão nova, a tela "Atualizando…" bloqueia o uso até terminar; a página recarrega sozinha.
 - Instalador pela atualização: roda com o aviso de administrador do Windows (`ShellExecute runas`), em silêncio, e reabre o programa (`/ABRIR`).
 - Testes: `tests/test_licenca.py`, `tests/test_atualizacao.py`; os demais testes rodam com uma licença de teste com tudo liberado (`tests/conftest.py`). No CI, o programa instalado tem de mostrar a versão completa e o canal certos.
+- 2.10.0.x: o rodapé do menu mostra a versão completa (com o número da montagem), para conferir se a atualização entrou.
