@@ -1390,17 +1390,20 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/editor/(\w+)/ad/verificar")
     def api_ad_verificar(self, sid):
+        need("audiodescricao")
         from . import ad
         b = self._body()
         return ad.verificar(self.app.editor, self.app.editor._get(sid), b.get("cues") or [], b)
 
     @route("POST", r"/api/editor/(\w+)/ad/voz")
     def api_ad_voz(self, sid):
+        need("audiodescricao")
         from . import ad
         return ad.voz(self.app.editor, self.app.editor._get(sid), self._body())
 
     @route("POST", r"/api/editor/(\w+)/ad/gravacao")
     def api_ad_gravacao(self, sid):
+        need("audiodescricao")
         from . import ad
         return ad.gravar(self.app.editor, self.app.editor._get(sid), self._body())
 
@@ -1416,6 +1419,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/editor/(\w+)/ad/sugerir")
     def api_ad_sugerir(self, sid):
+        need("audiodescricao")
         need("ia_traducao")
         from . import ad
         return ad.sugerir(self.app.editor, self.app.editor._get(sid), self._body())
@@ -1512,7 +1516,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("POST", r"/api/aovivo/iniciar")
     def api_aovivo_iniciar(self):
-        need("transcricao")
+        need("ao_vivo")
         from core.aovivo import Sessao
         from core.glossary import Entry, transcription_keywords
         from core.profiles import default_profile_for, get_profile

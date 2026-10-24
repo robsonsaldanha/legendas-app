@@ -358,3 +358,11 @@
 - **Tradução ao vivo (T-033):** opção "Tradução ao vivo" (espanhol, português, inglês). Cada legenda que **já passou pela fila do operador** vai para o serviço de IA escolhido (mesma chave da tradução; exige o recurso `ia_traducao`), em lotes pequenos e em ordem, com as 3 anteriores de contexto e o glossário. Sai como segunda faixa: na página de legenda, `faixa=traducao` (campo "Faixa" na tela); no arquivo, `ao-vivo_….<idioma>.srt` com os mesmos tempos. Se a tradução falhar, a faixa original continua e o erro aparece no painel.
 - **Voz gravada (T-044):** no painel de audiodescrição, "Gravar com a minha voz" usa o microfone pela própria tela; o áudio vai em base64, vira wav 48 kHz e fica guardado por vídeo, ligado ao início da descrição (meio segundo de tolerância). Na exportação, a gravação vale no lugar da voz do sistema. Dá para ouvir e apagar.
 - (2.20, correção) Processos auxiliares que conversam por JSON na saída padrão escrevem **bytes UTF-8** (`sys.stdout.buffer`): no Windows a saída padrão do Python é cp1252 e o "…" quebrava a leitura do ao vivo. O processo de captura grava o que reclamar em `ao-vivo_….log` ao lado do arquivo do evento; se tudo der certo, o registro é apagado.
+
+## 2026-10-24 — Respostas do Róbson (família CNT)
+1. **Conta única:** aprovada como sugerido — contas no hub, os produtos confirmam a sessão com o hub (P-03).
+2. **CNT Dubla:** processa no **computador do cliente** (P-07). Idiomas iniciais sugeridos: PT↔ES.
+3. **API:** é de **integração** entre sistemas, não de processamento de mídia (P-08 reescrita; T-024 e T-060 descartadas).
+4. **Legenda ao vivo e audiodescrição:** em **todos os planos, menos a avaliação** de 1 dia (recursos `ao_vivo` e `audiodescricao`).
+5. **Validação com ela:** fica para quando todos os sistemas estiverem prontos (o que ela testou antes da atualização pelo site funcionava).
+6. **Produção:** aprovada (T-008, T-074).

@@ -214,3 +214,20 @@ def test_traducao_ao_vivo(tmp_path):
     assert [c.text for c in read_srt(s.srt_trad)] == ["ES: Bom dia, Narizinho.", "ES: Vamos começar."]
     assert av.estado()["traducoes"]
     s.ativo = False
+
+
+def test_avaliacao_nao_tem_ao_vivo(server):
+    from core import licenca as L
+    app, port = server
+    class _Lic:
+        estado = L.Estado(modo="avaliacao", plano="avaliacao", recursos=["transcricao"])
+        def tem(self, r):
+            return self.estado.tem(r)
+    L.definir(_Lic())
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=20)
+    c.request("POST", "/api/aovivo/iniciar", body=b'{"fonte": "pulse:default"}',
+              headers={"Host": f"127.0.0.1:{port}", "Content-Type": "application/json", "X-Token": app.token,
+                       "Cookie": f"{app.cookie_name}={app.token}"})
+    r = c.getresponse()
+    d = json.loads(r.read()); c.close()
+    assert r.status == 402 and "todos os planos" in d["error"]

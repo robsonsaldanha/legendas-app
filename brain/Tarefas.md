@@ -21,8 +21,8 @@ _(nada no momento)_
 - [x] T-005 · P-02 · Tokens e CSS base do visual novo (no `cnt-server/public/site.css`; o hub e a Dubla copiam) — 24/10/2026
 - [x] T-006 · P-02 · Site do Legendas no visual novo em homologação (`dev-legendas`) — servidor 1.5, 24/10/2026
 - [x] T-007 · P-02 · Área do cliente (menu lateral) e painel do Legendas no visual novo — servidor 1.5, 24/10/2026
-- [ ] T-008 · P-02 · Visual novo em produção (`legendas.`) após aprovação
-- [ ] T-009 · P-03 · Decidir onde ficam as contas e como os produtos validam a sessão
+- [ ] T-008 · P-02 · Visual novo em produção (`legendas.`) — aprovado em 24/10/2026
+- [x] T-009 · P-03 · Decidido: contas no hub; os produtos confirmam a sessão com o hub — 24/10/2026
 - [ ] T-010 · P-03 · Conta única CNT (entrar uma vez) + migração das contas do Legendas
 
 ### CNT Legendas — novas funções
@@ -30,23 +30,23 @@ _(nada no momento)_
 - [x] T-021 · P-04 · Pacote para Linux (`.tar.gz` + `.AppImage`) + testes e montagem no CI — 2.17
 - [x] T-022 · P-04 · Pacote para Mac Apple Silicon (`.dmg`, assinatura local) + testes e montagem no CI — 2.17 (assinatura oficial depende de conta de desenvolvedor)
 - [x] T-023 · P-04 · Atualização e download por sistema: o programa manda o `sistema`; o servidor 1.6 guarda o instalador de cada sistema (o CI registra `.dmg` e `.AppImage`) e o site mostra o botão do sistema de quem visita — 24/10/2026
-- [ ] T-024 · P-04 · Legendas no navegador (nuvem), com envio opcional do vídeo — depende de T-060
+- [x] ~~T-024 · P-04 · Legendas no navegador (nuvem)~~ — descartado em 24/10/2026: o processamento fica no computador do cliente
 - [x] T-030 · P-05 · Captura de áudio ao vivo (microfone, sistema, placa, arquivo, endereço) e transcrição contínua em processo separado — 2.18
 - [x] T-031 · P-05 · Saídas ao vivo: página local de legenda (fonte de navegador) e janela com fundo transparente/verde/azul/preto, modos "inteira" e "rolando" — 2.18
 - [x] T-032 · P-05 · Painel do operador (espera para corrigir, correção que segura a legenda, apagar, mandar já, texto pronto, glossário do cliente, palavras escondidas) — 2.18
 - [x] T-033 · P-05 · Arquivo do evento e abrir no editor (2.18); tradução ao vivo em segunda faixa, com glossário, e `.srt` traduzido do evento (2.20)
 - [ ] T-034 · P-05 · Validar ao vivo de verdade: 1 h contínua sem travar, atraso médio ≤ 3 s, em Windows dela (microfone e som do computador)
-- [ ] T-035 · P-05 · Recurso próprio na licença (`ao_vivo`) e minutos ao vivo nas métricas — hoje usa o recurso `transcricao`
+- [x] T-035 · P-05 · Recurso `ao_vivo` na licença: todos os planos, menos a avaliação de 1 dia — 2.21 / servidor 1.7
 - [x] T-040 · P-06 · Achar espaços sem fala e editor do roteiro de audiodescrição (no próprio editor: botão Audiodescrição) — 2.19
 - [x] T-041 · P-06 · Perfil "Audiodescrição — Português (Brasil)" + verificação (cabe no tempo, cai na fala, sobreposição, presente, sem interpretar, sem "vemos") — 2.19
 - [x] T-042 · P-06 · Sugestão por IA a partir de 3 quadros do trecho (rascunho; ela aceita ou descarta) — 2.19 (precisa de modelo de IA que aceite imagens)
 - [x] T-043 · P-06 · Voz sintética do sistema (ouvir e gerar) e exportações: roteiro .docx/.txt, .ttml, faixa .wav, áudio mixado com o original abaixado — 2.19
 - [x] T-044 · P-06 · Gravar a descrição com a própria voz (microfone); a gravação vale na exportação no lugar da voz do sistema — 2.20 (voz de serviço externo fica para depois, se ela pedir)
-- [ ] T-045 · P-06 · Recurso próprio na licença (`audiodescricao`) — hoje a audiodescrição não tem trava; a sugestão usa `ia_traducao`
+- [x] T-045 · P-06 · Recurso `audiodescricao` na licença: todos os planos, menos a avaliação de 1 dia — 2.21 / servidor 1.7
 - [ ] T-046 · P-06 · Validar um episódio inteiro com ela (roteiro, verificação, faixa mixada, exportações)
 
 ### CNT Dubla
-- [ ] T-050 · P-07 · Decidir idiomas iniciais, onde processa (servidor × computador) e custo por minuto
+- [x] T-050 · P-07 · Decidido: processa no computador do cliente (24/10/2026); idiomas iniciais sugeridos PT↔ES
 - [ ] T-051 · P-07 · Repositório, `brain/`, domínio `dubla.` e `dev-dubla.`
 - [ ] T-052 · P-07 · Separação de falantes + adaptação do texto para dublagem
 - [ ] T-053 · P-07 · Vozes por personagem e termo de consentimento para clonagem de voz
@@ -55,18 +55,18 @@ _(nada no momento)_
 - [ ] T-056 · P-07 · Integração com o Legendas (enviar para dublagem / legenda ajustada de volta)
 
 ### API CNT
-- [ ] T-060 · P-08 · Fila de processamento no servidor (máquinas com placa de vídeo) — base de T-024, T-055 e da API
+- [x] ~~T-060 · P-08 · Fila de processamento no servidor~~ — descartado em 24/10/2026: a API é só de integração
 - [ ] T-061 · P-08 · Chaves de API, permissões e ambiente de teste
-- [ ] T-062 · P-08 · Recursos `arquivos`, `trabalhos`, `perfis`, `glossarios` + webhooks
-- [ ] T-063 · P-08 · Limites, consumo e cobrança por minuto
-- [ ] T-064 · P-08 · Documentação pública (OpenAPI) em `api.cntoficial.com.br/docs`
+- [ ] T-062 · P-08 · Recursos `clientes`, `glossarios`, `perfis`, `producao`, `licencas` + webhooks assinados
+- [ ] T-063 · P-08 · Limites por chave e registro de uso (sem cobrança por uso)
+- [ ] T-064 · P-08 · Documentação pública (OpenAPI) em `/api/docs`
 
 ### Operação e o que já existia
 - [ ] T-070 · P-10 · Validar com vídeos e projetos reais dela (filme com intervalo, legenda de outra versão, relatório)
 - [ ] T-071 · P-10 · Testar no Windows dela (Abrir/Salvar, cofre de senhas, vídeo, F11/F12, dois perfis)
 - [ ] T-072 · P-10 · Confirmar assinatura e atalhos que faltam; regras do perfil em português com o cliente
 - [ ] T-073 · P-10 · Calibrar a sincronia com legendas acertadas à mão
-- [ ] T-074 · P-11 · Ligar a produção (nginx, certificado, `CNT_PROD_ATIVO`) — aguarda aprovação
+- [ ] T-074 · P-11 · Ligar a produção (nginx, certificado, `CNT_PROD_ATIVO`) — aprovado em 24/10/2026
 - [ ] T-075 · P-11 · Termos revisados por advogado; dados do MEI/CNPJ no painel
 - [ ] T-076 · P-12 · PIX automático + nota fiscal (quando houver conta PJ)
 - [ ] T-077 · P-13 · Lembrete de renovação (e-mail e programa)
@@ -86,6 +86,7 @@ Resumo por versão (detalhes em [[Fases]] e [[Decisões]]).
 - [x] 2.18 — legenda ao vivo (entrada de áudio, fila do operador, página de legenda, arquivo do evento)
 - [x] 2.19 — audiodescrição no editor (espaços sem fala, verificação, voz, sugestão por IA, exportações e áudio mixado)
 - [x] 2.20 — tradução ao vivo (segunda faixa) e gravar a audiodescrição com a própria voz
+- [x] 2.21 / servidor 1.7 — ao vivo e audiodescrição em todos os planos (menos a avaliação)
 - [x] Servidor 1.6 — instalador por sistema (download e atualização)
 - [x] Servidor 1.0–1.4 — licenças, site, área do cliente, painel, status, termos/LGPD, sincronia, suporte, modo manutenção
 - [x] 24/10/2026 — especificações da família CNT ([[Pendências]] P-01 a P-08) e este kanban

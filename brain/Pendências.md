@@ -79,7 +79,7 @@ O site do servidor (`cnt-legendas-server`: `public/`, `paginas/`, `src/layout.js
 
 **Pronto quando:** todas as páginas do site, área do cliente e painel no visual novo, testes do servidor passando, capturas de tela conferidas no celular e no computador.
 
-## P-03 — Conta única CNT (entrar uma vez, usar todos) · rascunho
+## P-03 — Conta única CNT (entrar uma vez, usar todos) · decidido em 24/10/2026: contas no hub
 
 Hoje cada produto teria a sua conta. Proposta: a conta vive no **hub** (CNT ID) e os produtos confiam nela.
 - Entrar em `cntoficial.com.br/entrar` vale para `legendas.`, `dubla.` e `api.` (cookie de sessão no domínio `.cntoficial.com.br` com token assinado, ou fluxo de autorização padrão com redirecionamento — decidir).
@@ -87,7 +87,7 @@ Hoje cada produto teria a sua conta. Proposta: a conta vive no **hub** (CNT ID) 
 - Dados pessoais cifrados como hoje (AES-GCM + índice cego); aceite dos termos por produto.
 - O painel do Róbson vê o cliente e todos os produtos dele numa tela só.
 
-**Decisões em aberto:** onde fica o banco das contas (no hub ou num serviço próprio); como os produtos validam a sessão.
+**Decidido (24/10/2026):** as contas ficam no **hub** (banco `cnt_hub`). Entrar em `cntoficial.com.br/entrar` cria a sessão do hub; cada produto confirma a sessão perguntando ao hub (servidor com servidor, com um segredo por produto) e cria a própria sessão local. As contas do Legendas migram para o hub (mesmo e-mail e senha).
 
 ## P-04 — Legendas no Mac e no Linux (ou no navegador) · rascunho
 
@@ -134,7 +134,7 @@ Roteiro e áudio de audiodescrição (descrição das cenas para pessoas cegas),
 
 **Pronto quando:** um episódio inteiro com roteiro, verificação, faixa mixada e exportações.
 
-## P-07 — CNT Dubla (dublagem e voz por IA) · rascunho
+## P-07 — CNT Dubla (dublagem e voz por IA) · decidido em 24/10/2026: processa no computador do cliente
 
 Produto separado (`dubla.cntoficial.com.br`), que conversa com o Legendas.
 - **Fluxo:** vídeo → transcrição com **quem fala** (separação de falantes) → tradução (reaproveita a do Legendas, com glossário e regras) → **adaptação para dublagem** (encaixar o texto no tempo da fala original, sincronia labial aproximada, número de sílabas) → **vozes** por personagem → **separação** da voz original e da música/efeitos (já existe `core/separate.py`) → **mixagem** das vozes novas com a música/efeitos → exportação.
@@ -142,29 +142,28 @@ Produto separado (`dubla.cntoficial.com.br`), que conversa com o Legendas.
 - **Vozes:** biblioteca de vozes sintéticas por idioma e **clonagem de voz só com autorização documentada** do dono da voz (termo de consentimento assinado, guardado; voz é dado biométrico — tratar como dado sensível na LGPD). Proibido clonar voz de terceiros sem autorização; o sistema registra quem autorizou.
 - **Integração com o Legendas:** "Enviar para dublagem" no projeto de legenda; a Dubla devolve a legenda ajustada à fala dublada.
 - **Saídas:** faixa dublada mixada, faixas separadas (vozes, música/efeitos), vídeo com o áudio novo, roteiro de dublagem.
-- **Onde processa:** gerar vozes e separar áudio pede placa de vídeo forte — começar com processamento no servidor (P-08) ou no computador do cliente quando houver placa; decidir pelo custo.
+- **Onde processa (decidido):** no **computador do cliente**, como o Legendas (programa instalado; placa de vídeo quando houver). O servidor só cuida de licença, atualização e conta.
 - **Cobrança:** por minuto de vídeo dublado + plano mensal; minutos visíveis na área do cliente.
 - Pendências de produto: quais idiomas no começo (PT-BR ↔ ES), qualidade mínima aceitável, termo de uso de voz.
 
 **Pronto quando:** dublar um episódio de 20 min PT↔ES com 3 personagens, revisão no editor e exportação, dentro do custo definido.
 
-## P-08 — API CNT para empresas · rascunho
+## P-08 — API CNT para empresas (integração) · decidido em 24/10/2026
 
-Para outras empresas usarem os produtos dentro dos sistemas delas.
-- **Acesso:** chaves de API por empresa (criadas na área do cliente, com nome, permissões e validade; mostradas uma vez; guardadas só como resumo), ambiente de teste separado.
-- **Recursos (REST, JSON):**
-  - `POST /v1/arquivos` (envio em partes para vídeos grandes) e `GET /v1/arquivos/{id}`
-  - `POST /v1/trabalhos` com `tipo`: `transcrever`, `traduzir`, `sincronizar`, `verificar` (QC por perfil), `converter` (formatos), `audiodescrever`, `dublar`
-  - `GET /v1/trabalhos/{id}` (situação, progresso, resultado), `DELETE` (cancelar)
-  - `GET /v1/perfis`, `POST /v1/glossarios`
-  - **Webhooks** assinados quando um trabalho termina ou falha
-- **Erros** com os códigos do padrão CNT (`ER-RS-…`) e mensagem.
-- **Limites** por plano (requisições/minuto, minutos de vídeo/mês) e cobrança por minuto processado.
-- **Documentação** pública (OpenAPI) em `api.cntoficial.com.br/docs`, com exemplos e ambiente de teste.
-- **Processamento no servidor:** fila de trabalhos com máquinas de processamento (placa de vídeo) — é a mesma base do Legendas no navegador (P-04 etapa 2) e da Dubla (P-07).
-- **Privacidade:** arquivos apagados após N dias (configurável, padrão 7), contrato de tratamento de dados para empresas, registro de acesso.
+**Decisão do Róbson:** a API **não processa mídia** (nada de enviar vídeo para transcrever/traduzir no servidor). Ela serve para **integrar os sistemas** da empresa com o CNT: cadastros, regras, produção e licenças. O processamento continua no computador de quem usa o programa.
+- **Acesso:** chaves de API por conta de empresa (criadas na área do cliente, com nome, permissões — leitura/escrita por recurso — e validade; mostradas uma vez; guardadas só como resumo SHA-256), registro de cada uso.
+- **Recursos (REST, JSON), todos do Workspace da empresa:**
+  - `clientes` (listar, criar, alterar, apagar) — os mesmos que aparecem no programa de cada pessoa da equipe
+  - `glossarios` de cada cliente (termo, tradução, observação)
+  - `perfis` de regras da equipe (ler e publicar)
+  - `producao`: o que cada pessoa produziu (episódios, legendas, minutos, tempo trabalhado), por período
+  - `licencas` e `computadores` da conta (ler; liberar vaga)
+  - **Webhooks** assinados (HMAC) quando chega produção nova, quando um cliente/perfil muda e quando a licença renova ou vence
+- **Erros** com os códigos do padrão CNT (`ER-RS-…`) e mensagem em português.
+- **Limites** por chave (requisições por minuto); sem cobrança por uso (vem com os planos de equipe).
+- **Documentação** pública (OpenAPI) em `/api/docs` do servidor do Legendas (depois `api.cntoficial.com.br/docs`).
 
-**Pronto quando:** uma empresa de teste envia um vídeo, recebe a legenda traduzida pelo webhook, e o consumo aparece na fatura.
+**Pronto quando:** uma empresa de teste cria a chave, cadastra um cliente com glossário pela API, a equipe vê no programa, e a produção volta para a empresa pelo webhook.
 
 ---
 
@@ -173,7 +172,7 @@ Para outras empresas usarem os produtos dentro dos sistemas delas.
 ### P-10 — Validar com o uso real · contínua
 Validar com vídeos e projetos reais da usuária (filme com intervalo, legenda de outra versão, relatório de produtividade); testar no Windows dela (janelas Abrir/Salvar, cofre de senhas, vídeo tocando, F11/F12, dois perfis do Windows ao mesmo tempo); instalar no PC deles e testar nos dois perfis; confirmar assinatura e atalhos que faltam; confirmar com o cliente as regras do perfil em português; calibrar a sincronia com legendas acertadas à mão (quanto antes da fala ela gosta de entrar).
 
-### P-11 — Ligar a produção · aguardando aprovação
+### P-11 — Ligar a produção · aprovado em 24/10/2026
 nginx + certificado de `legendas.cntoficial.com.br`, variável `CNT_PROD_ATIVO` no CI, termos revisados por advogado, dados da empresa (MEI/CNPJ) no painel.
 
 ### P-12 — PIX automático e nota fiscal · futuro (quando houver conta PJ)

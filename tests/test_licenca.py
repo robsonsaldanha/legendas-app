@@ -129,3 +129,18 @@ def test_free_mode_blocks_paid_features(server, tmp_path):  # noqa: F811
     assert st == 200 and s["licenca"]["modo"] == "gratis"
     st, r = call(port, "POST", "/api/obras/root", {"path": str(tmp_path / "Legendas")}, token=app.token)
     assert st == 200, "projetos continuam grátis"
+
+
+def test_ao_vivo_e_audiodescricao_fora_da_avaliacao():
+    from core import licenca as L
+    class _Lic:
+        estado = L.Estado(modo="avaliacao", plano="avaliacao", recursos=["transcricao", "ia_traducao"])
+        def tem(self, r):
+            return self.estado.tem(r)
+    L.definir(_Lic())
+    try:
+        assert not L.atual().tem("ao_vivo") and not L.atual().tem("audiodescricao")
+        msg = L.mensagem_bloqueio("ao_vivo")
+        assert "legenda ao vivo" in msg and "avaliação" in msg and "todos os planos" in msg
+    finally:
+        L.definir(None)

@@ -874,6 +874,10 @@ class EditorManager:
             if s.video is None or not s.info.get("vcodec"):
                 raise EditorError("Abra o vídeo para analisar os cortes de cena.", 409)
         elif kind in ("ad_espacos", "ad_exportar"):            # audiodescrição (app/ad.py)
+            from core import licenca
+            if not licenca.atual().tem("audiodescricao"):
+                from .server import LicenseBlocked
+                raise LicenseBlocked("audiodescricao")
             if kind == "ad_espacos" and (s.video is None or not s.info.get("acodec")):
                 raise EditorError("Abra o vídeo (com áudio) no editor para achar os espaços sem fala.", 409)
         else:

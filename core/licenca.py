@@ -30,10 +30,12 @@ log = logging.getLogger(__name__)
 # Recursos pagos (o servidor manda a lista de cada plano dentro da concessão)
 IA_TRADUCAO, IA_REVISAO, TRANSCRICAO, SINCRONIA_FALA = "ia_traducao", "ia_revisao", "transcricao", "sincronia_fala"
 REGRAS, CLIENTES, RELATORIOS, LOTE = "regras", "clientes", "relatorios", "lote"
+AO_VIVO, AUDIODESCRICAO = "ao_vivo", "audiodescricao"     # todos os planos; a avaliação de 1 dia não tem
 RECURSO_NOME = {
     IA_TRADUCAO: "tradução com IA", IA_REVISAO: "revisão com IA", TRANSCRICAO: "transcrição do vídeo",
     SINCRONIA_FALA: "sincronia pela fala", REGRAS: "perfis de regras", CLIENTES: "clientes",
     RELATORIOS: "relatórios", LOTE: "trabalhos em segundo plano",
+    AO_VIVO: "legenda ao vivo", AUDIODESCRICAO: "audiodescrição",
 }
 
 # Servidores e chaves públicas de cada canal (a privada correspondente só existe na VPS)
@@ -370,6 +372,9 @@ def conferir_em_segundo_plano(on_done=None) -> threading.Thread:
 def mensagem_bloqueio(recurso: str) -> str:
     e = atual().estado
     nome = RECURSO_NOME.get(recurso, recurso)
+    if e.modo == "avaliacao":
+        return (f"A {nome} não faz parte do dia de avaliação: ela vem em todos os planos. Em Configurações › Licença "
+                f"dá para ativar um código; para comprar, acesse {servidor().replace('https://', '')}.")
     why = {"avaliacao_encerrada": "O dia de avaliação terminou.", "vencida": "A licença venceu.",
            "revogada": "A licença foi cancelada.", "sem_conexao": "Faz mais de 30 dias que o programa não confere a licença na internet.",
            "computador_removido": "Este computador foi tirado da licença."}.get(e.motivo, "")
