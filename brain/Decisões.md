@@ -349,3 +349,7 @@
 - **Sugestão por IA:** 3 quadros do trecho (512 px) vão para o serviço de IA escolhido (mesma chave da tradução; formato de imagem de cada tipo de serviço), com as regras do guia e o limite de palavras. É rascunho: ela clica em Usar ou Descartar.
 - **Exportar** (ao lado do vídeo, com "- audiodescricao" no nome; originais não mudam): roteiro `.docx` (tabela) e `.txt` com tempos, `.ttml` marcado como descrição, faixa só da audiodescrição (`.wav` 48 kHz, escrita aos poucos — filme inteiro não precisa caber na memória) e áudio **mixado** (estéreo, original abaixado para 20–70% durante as descrições, com rampa de 0,3 s; filtro em arquivo para não estourar a linha de comando). Avisa quantas descrições a voz não coube no espaço.
 - Licença: sem trava nesta versão (a sugestão exige `ia_traducao`); recurso próprio `audiodescricao` em T-045.
+
+## 2026-10-24 — Downloads de Mac e Linux (T-023)
+- O CI, depois de publicar os pacotes de Mac e Linux na versão do GitHub, registra no servidor (`X-Sistema: mac|linux`) o `.dmg` e o `.AppImage` com a soma de conferência. O `.tar.gz` do Linux fica só na página de versões, para quem preferir.
+- Servidor 1.6: download e atualização por sistema (ver o `brain/` do servidor). O site escolhe o botão pelo sistema de quem visita.

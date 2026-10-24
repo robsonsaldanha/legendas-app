@@ -236,4 +236,25 @@ jobs:
           TAG=$([ "$GITHUB_REF" = "refs/heads/dev" ] && echo desenvolvimento || echo "v$VER")
           gh release upload "$TAG" build/Output/CNT_Legendas_* --clobber
           for f in build/Output/CNT_Legendas_*; do echo "::notice title=Publicado::$(basename "$f") ($(du -h "$f" | cut -f1))"; done
+      - name: Registrar no servidor de licenças (download do site e atualização por instalador)
+        if: github.ref == 'refs/heads/dev' || (github.ref == 'refs/heads/main' && vars.CNT_PROD_ATIVO == '1')
+        env:
+          CNT_TOKEN: ${{ github.ref == 'refs/heads/dev' && secrets.CNT_TOKEN_DEV || secrets.CNT_TOKEN_PROD }}
+          CNT_URL: ${{ github.ref == 'refs/heads/dev' && 'https://dev-legendas.cntoficial.com.br' || 'https://legendas.cntoficial.com.br' }}
+        run: |
+          [ -n "$CNT_TOKEN" ] || { echo "falta o segredo do servidor (CNT_TOKEN_DEV / CNT_TOKEN_PROD)"; exit 1; }
+          VER=$(python3 -c "import core; print(core.__version__)").$CNT_BUILD
+          TAG=$([ "$GITHUB_REF" = "refs/heads/dev" ] && echo desenvolvimento || echo "v$VER")
+          # Linux: o .AppImage (um arquivo só); Mac: o .dmg
+          F=$(ls build/Output/CNT_Legendas_*.AppImage build/Output/CNT_Legendas_*.dmg 2>/dev/null | head -1)
+          [ -n "$F" ] || { echo "pacote não encontrado"; exit 1; }
+          N=$(basename "$F")
+          SHA=$( (sha256sum "$F" 2>/dev/null || shasum -a 256 "$F") | cut -d' ' -f1)
+          TAM=$(wc -c < "$F" | tr -d ' ')
+          REQ=$(git log -1 --format=%B | grep -q '\[instalador\]' && echo 1 || echo 0)
+          URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/$N"
+          curl -fsS -X PUT "$CNT_URL/v1/admin/versoes/$VER/instalador" -H "Authorization: Bearer $CNT_TOKEN" \
+            -H "Content-Type: application/octet-stream" -H "X-Sistema: ${{ matrix.sistema }}" -H "X-Requer-Instalador: $REQ" \
+            --data-binary "{\"url\":\"$URL\",\"sha256\":\"$SHA\",\"tamanho\":$TAM}" > /dev/null
+          echo "::notice title=Servidor::instalador ${{ matrix.sistema }} $VER registrado ($N)"
 

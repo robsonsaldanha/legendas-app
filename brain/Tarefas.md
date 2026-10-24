@@ -29,7 +29,7 @@ _(nada no momento)_
 - [x] T-020 · P-04 · Camada por sistema (`core/plataforma.py`): pastas, id da máquina, abrir no gerenciador, Documentos — 2.17
 - [x] T-021 · P-04 · Pacote para Linux (`.tar.gz` + `.AppImage`) + testes e montagem no CI — 2.17
 - [x] T-022 · P-04 · Pacote para Mac Apple Silicon (`.dmg`, assinatura local) + testes e montagem no CI — 2.17 (assinatura oficial depende de conta de desenvolvedor)
-- [ ] T-023 · P-04 · Atualização por sistema: feito o `sistema` na consulta e o estado `manual`; falta o site oferecer os downloads de Mac/Linux e o servidor registrar os pacotes por sistema
+- [x] T-023 · P-04 · Atualização e download por sistema: o programa manda o `sistema`; o servidor 1.6 guarda o instalador de cada sistema (o CI registra `.dmg` e `.AppImage`) e o site mostra o botão do sistema de quem visita — 24/10/2026
 - [ ] T-024 · P-04 · Legendas no navegador (nuvem), com envio opcional do vídeo — depende de T-060
 - [x] T-030 · P-05 · Captura de áudio ao vivo (microfone, sistema, placa, arquivo, endereço) e transcrição contínua em processo separado — 2.18
 - [x] T-031 · P-05 · Saídas ao vivo: página local de legenda (fonte de navegador) e janela com fundo transparente/verde/azul/preto, modos "inteira" e "rolando" — 2.18
