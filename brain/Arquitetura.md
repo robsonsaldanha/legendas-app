@@ -86,9 +86,9 @@ O programa é um servidor local (só `127.0.0.1`). No Windows a tela abre numa *
 
 Telas: **Início** (abrir legenda + vídeo, cliente, recentes) · **Editor** · Clientes (regras, glossário com importar/exportar CSV, instruções) · Trabalhos (fila + histórico; "Trabalho em segundo plano" para transcrever/sincronizar/traduzir sem abrir o editor) · Configurações (nome para a assinatura, chave, modelos de alinhamento, perfis, avançado, fechar o programa).
 
-## Editor (layout do Subtitle Edit)
+## Editor (layout clássico de editor de legendas)
 
-Pedido da usuária: mesmo layout do Subtitle Edit, com o vídeo rodando junto e quadro exato.
+Pedido da usuária: o layout clássico de editor de legendas que ela já usa, com o vídeo rodando junto e quadro exato.
 
 ```
 ┌ barra: Voltar · arquivo · Abrir · Salvar · Salvar como · Desfazer · Refazer · Perfil · Formato · Codificação

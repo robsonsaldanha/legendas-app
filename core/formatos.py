@@ -1,9 +1,9 @@
 """Formatos de entrega da legenda (2.15). O padrão é `.srt`; os outros são gerados da mesma legenda.
 
 - srt  — SubRip (UTF-8 com BOM, CRLF), o de sempre
-- vtt  — WebVTT (players web, YouTube)
+- vtt  — WebVTT (players web e plataformas de vídeo)
 - ttml — TTML/DFXP no perfil IMSC 1.1 Text (pedido por plataformas de streaming)
-- ass  — Advanced SubStation Alpha (Aegisub, fansub, players de PC)
+- ass  — Advanced SubStation Alpha (editores de legenda estilizada, players de PC)
 
 Quem escolhe o padrão: projeto > cliente > equipe (Workspace) > global (Configurações). Ver `formato_efetivo`.
 Itálico `<i>` e posição alta `{\\an8}` são convertidos para cada formato.

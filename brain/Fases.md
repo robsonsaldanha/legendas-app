@@ -17,7 +17,7 @@
 - [x] Etapas Traduzir/Sincronizar aparecem desativadas até as Fases 2 e 3
 - [ ] Testar no Windows dela (janela "Abrir", abrir SRT no editor, Gerenciador de Credenciais)
 
-## ✅ Editor (layout do Subtitle Edit) + dois perfis do Windows
+## ✅ Editor (layout clássico de editor de legendas) + dois perfis do Windows
 - [x] Grade, vídeo com legenda sobreposta e quadro exato, painel de edição, forma de onda com arrastar, Criar/Ajustar, status
 - [x] Desfazer/refazer, rascunho automático, salvar/salvar como com cópia de segurança, QC ao vivo, quebra automática
 - [x] Cópia de pré-visualização para MKV/MXF/HEVC etc.
@@ -55,7 +55,7 @@
 - [x] Início: abrir legenda + vídeo (acha a legenda do vídeo), cliente, recentes
 - [x] Clientes no lugar de projetos (Netflix pronto; clientes com manual próprio por arquivo)
 - [x] Editor: Traduzir com um clique, menu Sincronizar, Verificar (com correção automática), Entregar (nome, assinatura, verificação), Localizar e substituir (Ctrl+F)
-- [ ] Confirmar com ela: assinatura (texto e posição), atalhos que faltam do Subtitle Edit
+- [ ] Confirmar com ela: assinatura (texto e posição), atalhos que ela sente falta
 
 ## ✅ Fase 5 — Instalador (adiantada)
 - [x] Python embutido + bibliotecas + tkinter + ffmpeg + VC++ — nada para instalar à parte

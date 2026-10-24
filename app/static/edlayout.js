@@ -1,5 +1,5 @@
 /* CNT Legendas — editor: tamanhos das áreas (divisórias arrastáveis), preferências do editor
-   (como as do Subtitle Edit) e menu do botão direito (posição {\anN}, itálico…). */
+   (no layout clássico de editor de legendas) e menu do botão direito (posição {\anN}, itálico…). */
 "use strict";
 
 /* --------------------------------------------------------- preferências */
@@ -161,7 +161,7 @@ function openAlign(i) {
   const cur = cuePos(ED.cues[i]?.text);
   const cell = (n) => `<button class="btn ${n === cur ? "primary" : ""}" data-an="${n}" title="{\\an${n}}">${["↙", "↓", "↘", "←", "•", "→", "↖", "↑", "↗"][n - 1]}<span class="small">${n === 2 ? "padrão" : `{\\an${n}}`}</span></button>`;
   const m = modal("Alinhamento da legenda", `
-    <p class="muted small">Posição da legenda na tela, com a marca padrão do SRT ({\\an1} a {\\an9}, a mesma do Subtitle Edit e dos players). Embaixo no centro ({\\an2}) é o normal e não leva marca; para subir a legenda quando há texto na parte de baixo do vídeo, use em cima no centro ({\\an8}).</p>
+    <p class="muted small">Posição da legenda na tela, com a marca padrão do SRT ({\\an1} a {\\an9}, a mesma usada pelos editores de legenda e dos players). Embaixo no centro ({\\an2}) é o normal e não leva marca; para subir a legenda quando há texto na parte de baixo do vídeo, use em cima no centro ({\\an8}).</p>
     <div class="an-grid">${[7, 8, 9, 4, 5, 6, 1, 2, 3].map(cell).join("")}</div>`,
     `<button class="btn" data-x="close">Fechar</button>`);
   m.ov.addEventListener("click", (e) => {

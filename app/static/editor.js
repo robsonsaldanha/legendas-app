@@ -1,4 +1,4 @@
-/* Editor de legendas no layout do Subtitle Edit:
+/* Editor de legendas no layout clássico (lista, vídeo, edição, forma de onda):
    grade (esq.) + vídeo (dir.), painel de edição + controles do vídeo,
    painel Criar/Ajustar + forma de onda, barra de status.
    Depende de app.js (api, esc, toast, fmtTC, S, every). */

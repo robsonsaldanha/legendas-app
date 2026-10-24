@@ -363,7 +363,7 @@ input:disabled, select:disabled { background: var(--panel-2); color: var(--muted
 }
 
 /* ===================================================================
-   Editor — layout do Subtitle Edit
+   Editor — layout clássico de editor de legendas
    =================================================================== */
 :root {
   --wave-bg: #0F1419;

@@ -23,7 +23,7 @@
 - Algoritmo guloso ("enche a legenda até não caber") gera cortes ruins. A DP escolhe a sequência de cortes de menor custo total. Pesos no topo de `formatter.py` e `linebreak.py`, para ajustar com o uso real.
 
 ## 2026-10-19 — SRT em UTF-8 com BOM e CRLF
-- Editores do Windows (Subtitle Edit, Aegisub, Bloco de Notas) reconhecem melhor. Leitura aceita UTF-8, UTF-16 e cp1252.
+- Os editores de legenda e de texto do Windows reconhecem melhor. Leitura aceita UTF-8, UTF-16 e cp1252.
 
 ## 2026-10-19 — Chave da OpenAI no Gerenciador de Credenciais
 - `keyring` no Windows usa o Credential Manager. Para desenvolvimento, a variável `OPENAI_API_KEY` tem prioridade.
@@ -43,8 +43,8 @@
 - O PC é o mesmo, com perfis diferentes (Róbson e esposa). Dados separados por perfil; modelos compartilhados em ProgramData.
 - Antes, o segundo perfil a abrir o programa poderia cair no servidor do primeiro (mesma porta) e ver os dados dele. Agora: porta por perfil, sessão em arquivo do próprio perfil, cookie + token.
 
-## 2026-10-19 — Editor no layout do Subtitle Edit
-- Pedido explícito: mesmo layout do Subtitle Edit e vídeo rodando junto, no quadro exato.
+## 2026-10-19 — Editor no layout clássico de editor de legendas
+- Pedido explícito: o layout clássico que ela já usa (lista, vídeo, edição, forma de onda) e vídeo rodando junto, no quadro exato.
 - Player HTML5 com `requestVideoFrameCallback`; formatos que o navegador não toca ganham uma cópia de pré-visualização (H.264 720p) que preserva os tempos dos quadros. A legenda continua sincronizada com o original.
 - Forma de onda própria (canvas + picos do servidor) em vez de biblioteca externa: sem dependências, funciona offline.
 
@@ -168,9 +168,9 @@
   - `fit_to_voice` (core/sync.py): acerta início e fim de cada legenda na voz — entra quando a voz começa (até 0,8 s), sai `linger` (0,5 s) depois que a voz acaba, estica um pouco se a voz continua; nunca menor do que a leitura exige (CPS máximo, duração mínima), nem maior que a duração máxima; sem voz por perto (letreiro, música) não mexe.
   - "Automática pela fala do vídeo" = encaixe geral + `fit_to_voice`. Novo item "Acertar início e fim na voz" (só o ajuste, sem deslocar). O lote (pipeline) também usa.
 - **Editor**: tamanhos fixos das áreas (variáveis CSS na grade), divisórias arrastáveis (vídeo, edição, forma de onda, painel Criar/Ajustar), duplo clique volta ao padrão; guardados em `Settings.editor`. Antes a linha de edição era `auto` e mudava de altura conforme o texto, mexendo no vídeo.
-- **Quebra de linha** mostrada como `<br />` na lista (como o Subtitle Edit). Enter na caixa de texto = nova linha; fora dela, Enter só leva à caixa de texto.
-- **Posição**: `{\an1}`–`{\an9}` no começo da legenda (padrão SRT/ASS, o mesmo do Subtitle Edit). Botão direito → "Subir legenda para o topo ({\an8})" e "Alinhamento…"; Ctrl+I itálico. A prévia mostra a posição. Na tradução/revisão a marca não vai para a IA e volta no mesmo lugar.
-- **Configurações do editor** (⚙ no editor e em Configurações), inspiradas no Subtitle Edit: o que colorir na lista e a cor; tamanho/negrito da legenda sobre o vídeo; cores da forma de onda, grade, inverter roda, encaixar nos cortes de cena ao arrastar (Shift desliga), CPS na onda; fonte da lista e da caixa de texto.
+- **Quebra de linha** mostrada como `<br />` na lista (como nos editores de legenda). Enter na caixa de texto = nova linha; fora dela, Enter só leva à caixa de texto.
+- **Posição**: `{\an1}`–`{\an9}` no começo da legenda (padrão SRT/ASS). Botão direito → "Subir legenda para o topo ({\an8})" e "Alinhamento…"; Ctrl+I itálico. A prévia mostra a posição. Na tradução/revisão a marca não vai para a IA e volta no mesmo lugar.
+- **Configurações do editor** (⚙ no editor e em Configurações), no padrão dos editores de legenda: o que colorir na lista e a cor; tamanho/negrito da legenda sobre o vídeo; cores da forma de onda, grade, inverter roda, encaixar nos cortes de cena ao arrastar (Shift desliga), CPS na onda; fonte da lista e da caixa de texto.
 - **Revisão no mesmo idioma**: ES→ES (ou PT→PT) deixou de ser bloqueado; vira revisão (prompt de revisor: corrige, aplica as regras, condensa pelo CPS, não traduz). Botão "Revisar". Saída "… (revisada).srt".
 - **A legenda de origem nunca é alterada**: o programa registra os arquivos que ele cria (`gerados` no banco). Legenda aberta que não é do programa = origem: o primeiro "Salvar" cria "Nome (editada).srt" ao lado e os seguintes vão para essa cópia; "Salvar como" e "Entregar" recusam o nome da origem (a entrega com o mesmo nome do cliente vai para a subpasta "Entrega"). Tradução, revisão e entrega são sempre arquivos novos.
 

@@ -16,7 +16,7 @@ Ela recebe trabalhos de tipos diferentes. O app precisa permitir que ela **escol
 - traduzir + sincronizar
 - trabalho completo (transcrever + sincronizar + traduzir)
 
-O resultado é um rascunho de alta qualidade, que ela revisa no editor dela (Subtitle Edit/Aegisub). O app não substitui a revisão humana. Ele elimina o trabalho braçal.
+O resultado é um rascunho de alta qualidade, que ela revisa no editor de legendas dela. O app não substitui a revisão humana. Ele elimina o trabalho braçal.
 
 ## 2. Stack recomendada
 
