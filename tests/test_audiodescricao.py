@@ -49,9 +49,11 @@ def test_exportacoes_do_roteiro(tmp_path):
     t = AD.ttml(ds)
     assert 'begin="00:00:01.500"' in t and "Um carro &amp; uma moto." in t and 'ttm:role="description"' in t
     f = AD.roteiro_docx(ds, tmp_path / "r.docx", "Ep 1")
-    from docx import Document
-    doc = Document(str(f))
-    assert doc.tables[0].rows[2].cells[3].text == "Noite."
+    import zipfile
+    with zipfile.ZipFile(f) as z:
+        xml = z.read("word/document.xml").decode()
+        assert "word/document.xml" in z.read("[Content_Types].xml").decode()
+    assert "Um carro &amp; uma moto." in xml and xml.count("<w:tr>") == 3 and "00:01:05.250" in xml
 
 
 def test_expressao_volume():
