@@ -134,19 +134,29 @@ Roteiro e áudio de audiodescrição (descrição das cenas para pessoas cegas),
 
 **Pronto quando:** um episódio inteiro com roteiro, verificação, faixa mixada e exportações.
 
-## P-07 — CNT Dubla (dublagem e voz por IA) · decidido em 24/10/2026: processa no computador do cliente
+## P-07 — CNT Dubla (estúdio de dublagem) · decidido em 24/10/2026
 
-Produto separado (`dubla.cntoficial.com.br`), que conversa com o Legendas.
-- **Fluxo:** vídeo → transcrição com **quem fala** (separação de falantes) → tradução (reaproveita a do Legendas, com glossário e regras) → **adaptação para dublagem** (encaixar o texto no tempo da fala original, sincronia labial aproximada, número de sílabas) → **vozes** por personagem → **separação** da voz original e da música/efeitos (já existe `core/separate.py`) → **mixagem** das vozes novas com a música/efeitos → exportação.
-- **Editor de dublagem:** linha do tempo por personagem; para cada fala: texto, duração, gerar de novo, mais rápido/mais lento, trocar a voz, emoção/entonação; ouvir trecho; travar falas aprovadas.
-- **Vozes:** biblioteca de vozes sintéticas por idioma e **clonagem de voz só com autorização documentada** do dono da voz (termo de consentimento assinado, guardado; voz é dado biométrico — tratar como dado sensível na LGPD). Proibido clonar voz de terceiros sem autorização; o sistema registra quem autorizou.
-- **Integração com o Legendas:** "Enviar para dublagem" no projeto de legenda; a Dubla devolve a legenda ajustada à fala dublada.
-- **Saídas:** faixa dublada mixada, faixas separadas (vozes, música/efeitos), vídeo com o áudio novo, roteiro de dublagem.
-- **Onde processa (decidido):** no **computador do cliente**, como o Legendas (programa instalado; placa de vídeo quando houver). O servidor só cuida de licença, atualização e conta.
-- **Cobrança:** por minuto de vídeo dublado + plano mensal; minutos visíveis na área do cliente.
-- Pendências de produto: quais idiomas no começo (PT-BR ↔ ES), qualidade mínima aceitável, termo de uso de voz.
+**Decisões do Róbson (24/10/2026):**
+- **Programa separado** ("CNT Dubla"), com instalador, ícone, janela e licença próprios — o motor por baixo é o mesmo do Legendas (mesmo repositório: pasta `dubla/` + `core/`).
+- Processa **no computador do cliente**.
+- **Público: dubladores e estúdios de dublagem.** O foco é o trabalho **humano** — adaptar, escalar, gravar, dirigir e revisar dublagem. A IA ajuda (vozes guia, sugestões, dublagem automática como serviço), mas a ferramenta é para quem dubla.
+- **Vozes por IA:** as três opções — clonagem local (com termo de consentimento), vozes prontas locais e serviço de voz pago na conta do cliente.
 
-**Pronto quando:** dublar um episódio de 20 min PT↔ES com 3 personagens, revisão no editor e exportação, dentro do custo definido.
+**Fluxo de um episódio:**
+1. **Projeto:** obra/episódio, vídeo, idiomas, cliente. Importa o roteiro traduzido (`.srt`/`.docx`/`.txt`, inclusive o que saiu do CNT Legendas) ou transcreve o áudio original.
+2. **Personagens:** cada fala ganha um personagem (manual, com sugestão automática por voz); cor por personagem.
+3. **Adaptação (roteiro de dublagem):** texto adaptado ao tempo da boca — contagem de sílabas e de tempo contra a fala original, marcações usuais ((RI), (ON), (OFF), (RESPIRA), (AD-LIB), (SOBREPOSTO)…), sugestão por IA de versão mais curta/mais longa, observações para o diretor.
+4. **Anéis (loops):** o programa divide as falas de cada personagem em anéis (trechos curtos para gravar), numerados, com tempo de entrada/saída.
+5. **Escalação:** personagem → dublador; mapa de escalação; quantos anéis cada dublador tem (base de pagamento por anel).
+6. **Gravação:** tela de estúdio — vídeo do anel com pré-rolagem e contagem, áudio original de guia opcional, texto na tela, grava pelo microfone; vários takes por anel; ouvir, escolher o melhor.
+7. **Direção e revisão:** situação por anel (pendente, gravado, aprovado, refazer), observações do diretor/revisor, ouvir a fala dublada contra o vídeo; checagem de sincronia (início/fim da voz contra o anel).
+8. **Música e efeitos (M&E):** usa a faixa M&E enviada pelo cliente ou separa a voz original da música/efeitos no computador.
+9. **Mixagem e entregas:** vozes aprovadas no tempo, M&E por baixo; exporta mix final (.wav), faixas por personagem (stems), vídeo com o áudio dublado, roteiro de dublagem (.docx) e relatório de anéis por dublador.
+10. **IA (opcional):** voz guia ou final por personagem — voz pronta local, voz de serviço pago (chave do cliente) ou clonagem local da voz autorizada (termo de consentimento assinado e guardado; voz é dado biométrico — LGPD).
+- **Integração com o Legendas:** "Enviar para dublagem" leva o projeto (vídeo + legenda traduzida); a Dubla devolve a legenda ajustada à fala dublada.
+- **Cobrança:** plano mensal da Dubla (licença própria); IA de voz paga pelo cliente no serviço dele.
+
+**Pronto quando:** um episódio de 20 min com 3 personagens é adaptado, escalado, gravado (takes reais), revisado, mixado com o M&E e exportado.
 
 ## P-08 — API CNT para empresas (integração) · feito em 24/10/2026 (servidor 1.9)
 

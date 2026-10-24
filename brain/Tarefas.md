@@ -45,14 +45,17 @@ _(nada no momento)_
 - [x] T-045 · P-06 · Recurso `audiodescricao` na licença: todos os planos, menos a avaliação de 1 dia — 2.21 / servidor 1.7
 - [ ] T-046 · P-06 · Validar um episódio inteiro com ela (roteiro, verificação, faixa mixada, exportações)
 
-### CNT Dubla
-- [x] T-050 · P-07 · Decidido: processa no computador do cliente (24/10/2026); idiomas iniciais sugeridos PT↔ES
-- [ ] T-051 · P-07 · Repositório, `brain/`, domínio `dubla.` e `dev-dubla.`
-- [ ] T-052 · P-07 · Separação de falantes + adaptação do texto para dublagem
-- [ ] T-053 · P-07 · Vozes por personagem e termo de consentimento para clonagem de voz
-- [ ] T-054 · P-07 · Editor de dublagem (linha do tempo por personagem)
-- [ ] T-055 · P-07 · Separação voz × música e mixagem final; exportações
-- [ ] T-056 · P-07 · Integração com o Legendas (enviar para dublagem / legenda ajustada de volta)
+### CNT Dubla (programa separado, para dubladores e estúdios)
+- [x] T-050 · P-07 · Decidido: programa separado, processa no computador do cliente, foco em dublagem humana, vozes por IA nas três formas (24/10/2026)
+- [ ] T-051 · P-07 · Base do programa: pasta `dubla/` (servidor local, banco, tela), pasta de dados própria, `brain/` atualizado
+- [ ] T-052 · P-07 · Projetos, importação do roteiro (srt/docx/txt/do Legendas) e transcrição do original
+- [ ] T-053 · P-07 · Personagens (manual + sugestão por voz) e roteiro de dublagem (adaptação, sílabas, marcações, sugestão por IA)
+- [ ] T-054 · P-07 · Anéis (loops) e escalação (personagem → dublador; anéis por dublador)
+- [ ] T-055 · P-07 · Estúdio de gravação (pré-rolagem, guia, takes) e direção/revisão por anel
+- [ ] T-056 · P-07 · M&E (enviado ou separado), mixagem e entregas (mix, stems, vídeo, roteiro, relatório)
+- [ ] T-057 · P-07 · Vozes por IA: pronta local, serviço pago (chave do cliente) e clonagem local com termo de consentimento
+- [ ] T-058 · P-07 · Integração com o Legendas (enviar para dublagem / legenda de volta)
+- [ ] T-059 · P-07 · Instalador próprio, licença própria (produto "dubla" no servidor e na conta CNT), site `dubla.`
 
 ### API CNT
 - [x] ~~T-060 · P-08 · Fila de processamento no servidor~~ — descartado em 24/10/2026: a API é só de integração

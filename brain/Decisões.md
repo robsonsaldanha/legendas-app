@@ -371,3 +371,7 @@
 - **Produção:** `legendas.cntoficial.com.br` no ar (nginx + certificado; servidor na `main`); variável `CNT_PROD_ATIVO=1` no repositório: cada push na `main` publica a versão `v<versão>.<montagem>` e registra o instalador e o pacote de atualização no servidor de produção.
 - **Conta única:** detalhes no `brain/` do hub e do servidor. A área do cliente do Legendas entra pelo hub; a senha é a da conta CNT.
 - **API de integração:** `legendas.cntoficial.com.br/api/docs` (detalhes no `brain/` do servidor).
+
+## 2026-10-24 — CNT Dubla: programa separado para dubladores e estúdios
+- Decisão do Róbson: **programa separado**, foco em **dublagem humana** (adaptar, escalar, gravar, dirigir, revisar), IA como apoio; vozes por IA nas três formas (pronta local, serviço pago do cliente, clonagem local com consentimento).
+- Técnica (minha): **mesmo repositório**, pasta `dubla/` com servidor local, banco e tela próprios, reaproveitando `core/` (mídia, separação de voz, transcrição, tradução/IA, legendas, plataforma). Pasta de dados própria ("CNT Dubla"). Instalador e licença próprios ficam para T-059.
