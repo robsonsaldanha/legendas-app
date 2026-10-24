@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Legenda ao vivo — CNT Legendas</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  body { display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+         font-family: "Inter", "Segoe UI", Arial, sans-serif; }
+  body.cima { justify-content: flex-start; }
+  #area { width: 92%; padding: 3vh 0; display: flex; flex-direction: column; align-items: center; gap: .15em; }
+  .leg { text-align: center; line-height: 1.25; font-weight: 600; white-space: pre-line;
+         text-shadow: 0 0 4px #000, 0 2px 3px #000; transition: opacity .25s; }
+  body.caixa .leg { background: rgba(0,0,0,.78); padding: .08em .45em; text-shadow: none; border-radius: 3px; }
+  .leg.saindo { opacity: 0; }
+  #aviso { position: fixed; top: 8px; left: 8px; font: 12px sans-serif; color: #fff; background: #b00; padding: 4px 8px;
+           border-radius: 4px; display: none; }
+</style>
+</head>
+<body>
+<div id="aviso">Sem ligação com o CNT Legendas…</div>
+<div id="area" aria-live="polite"></div>
+<script src="/aovivo-legenda.js"></script>
+</body>
+</html>

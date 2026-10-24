@@ -166,6 +166,7 @@ const routes = [
   [/^#\/obra\/(\d+)$/, renderObra],
   [/^#\/item\/(\d+)$/, renderItem],
   [/^#\/relatorios$/, renderReports],
+  [/^#\/aovivo$/, renderAoVivo],
   [/^#\/novo$/, renderNew],
   [/^#\/clientes$/, renderProjects],
   [/^#\/cliente\/(novo|\d+)$/, renderProject],
@@ -180,10 +181,10 @@ const routes = [
 /* barra de ferramentas (menu da esquerda) */
 /* 2.9: quatro itens (o resto continua, aberto por Configurações e pelo Novo trabalho) */
 const NAV = [
-  [null, [["inicio", "home", "Início"], ["editor", "editor", "Editor"], ["relatorios", "chart", "Relatórios"],
+  [null, [["inicio", "home", "Início"], ["editor", "editor", "Editor"], ["aovivo", "mic", "Ao vivo"], ["relatorios", "chart", "Relatórios"],
     ["configuracoes", "settings", "Configurações"]]],
 ];
-const CRUMB = { inicio: "Início", bemvindo: "Início", projetos: "Início", obra: "Início", item: "Início", relatorios: "Relatórios",
+const CRUMB = { inicio: "Início", bemvindo: "Início", projetos: "Início", obra: "Início", item: "Início", relatorios: "Relatórios", aovivo: "Ao vivo",
   novo: "Configurações / Em segundo plano", clientes: "Configurações / Clientes", cliente: "Configurações / Clientes",
   trabalhos: "Configurações / Em segundo plano", trabalho: "Configurações / Em segundo plano",
   configuracoes: "Configurações", perfis: "Configurações / Perfis de regras", perfil: "Configurações / Perfis de regras", editor: "Editor" };

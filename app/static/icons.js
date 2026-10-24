@@ -1,6 +1,7 @@
 /* Ícones de traço (desenho próprio, sem dependências). ic("home") → <svg>. */
 "use strict";
 const ICONS = {
+  mic: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3M8 21h8",
   home: "M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",
   folder: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
   open: "M3 18V7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1M3 18a2 2 0 0 0 2 2h12l3.5-8H7.5L4 20",

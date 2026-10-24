@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from core import __version__
 from core.atualizacao import versao_atual as versao_completa
 from core.align import ALIGN_MODELS
-from core.config import Settings, data_dir, jobs_dir, models_dir, user_id
+from core.config import Settings, data_dir, jobs_dir, models_dir, module_cmd, user_id
 from core import depuracao, erros
 from core.erros import mensagem_arquivo
 from core.errors import LegendasError
@@ -144,7 +144,34 @@ class App:
         self.conexao = Monitor(servidor_url=_lic.servidor,
                                ao_mudar=lambda a, n, info: depuracao.registrar("rede", f"conexão: {a} → {n}", **info))
         self.worker.ao_registrar = lambda tipo, acao, **d: depuracao.registrar(tipo, acao, **d)
+        self._aovivo = None         # legenda ao vivo (P-05), criada no primeiro uso
         self.editor_sujo = False    # o editor avisa quando há alterações não salvas (confirmação ao fechar)
+
+    # ---------------------------------------------------------- legenda ao vivo (P-05)
+
+    @property
+    def aovivo(self):
+        if self._aovivo is None:
+            from core import media
+            from core.aovivo import AoVivo
+            from core.whisper_local import _python
+            self._aovivo = AoVivo(media.ffmpeg, module_cmd, _python())
+            self._aovivo.ao_publicar = lambda l: depuracao.registrar("aovivo", "legenda publicada", id=l.id, editada=l.editada)
+        return self._aovivo
+
+    def aovivo_chave(self) -> str:
+        """Chave própria da página de legenda (não é o token da sessão): fica a mesma entre aberturas, para o
+        endereço colado no programa de transmissão continuar valendo."""
+        f = data_dir() / "aovivo.json"
+        try:
+            k = json.loads(f.read_text(encoding="utf-8")).get("chave", "")
+            if len(k) >= 16:
+                return k
+        except (OSError, ValueError):
+            pass
+        k = secrets.token_urlsafe(18)
+        f.write_text(json.dumps({"chave": k}), encoding="utf-8")
+        return k
 
     # ---------------------------------------------------------- sessão
 
@@ -669,6 +696,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
+        if path in ("/aovivo/legenda", "/aovivo/fluxo"):
+            if not secrets.compare_digest(self.query.get("k", ""), self.app.aovivo_chave()):
+                self._send(403, b"chave errada", "text/plain")
+                return
+            if path == "/aovivo/fluxo":
+                self._aovivo_fluxo()
+                return
+            html = (STATIC / "aovivo-legenda.html").read_text(encoding="utf-8")
+            self._send(200, html.encode("utf-8"), "text/html; charset=utf-8", {
+                "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'"})
+            return
         if path in ("/", "/index.html") and not self._cookie_ok():
             self._locked_page()
             return
@@ -689,6 +727,39 @@ class Handler(BaseHTTPRequestHandler):
         if ctype.startswith("text/") or ctype in ("application/javascript",):
             ctype += "; charset=utf-8"
         self._send(200, target.read_bytes(), ctype)
+
+    def _aovivo_fluxo(self) -> None:
+        """Eventos da legenda ao vivo para a página de legenda (Server-Sent Events). Fica aberto até a página fechar."""
+        import queue
+        fila: queue.Queue = queue.Queue(maxsize=200)
+        av = self.app.aovivo
+        def ouvinte(ev):
+            if ev.get("tipo") != "parcial":       # a tela só mostra o que já passou pela fila do operador
+                fila.put_nowait(ev)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        av.ouvir(ouvinte)
+        try:
+            self.wfile.write(b"retry: 2000\n\n")
+            self.wfile.flush()
+            while True:
+                try:
+                    ev = fila.get(timeout=15)
+                    dado = "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
+                except queue.Empty:
+                    dado = ": ping\n\n"
+                self.wfile.write(dado.encode("utf-8"))
+                self.wfile.flush()
+                if getattr(self.app, "_fechando", False):
+                    break
+        except OSError:
+            pass
+        finally:
+            av.parar_de_ouvir(ouvinte)
+        self.close_connection = True
 
     def _locked_page(self) -> None:
         html = ("<!doctype html><meta charset='utf-8'><title>CNT Legendas</title>"
@@ -1386,6 +1457,102 @@ class Handler(BaseHTTPRequestHandler):
         depuracao.logs_dir().mkdir(parents=True, exist_ok=True)
         open_path(alvo, bool(z))
         return {"ok": True, "caminho": alvo}
+
+    # ------------------------------------------------------------ legenda ao vivo (P-05, 2.18)
+
+    @route("GET", r"/api/aovivo/entradas")
+    def api_aovivo_entradas(self):
+        from core import media
+        try:
+            entradas = __import__("core.aovivo", fromlist=["listar_entradas"]).listar_entradas(media.ffmpeg())
+        except LegendasError:
+            entradas = []
+        k = self.app.aovivo_chave()
+        base = f"http://127.0.0.1:{self.app.port}/aovivo/legenda?k={k}"
+        return {"entradas": entradas, "pagina": base, "estado": self.app.aovivo.estado()}
+
+    @route("POST", r"/api/aovivo/iniciar")
+    def api_aovivo_iniciar(self):
+        need("transcricao")
+        from core.aovivo import Sessao
+        from core.glossary import Entry, transcription_keywords
+        from core.profiles import default_profile_for, get_profile
+        b = self._body()
+        fonte = str(b.get("fonte") or "").strip()
+        if not fonte or ":" not in fonte:
+            raise ApiError("Escolha a entrada de áudio.")
+        if fonte.startswith("arquivo:") and not Path(fonte[8:]).is_file():
+            raise ApiError("Arquivo não encontrado. Ele pode ter sido movido ou apagado.", 404)
+        try:
+            perfil = get_profile(b["perfil"]) if b.get("perfil") else default_profile_for(str(b.get("idioma") or "pt"))
+        except (KeyError, ValueError, OSError):
+            perfil = default_profile_for(str(b.get("idioma") or "pt"))
+        max_len, max_lines = perfil.max_chars_per_line, perfil.max_lines
+        entries, _ = self.app.db.glossario_efetivo(int(b["cliente"]) if b.get("cliente") else None,
+                                                    int(b["obra"]) if b.get("obra") else None)
+        prompt = ", ".join(transcription_keywords(entries, 60))
+        pasta = Path(b.get("pasta") or (Path(Settings.load().projects_root or depuracao.documentos()) / "Ao vivo"))
+        filtro = [w for w in str(b.get("filtro") or "").replace(";", ",").split(",") if w.strip()]
+        s = Sessao(fonte=fonte, idioma=str(b.get("idioma") or "pt-BR"), modelo=str(b.get("modelo") or "small"),
+                   atraso=max(0.0, min(30.0, float(b.get("atraso", 3)))), max_len=int(b.get("max_len") or max_len),
+                   max_lines=int(b.get("max_lines") or max_lines), filtro=filtro, pasta=pasta)
+        try:
+            r = self.app.aovivo.iniciar(s, prompt)
+        except RuntimeError as e:
+            raise ApiError(str(e), 409) from e
+        depuracao.registrar("aovivo", "começou", fonte=fonte.split(":")[0], modelo=s.modelo, atraso=s.atraso)
+        return r
+
+    @route("POST", r"/api/aovivo/parar")
+    def api_aovivo_parar(self):
+        depuracao.registrar("aovivo", "parou")
+        return self.app.aovivo.parar()
+
+    @route("GET", r"/api/aovivo/estado")
+    def api_aovivo_estado(self):
+        return self.app.aovivo.estado()
+
+    @route("POST", r"/api/aovivo/linha/(\d+)")
+    def api_aovivo_linha(self, lid):
+        b, av = self._body(), self.app.aovivo
+        acao = b.get("acao")
+        if acao == "editar":
+            try:
+                av.editar(int(lid), str(b.get("texto") or ""), bool(b.get("segurar")))
+            except KeyError as e:
+                raise ApiError(str(e).strip("'\""), 409) from e
+        elif acao == "descartar":
+            av.descartar(int(lid))
+        elif acao == "publicar":
+            av.publicar_ja(int(lid))
+        else:
+            raise ApiError("Pedido inválido.")
+        return av.estado()
+
+    @route("POST", r"/api/aovivo/texto")
+    def api_aovivo_texto(self):
+        texto = str(self._body().get("texto") or "").strip()
+        if not texto:
+            raise ApiError("Escreva o texto.")
+        try:
+            self.app.aovivo.inserir(texto[:300])
+        except RuntimeError as e:
+            raise ApiError(str(e), 409) from e
+        return self.app.aovivo.estado()
+
+    @route("POST", r"/api/aovivo/limpar")
+    def api_aovivo_limpar(self):
+        self.app.aovivo.limpar_tela()
+        return {"ok": True}
+
+    @route("POST", r"/api/aovivo/janela")
+    def api_aovivo_janela(self):
+        """Abre a página de legenda no navegador do sistema (com o fundo escolhido), para capturar a janela."""
+        from core import plataforma
+        q = self._body().get("estilo") or ""
+        url = f"http://127.0.0.1:{self.app.port}/aovivo/legenda?k={self.app.aovivo_chave()}" + (f"&{q}" if q else "")
+        plataforma.abrir_endereco(url)
+        return {"ok": True}
 
     @route("GET", r"/api/suporte/registros")
     def api_suporte_registros(self):

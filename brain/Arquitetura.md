@@ -58,6 +58,8 @@ vídeo/áudio ──ffmpeg──▶ audio.wav (16 kHz mono)
 | `versoes.py` | Histórico de versões (2.15): cópia a cada Salvar/Entregar em `editor\versoes\<arquivo>` (50 por arquivo, sem repetir a igual) e comparação legenda a legenda |
 | `memoria.py` | Memória de tradução (2.15): normalização do original e semelhança; a tabela `tm` fica no `legendas.db` (só no computador) |
 | `ortografia.py` | Corretor ortográfico (2.15, `pyspellchecker`): aponta e sugere; ignora nomes no meio da frase, siglas, números, glossários, dicionário pessoal e fala coloquial |
+| `aovivo.py` | Legenda ao vivo (2.18): lista as entradas de áudio do sistema, sessão, fila do operador (espera, correção que segura, apagar, mandar já, texto pronto), divisão pelas regras do perfil, `.srt` do evento, avisos para a página de legenda |
+| `aovivo_worker.py` | Processo separado da legenda ao vivo: ffmpeg → detector de fala por energia (piso de ruído adaptativo) → reconhecimento local em pedaços; eventos JSON (`pronto`, `nivel`, `parcial`, `final`, `erro`, `fim`). `CNT_AOVIVO_FALSO=1` para testes |
 | `plataforma.py` | O que muda entre Windows, Mac e Linux (2.17): pastas, id da máquina, Documentos, abrir no gerenciador de arquivos |
 | `conexao.py` | Status da conexão (2.16): pings em horário fechado (servidor :00/:30, Google :15/:45) e o estado (online, lenta, reconectando, sem internet, servidor fora, manutenção) |
 | `erros.py` | Códigos ER-RS/ER-RA (2.16): catálogo e classificação de exceções, HTTP e falhas de rede/arquivo |

@@ -116,3 +116,9 @@ def abrir(caminho: str | Path, selecionar: bool = False) -> None:
         os.startfile(str(p))  # type: ignore[attr-defined]
         return
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def abrir_endereco(url: str) -> None:
+    """Abre um endereço da web no navegador padrão do sistema."""
+    import webbrowser
+    webbrowser.open(url)

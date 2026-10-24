@@ -31,10 +31,12 @@ _(nada no momento)_
 - [x] T-022 · P-04 · Pacote para Mac Apple Silicon (`.dmg`, assinatura local) + testes e montagem no CI — 2.17 (assinatura oficial depende de conta de desenvolvedor)
 - [ ] T-023 · P-04 · Atualização por sistema: feito o `sistema` na consulta e o estado `manual`; falta o site oferecer os downloads de Mac/Linux e o servidor registrar os pacotes por sistema
 - [ ] T-024 · P-04 · Legendas no navegador (nuvem), com envio opcional do vídeo — depende de T-060
-- [ ] T-030 · P-05 · Captura de áudio ao vivo (microfone, sistema, placa) e transcrição contínua com atraso ≤ 3 s
-- [ ] T-031 · P-05 · Saídas ao vivo: janela com fundo sólido/transparente e página local de legenda
-- [ ] T-032 · P-05 · Painel do operador (atraso, correção, textos prontos, glossário)
-- [ ] T-033 · P-05 · Arquivo do evento e abrir no editor; tradução ao vivo (opcional)
+- [x] T-030 · P-05 · Captura de áudio ao vivo (microfone, sistema, placa, arquivo, endereço) e transcrição contínua em processo separado — 2.18
+- [x] T-031 · P-05 · Saídas ao vivo: página local de legenda (fonte de navegador) e janela com fundo transparente/verde/azul/preto, modos "inteira" e "rolando" — 2.18
+- [x] T-032 · P-05 · Painel do operador (espera para corrigir, correção que segura a legenda, apagar, mandar já, texto pronto, glossário do cliente, palavras escondidas) — 2.18
+- [ ] T-033 · P-05 · ~~Arquivo do evento e abrir no editor~~ (2.18); falta a tradução ao vivo (opcional)
+- [ ] T-034 · P-05 · Validar ao vivo de verdade: 1 h contínua sem travar, atraso médio ≤ 3 s, em Windows dela (microfone e som do computador)
+- [ ] T-035 · P-05 · Recurso próprio na licença (`ao_vivo`) e minutos ao vivo nas métricas — hoje usa o recurso `transcricao`
 - [ ] T-040 · P-06 · Achar espaços sem fala e editor do roteiro de audiodescrição
 - [ ] T-041 · P-06 · Perfil de verificação da audiodescrição (guia brasileiro)
 - [ ] T-042 · P-06 · Sugestão por IA a partir dos quadros do vídeo
@@ -77,5 +79,7 @@ Resumo por versão (detalhes em [[Fases]] e [[Decisões]]).
 - [x] 2.14 — glossário geral, do cliente e do projeto
 - [x] 2.15 — formatos de entrega, prazos, versões, memória de tradução, corretor, aviso de trabalho pronto, "Relatar um problema"
 - [x] 2.16 — status da conexão, ⚠ de atualização, códigos de erro ER-RS/ER-RA, modo de depuração
+- [x] 2.17 — Mac e Linux (pacotes `.dmg`, `.tar.gz`, `.AppImage`)
+- [x] 2.18 — legenda ao vivo (entrada de áudio, fila do operador, página de legenda, arquivo do evento)
 - [x] Servidor 1.0–1.4 — licenças, site, área do cliente, painel, status, termos/LGPD, sincronia, suporte, modo manutenção
 - [x] 24/10/2026 — especificações da família CNT ([[Pendências]] P-01 a P-08) e este kanban

@@ -1040,3 +1040,17 @@ details.ds-adv > .ds-adv-body > .panel { margin: 0; }
 .topbar .lic-pill { white-space: nowrap; }
 .topbar { gap: 10px; }
 @media (max-width: 1200px) { .prazo-topo .muted { display: none; } }
+
+/* ---------- legenda ao vivo (2.18) ---------- */
+.av-grid { align-items: start; }
+.av-medidor { width: 160px; height: 8px; border-radius: 4px; background: var(--line, #3334); overflow: hidden; }
+.av-medidor i { display: block; height: 100%; width: 0; background: var(--accent, #C9D94B); transition: width .15s; }
+.av-parcial { min-height: 1.4em; font-style: italic; margin: 10px 0; }
+.av-fila { display: flex; flex-direction: column; gap: 8px; }
+.av-item { display: flex; gap: 8px; align-items: stretch; }
+.av-item textarea { flex: 1; resize: none; font-size: 16px; line-height: 1.35; padding: 8px 10px; }
+.av-item:focus-within textarea { outline: 2px solid var(--accent, #C9D94B); }
+.av-acoes { display: flex; flex-direction: column; gap: 4px; align-items: stretch; min-width: 84px; }
+.av-acoes .mono { text-align: center; }
+.av-pub { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow: auto; }
+.av-linha { padding: 6px 10px; border-left: 3px solid var(--accent, #C9D94B); background: var(--panel-2, #0001); border-radius: 4px; }

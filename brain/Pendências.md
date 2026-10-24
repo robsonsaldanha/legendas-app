@@ -104,7 +104,7 @@ Caminho recomendado (em duas etapas):
 
 **Pronto quando (etapa 1):** instaladores de Mac e Linux publicados pelo CI, licença e atualização funcionando, testes passando nos três sistemas.
 
-## P-05 — Legenda ao vivo (TV, transmissões, eventos) · rascunho
+## P-05 — Legenda ao vivo (TV, transmissões, eventos) · feito na 2.18 (falta tradução ao vivo e validação: T-033…T-035)
 
 Gerar legenda em tempo real a partir do áudio de uma transmissão, com uma pessoa corrigindo se quiser.
 - **Entrada de áudio:** microfone, áudio do sistema, placa de captura ou entrada de rede de vídeo profissional (o que o ffmpeg do sistema conseguir ler); escolha do canal de áudio.

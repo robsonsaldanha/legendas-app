@@ -327,3 +327,14 @@
 - Montagem: `packaging/build_unix.sh linux|mac` — Python 3.12 relocável (com tkinter), bibliotecas (torch CPU no Linux), programa, modelos e ffmpeg estático. Linux: `.tar.gz` + `.AppImage`; Mac (Apple Silicon): `.app` em `.dmg`, assinatura local (sem conta de desenvolvedor: na primeira vez, botão direito → Abrir).
 - CI: testes também em Linux e Mac; job "Montar para Linux/Mac" depois do Windows: monta, testa o programa montado (abre e responde, ffprobe e modelos do pacote, corretor) e publica na pré-versão `desenvolvimento` (ou na versão, no `main`).
 - Falta (T-023): o site oferecer os downloads de Mac/Linux e o servidor registrar os pacotes por sistema.
+
+## 2026-10-24 — 2.18: legenda ao vivo (P-05)
+- Menu novo **Ao vivo** (`#/aovivo`). O reconhecimento roda num **processo separado** (`core/aovivo_worker.py`), como a transcrição local: se travar ou faltar memória, só ele cai.
+- Entrada pelo ffmpeg: microfone/placa (Windows `dshow`, Mac `avfoundation`, Linux `pulse`, incluindo o "som do computador" pelo monitor), arquivo (em tempo real, para ensaiar) ou endereço de transmissão.
+- Fala: detector por energia com piso de ruído que se adapta (não precisa de modelo); fecha a fala com 0,7 s de silêncio ou 7 s seguidos (legenda não pode esperar). Parcial a cada 1 s (só no painel do operador).
+- **Fila do operador:** cada legenda espera N segundos (0 a 30; padrão 3) antes de ir à tela. Clicar para corrigir **segura** a legenda; Enter corrige e manda; Esc apaga. Texto pronto entra na hora. Glossário (geral + cliente) vira dica de vocabulário do reconhecimento. Palavras escondidas viram `***`.
+- A tela só recebe o que passou pela fila (o parcial nunca vai para a tela).
+- **Página de legenda** `/aovivo/legenda?k=…` com **chave própria** (não é o token da sessão; guardada em `aovivo.json`, igual entre aberturas para o endereço colado no programa de transmissão continuar valendo). Recebe as legendas por Server-Sent Events (`/aovivo/fluxo`). Estilo pelo endereço: modo `bloco`/`rolando`, fundo (transparente, verde, azul, preto), cor, tamanho, posição, tarja. "Abrir janela de legenda" abre a mesma página no navegador do sistema (para capturar a janela com recorte por cor).
+- Arquivo do evento: `.srt` gravado a cada legenda publicada, com os tempos reais da fala, em `<pasta dos projetos>/Ao vivo/` (ou Documentos/Ao vivo); botão "Abrir no editor" ao parar.
+- Licença: por enquanto exige o recurso `transcricao`; recurso próprio `ao_vivo` fica para T-035 (precisa do servidor).
+- Falta: tradução ao vivo (T-033) e a validação de 1 h em uso real (T-034).
