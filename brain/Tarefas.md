@@ -14,10 +14,10 @@ _(nada no momento)_
 ## A fazer
 
 ### Família CNT — hub, conta única, novo visual
-- [ ] T-001 · P-01 · Especificação aprovada pelo Róbson (textos de cada seção, produtos, fotos/capturas)
-- [ ] T-002 · P-01 · Hub público em `cntoficial.com.br` (layout das 12 seções, celular primeiro, cookies, WhatsApp)
-- [ ] T-003 · P-01 · Área logada do hub (início com produtos contratados, faturas, suporte, conta, privacidade)
-- [ ] T-004 · P-01 · Painel do Róbson no hub (produtos, textos, casos, dados da empresa)
+- [x] T-001 · P-01 · Layout e direção aprovados pelo Róbson (24/10/2026); textos editáveis no painel do hub
+- [x] T-002 · P-01 · Hub público no ar em `cntoficial.com.br` (repositório `cnt-hub`, substitui o CNT System, que foi desligado com cópia completa) — 24/10/2026
+- [ ] T-003 · P-01 · Área logada do hub (início com produtos contratados, faturas, suporte, conta, privacidade) — hoje `/entrar` só leva à área de cada produto; depende de T-010
+- [x] T-004 · P-01 · Painel do Róbson no hub (`/admin`: produtos, casos, textos, WhatsApp, empresa) — 24/10/2026
 - [x] T-005 · P-02 · Tokens e CSS base do visual novo (no `cnt-server/public/site.css`; o hub e a Dubla copiam) — 24/10/2026
 - [x] T-006 · P-02 · Site do Legendas no visual novo em homologação (`dev-legendas`) — servidor 1.5, 24/10/2026
 - [x] T-007 · P-02 · Área do cliente (menu lateral) e painel do Legendas no visual novo — servidor 1.5, 24/10/2026

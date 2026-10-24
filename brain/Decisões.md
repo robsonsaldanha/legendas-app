@@ -315,3 +315,7 @@
 - Por enquanto **só especificação** (nada implementado): [[Pendências]] explica cada item (P-01 a P-15) e [[Tarefas]] é o kanban (T-xxx). `Fases.md` fica como histórico.
 - Regra nova: não citar marcas, produtos ou empresas de terceiros em telas, site, textos de venda e documentação nova.
 - `README.md` e `AGENTS.md` (nos dois repositórios) mandam qualquer pessoa ou IA ler o `brain/` antes — outra IA vai ajudar no desenvolvimento.
+
+## 2026-10-24 — Hub CNT no ar (P-01) substituindo o CNT System
+- Repositório novo `cnt-hub` (PC: `DESENVOLVIMENTO\CNT Hub`; VPS: `~/git/cnt-hub.git`, ramo `main`, deploy automático em `/var/www/html`). Vitrine, `/entrar`, páginas legais e painel `/admin`. Detalhes no `brain/` do hub.
+- O CNT System foi desligado a pedido do Róbson, com cópia completa em `/home/robson/backups/cnt-system-20261024-160700/` e a pasta em `/var/www/html_cntsystem_parado` (dá para voltar).
