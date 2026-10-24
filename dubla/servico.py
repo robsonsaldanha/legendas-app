@@ -115,6 +115,36 @@ class Dubla:
         self.db.x("DELETE FROM projetos WHERE id = ?", (int(pid),))
         shutil.rmtree(self.pasta / "projetos" / str(int(pid)), ignore_errors=True)     # takes e cópias do programa (nunca o vídeo)
 
+    # ------------------------------------------------------------ recebidos do CNT Legendas (T-058)
+    def recebidos(self) -> list[dict]:
+        return D.recebidos()
+
+    def importar_recebido(self, b: dict) -> dict:
+        arq = Path(str(b.get("arquivo") or ""))
+        pacote = next((x for x in D.recebidos() if Path(x["arquivo"]) == arq), None)
+        if not pacote:
+            raise Erro("Esse envio não está mais na pasta de recebidos.", 404)
+        if pacote.get("video") and not Path(pacote["video"]).is_file():
+            pacote["video"] = ""          # vídeo saiu do lugar: o projeto abre sem vídeo (escolhe depois)
+        p = self.criar_projeto({"nome": pacote["nome"], "cliente": pacote.get("cliente", ""), "video": pacote.get("video", ""),
+                                "roteiro": pacote["legenda"], "idioma_origem": pacote.get("idioma_origem", "en"),
+                                "idioma_destino": pacote.get("idioma_destino", "pt-BR")})
+        if pacote.get("original") and Path(pacote["original"]).is_file():
+            self._casar_original(p["id"], pacote["original"])
+        feitos = arq.parent / "importados"
+        feitos.mkdir(exist_ok=True)
+        for f in (arq, Path(pacote["legenda"]), Path(pacote["original"]) if pacote.get("original") else None):
+            if f and f.exists():
+                f.replace(feitos / f.name)
+        return self._proj(p["id"])
+
+    def _casar_original(self, pid: int, srt_original: str) -> None:
+        """Legenda original com o mesmo número de falas (tradução 1:1): vai para a coluna "Original"."""
+        orig = D.importar_roteiro(srt_original)
+        falas = self.db.q("SELECT id FROM falas WHERE projeto_id = ? ORDER BY inicio, id", (pid,))
+        if len(orig) == len(falas):
+            self.db.varios("UPDATE falas SET original = ? WHERE id = ?", [(o.texto, f["id"]) for o, f in zip(orig, falas)])
+
     # ------------------------------------------------------------ roteiro
     def importar(self, pid: int, b: dict) -> dict:
         p = self._proj(pid)
@@ -465,7 +495,7 @@ class Dubla:
     # ------------------------------------------------------------ exportar
     def exportar(self, pid: int, b: dict) -> dict:
         p = self._proj(pid)
-        itens = set(b.get("itens") or ["mix", "stems", "video", "roteiro", "relatorio"])
+        itens = set(b.get("itens") or ["mix", "stems", "video", "roteiro", "relatorio", "legenda"])
 
         def fazer(t):
             ff = _ffmpeg()
@@ -478,6 +508,8 @@ class Dubla:
                 feitos.append(str(self._roteiro_docx(p, base / f"{p['nome']} - roteiro de dublagem.docx")))
             if "relatorio" in itens:
                 feitos.append(str(self._relatorio_docx(p, base / f"{p['nome']} - anéis por dublador.docx")))
+            if "legenda" in itens and any(f["texto"].strip() for f in p["falas"]):
+                feitos.append(str(D.legenda_da_dublagem(p["falas"], base / f"{p['nome']} - legenda da dublagem.srt")))
             if itens & {"mix", "stems", "video"}:
                 aprovados = [a for a in p["aneis"] if a["take_aprovado_id"]]
                 if not aprovados:

@@ -104,7 +104,7 @@ def test_fluxo_completo_de_dublagem(dubla):
     assert tk["situacao"] == "pronto", tk
     nomes = sorted(Path(x).name for x in tk["resultado"]["arquivos"])
     assert nomes == ["JOÃO.wav", "MARIA.wav", "Série X — E01 - anéis por dublador.docx", "Série X — E01 - dublado.mp4",
-                     "Série X — E01 - mix dublado.wav", "Série X — E01 - roteiro de dublagem.docx"]
+                     "Série X — E01 - legenda da dublagem.srt", "Série X — E01 - mix dublado.wav", "Série X — E01 - roteiro de dublagem.docx"]
     assert video.exists() and srt.exists()                  # originais intactos
 
 
@@ -126,3 +126,36 @@ def test_termo_de_voz(dubla):
     from dubla import vozes
     with pytest.raises(vozes.VozErro, match="termo de consentimento"):
         vozes.gerar_anel({"tipo": "clonada", "dublador_id": d["id"]}, [(0, "Oi")], "pt-BR", tmp / "x.wav", tmp / "ia", app.db)
+
+
+def test_legendas_envia_para_a_dubla(dubla, monkeypatch):
+    """O editor do CNT Legendas manda vídeo + legenda (+ original); a Dubla mostra em Recebidos e cria o projeto."""
+    app, tmp = dubla
+    monkeypatch.setenv("CNT_DOCUMENTOS", str(tmp / "Documentos"))
+    monkeypatch.setenv("LEGENDAS_HOME", str(tmp / "legendas"))
+    from tests.test_app_server import COOKIE, call
+    from app.server import App as LegApp, make_server
+    leg = LegApp()
+    srv = make_server(leg, 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    COOKIE[port] = f"{leg.cookie_name}={leg.token}"
+    try:
+        video = _make_video(tmp / "Filme.mp4")
+        srt = tmp / "Filme.pt-BR.srt"
+        write_srt([Cue(1.0, 3.0, ["ANA: Bom dia."]), Cue(4.0, 6.0, ["Tudo bem?"])], srt)
+        st, r = call(port, "POST", "/api/editor/open", {"srt": str(srt), "video": str(video)}, token=leg.token)
+        sid = r["sid"]
+        cues = [{"start": 1.0, "end": 3.0, "text": "ANA: Bom dia.", "orig": "ANA: Good morning."}, {"start": 4.0, "end": 6.0, "text": "Tudo bem?", "orig": "How are you?"}]
+        st, r = call(port, "POST", f"/api/editor/{sid}/enviar-dubla", {"nome": "Filme X", "cues": cues, "idioma_origem": "en"}, token=leg.token)
+        assert st == 200, r
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    st, r = chamar(app, "GET", "/api/recebidos")
+    assert [x["nome"] for x in r["recebidos"]] == ["Filme X"]
+    st, p = chamar(app, "POST", "/api/recebidos/importar", {"arquivo": r["recebidos"][0]["arquivo"]})
+    assert st == 200, p
+    assert [(f["texto"], f["original"]) for f in p["falas"]] == [("Bom dia.", "Good morning."), ("Tudo bem?", "How are you?")]
+    assert p["video"] == str(video) and p["idioma_origem"] == "en"
+    assert chamar(app, "GET", "/api/recebidos")[1]["recebidos"] == []      # saiu da lista (foi para "importados")

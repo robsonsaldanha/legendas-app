@@ -187,3 +187,21 @@ function exportarAD() {
     } catch (e) { toast(e.message, true); }
   };
 }
+
+
+/* ------------------------------------------------------------ enviar para a CNT Dubla (T-058) */
+function enviarParaDubla() {
+  const base = (ED.video || ED.name || "").split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
+  const m = modal("Enviar para a dublagem", `
+    <p class="small muted">O vídeo e esta legenda vão para a CNT Dubla como roteiro de dublagem (em “Projetos → Enviados pelo CNT Legendas”).
+      ${ED.hasOrig ? "O texto original também vai, para a comparação de sílabas." : ""}</p>
+    <label class="field"><span>Nome do projeto de dublagem</span><input type="text" id="dub-nome" value="${esc(base)}"></label>`,
+  `<button class="btn ghost" data-x="cancel">Cancelar</button><button class="btn primary" data-x="ok">Enviar</button>`);
+  m.$("[data-x=cancel]").onclick = m.close;
+  m.$("[data-x=ok]").onclick = async () => {
+    try {
+      await api("POST", `/api/editor/${ED.sid}/enviar-dubla`, { nome: m.$("#dub-nome").value, cues: sortedCues() });
+      m.close(); toast("Enviado. Abra a CNT Dubla: o projeto aparece em “Enviados pelo CNT Legendas”.");
+    } catch (e) { toast(e.message, true); }
+  };
+}

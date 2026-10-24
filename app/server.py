@@ -1386,6 +1386,29 @@ class Handler(BaseHTTPRequestHandler):
         jid = self.app.worker.submit(params, inputs)
         return self.app.job_detail(jid)
 
+    # ------------------------------------------------------------ enviar para a CNT Dubla (T-058)
+
+    @route("POST", r"/api/editor/(\w+)/enviar-dubla")
+    def api_enviar_dubla(self, sid):
+        from core import dublagem
+        from core.subtitle import Cue, write_srt
+        s = self.app.editor._get(sid)
+        b = self._body()
+        cues = sorted(b.get("cues") or [], key=lambda c: float(c.get("start", 0)))
+        if not cues:
+            raise ApiError("A legenda está vazia.")
+        pasta = data_dir() / "envios-dubla"
+        pasta.mkdir(parents=True, exist_ok=True)
+        leg = write_srt([Cue(float(c["start"]), float(c["end"]), str(c.get("text") or "").split("\n")) for c in cues], pasta / f"{sid}.srt")
+        orig = ""
+        if all(c.get("orig") for c in cues):
+            orig = str(write_srt([Cue(float(c["start"]), float(c["end"]), str(c["orig"]).split("\n")) for c in cues], pasta / f"{sid}-original.srt"))
+        nome = str(b.get("nome") or (s.video or s.srt or Path("projeto")).stem).strip()
+        pacote = dublagem.enviar_para_dubla(nome, str(s.video or ""), str(leg), str(b.get("idioma_origem") or s.detected or "en"),
+                                            str(b.get("idioma_destino") or s.language or "pt-BR"), orig)
+        depuracao.registrar("dubla", "enviado", nome=nome, legendas=len(cues))
+        return {"ok": True, "pacote": str(pacote), "pasta": str(pacote.parent)}
+
     # ------------------------------------------------------------ audiodescrição (P-06, 2.19)
 
     @route("POST", r"/api/editor/(\w+)/ad/verificar")

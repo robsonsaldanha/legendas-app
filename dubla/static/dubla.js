@@ -93,11 +93,15 @@ window.addEventListener("hashchange", rotear);
 /* ------------------------------------------------------------ projetos */
 async function telaProjetos() {
   document.getElementById("crumb").textContent = "Projetos";
-  const { projetos } = await api("GET", "/api/projetos");
+  const [{ projetos }, { recebidos }] = await Promise.all([api("GET", "/api/projetos"), api("GET", "/api/recebidos")]);
   main.innerHTML = `
     <div class="page-head"><div><span class="eyebrow">CNT Dubla</span><h1 style="margin-top:6px">Projetos de dublagem</h1>
       <p class="muted">Roteiro, personagens, anéis, gravação, direção e mixagem — do vídeo ao áudio dublado.</p></div>
       <button class="btn primary" id="novo">+ Novo projeto</button></div>
+    ${recebidos.length ? `<section class="panel" style="margin-bottom:16px"><h2>Enviados pelo CNT Legendas</h2>
+      ${recebidos.map((r) => `<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)">
+        <span><b>${esc(r.nome)}</b> <span class="small muted">${esc(r.idioma_origem)} → ${esc(r.idioma_destino)} · enviado ${esc((r.enviado_em || "").replace("T", " "))}</span></span>
+        <button class="btn primary sm" data-receber="${esc(r.arquivo)}">Criar o projeto</button></div>`).join("")}</section>` : ""}
     ${projetos.length ? `<div class="db-cards">${projetos.map((p) => `<div class="db-card" data-id="${p.id}">
         <span class="mono small muted">${esc(p.idioma_origem)} → ${esc(p.idioma_destino)}${p.cliente ? ` · ${esc(p.cliente)}` : ""}</span>
         <h3 style="margin:0">${esc(p.nome)}</h3>
@@ -105,6 +109,9 @@ async function telaProjetos() {
         <div class="db-barra"><i style="width:${p.aneis ? Math.round((100 * p.aprovados) / p.aneis) : 0}%"></i></div></div>`).join("")}</div>`
       : `<div class="panel"><p>Nenhum projeto ainda. Comece com o vídeo do episódio e, se tiver, o roteiro traduzido (.srt, .docx ou .txt — inclusive o que saiu do CNT Legendas).</p></div>`}`;
   main.querySelectorAll(".db-card").forEach((c) => c.addEventListener("click", () => { location.hash = `#/p/${c.dataset.id}/roteiro`; }));
+  main.querySelectorAll("[data-receber]").forEach((b) => b.addEventListener("click", async () => {
+    try { const p = await api("POST", "/api/recebidos/importar", { arquivo: b.dataset.receber }); location.hash = `#/p/${p.id}/roteiro`; } catch (e) { toast(e.message, true); }
+  }));
   $("#novo").onclick = novoProjeto;
 }
 
@@ -576,7 +583,7 @@ async function abaMixagem(p) {
       <p class="small muted">Separar tira a voz original do áudio do vídeo no computador (com placa de vídeo é rápido). Confira o resultado: a faixa do cliente é sempre melhor.</p></section>
     <section class="panel stack"><h2 style="margin:0">Entregas</h2>
       <p class="small">${aprov} de ${p.aneis.length} anéis aprovados.${aprov < p.aneis.length ? " Os anéis sem take aprovado ficam em silêncio." : ""}</p>
-      ${[["mix", "Mix final dublado (.wav)"], ["stems", "Faixas por personagem (.wav)"], ["video", "Vídeo com o áudio dublado"], ["roteiro", "Roteiro de dublagem (.docx)"], ["relatorio", "Anéis por dublador (.docx)"]]
+      ${[["mix", "Mix final dublado (.wav)"], ["stems", "Faixas por personagem (.wav)"], ["video", "Vídeo com o áudio dublado"], ["roteiro", "Roteiro de dublagem (.docx)"], ["relatorio", "Anéis por dublador (.docx)"], ["legenda", "Legenda com o texto dublado (.srt)"]]
         .map(([k, t]) => `<label class="row small"><input type="checkbox" value="${k}" checked> ${t}</label>`).join("")}
       <div class="row"><label class="field"><span>Volume das vozes</span><input type="number" id="vol-v" value="1" min="0" max="3" step="0.1" style="width:90px"></label>
         <label class="field"><span>Volume do M&E</span><input type="number" id="vol-me" value="1" min="0" max="3" step="0.1" style="width:90px"></label></div>

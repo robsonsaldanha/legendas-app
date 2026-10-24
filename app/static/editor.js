@@ -193,6 +193,7 @@ async function renderEditor(sid) {
       <button class="btn" data-ed="verify" title="Problemas e correção automática">Verificar <span class="count" id="ed-issn" hidden></span></button>
       <button class="btn" data-ed="deliver" title="Salvar com o nome do cliente, assinatura e verificação final">Entregar</button>
       <button class="btn" data-ed="ad" title="Roteiro de audiodescrição: espaços sem fala, verificação, voz e exportação">Audiodescrição</button>
+      <button class="btn" data-ed="dubla" title="Mandar este vídeo e esta legenda para a CNT Dubla (roteiro de dublagem)">Dublagem</button>
       ${helpBtn("editor", "O que faz cada botão do editor?")}
       <span class="sep"></span>
       <button class="btn ghost icon" data-ed="undo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer">↶</button>
@@ -728,6 +729,7 @@ function act(name) {
     case "verify": openVerify(); break;
     case "deliver": openDeliver(); break;
     case "ad": abrirAD(); break;
+    case "dubla": enviarParaDubla(); break;
     case "find": openFind(); break;
     case "versoes": abrirVersoes(); break;
   }

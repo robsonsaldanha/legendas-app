@@ -276,6 +276,14 @@ class Handler(BaseHTTPRequestHandler):
     def api_projeto_novo(self):
         return self.d.criar_projeto(self._body())
 
+    @rota("GET", r"/api/recebidos")
+    def api_recebidos(self):
+        return {"recebidos": self.d.recebidos()}
+
+    @rota("POST", r"/api/recebidos/importar")
+    def api_recebido_importar(self):
+        return self.d.importar_recebido(self._body())
+
     @rota("GET", r"/api/projetos/(\d+)")
     def api_projeto(self, pid):
         p = self.d._proj(int(pid))

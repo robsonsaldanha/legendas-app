@@ -212,3 +212,57 @@ def relatorio_escalacao(aneis: list[dict], personagens: list[dict]) -> list[dict
         r["aprovados"] += 1 if a.get("situacao") == "aprovado" else 0
     return sorted(({**r, "segundos": round(r["segundos"], 1), "personagens": sorted(r["personagens"])} for r in out.values()),
                   key=lambda r: (-r["aneis"], r["dublador"]))
+
+
+# ------------------------------------------------------------------ CNT Legendas → CNT Dubla (T-058)
+
+def pasta_entrada() -> Path:
+    """Onde o CNT Legendas deixa os projetos enviados para a dublagem (os dois programas leem a mesma pasta)."""
+    import os
+    from .plataforma import documentos
+    base = Path(os.environ["CNT_DOCUMENTOS"]) if os.environ.get("CNT_DOCUMENTOS") else documentos()
+    p = base / "CNT Dubla" / "Recebidos do CNT Legendas"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def enviar_para_dubla(nome: str, video: str, legenda: str, idioma_origem: str, idioma_destino: str, original: str = "",
+                      cliente: str = "") -> Path:
+    """Grava o pacote (JSON) que a CNT Dubla mostra em "Recebidos". A legenda é copiada (o arquivo dela não muda)."""
+    import json
+    import shutil
+    import time
+    pasta = pasta_entrada()
+    marca = time.strftime("%Y%m%d-%H%M%S")
+    seguro = "".join(c for c in nome if c not in '<>:"/\\|?*').strip() or "projeto"
+    copia = pasta / f"{marca} {seguro}.srt"
+    shutil.copy2(legenda, copia)
+    copia_orig = ""
+    if original and Path(original).is_file():
+        copia_orig = str(pasta / f"{marca} {seguro} (original).srt")
+        shutil.copy2(original, copia_orig)
+    pacote = pasta / f"{marca} {seguro}.cntdubla.json"
+    pacote.write_text(json.dumps({"versao": 1, "nome": nome, "cliente": cliente, "video": video, "legenda": str(copia),
+                                  "original": copia_orig, "idioma_origem": idioma_origem, "idioma_destino": idioma_destino,
+                                  "enviado_em": time.strftime("%Y-%m-%dT%H:%M:%S")}, ensure_ascii=False, indent=1), encoding="utf-8")
+    return pacote
+
+
+def recebidos() -> list[dict]:
+    import json
+    out = []
+    for f in sorted(pasta_entrada().glob("*.cntdubla.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            out.append({**d, "arquivo": str(f)})
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def legenda_da_dublagem(falas: list[dict], destino: str | Path) -> Path:
+    """Legenda com o texto dublado (adaptação), nos tempos das falas — para legenda de acessibilidade igual ao áudio."""
+    from .subtitle import Cue, write_srt
+    cues = [Cue(f["inicio"], f["fim"], sem_marcacoes(f["texto"]).split("\n")) for f in sorted(falas, key=lambda x: x["inicio"])
+            if f["fim"] > f["inicio"] and sem_marcacoes(f.get("texto") or "")]
+    return write_srt(cues, destino)

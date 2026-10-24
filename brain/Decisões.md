@@ -384,3 +384,8 @@
 - **Vozes por IA:** voz do sistema (sem custo) e serviço pago com a chave do cliente — modelo e voz configuráveis porque o modelo atual do serviço sai do ar em 06/01/2027. Clonagem: só com termo de consentimento registrado (cópia do termo e da amostra na pasta do programa; revogar apaga a amostra); o motor local é instalado à parte (T-057).
 - **Entregas:** pasta "<projeto> - dublagem" ao lado do vídeo (ou a escolhida): faixa por personagem, mix com o M&E (sem normalizar), vídeo com o áudio novo (imagem copiada), roteiro de dublagem e anéis por dublador em `.docx`. Originais nunca mudam.
 - Falta: T-058 (enviar do Legendas para a Dubla), T-059 (instalador, licença e site próprios).
+
+## 2026-10-24 — Legendas ↔ Dubla (T-058)
+- Os dois programas são separados; a troca é por **pasta**: o Legendas grava um pacote (`*.cntdubla.json` + cópia da legenda e do original) em `Documentos/CNT Dubla/Recebidos do CNT Legendas`; a Dubla lista em "Enviados pelo CNT Legendas" e, ao criar o projeto, move o pacote para `importados`. Sem rede e sem compartilhar token entre programas.
+- O original vai junto quando todas as legendas têm o texto original (tradução 1:1) e entra na coluna "Original" (para a comparação de sílabas).
+- Volta: a Dubla exporta "legenda da dublagem" (.srt com o texto adaptado nos tempos das falas), para legenda de acessibilidade igual ao áudio dublado.
