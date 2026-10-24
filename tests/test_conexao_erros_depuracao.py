@@ -150,8 +150,10 @@ def test_depuracao_depois_de_cair(docs, tmp_path):
     d.ligar(duracao_s=60)
     d.registrar("editor.entregar", "gravando", arquivo="Ep 1.vtt")
     pasta = Path(d.pasta)
-    # o programa "caiu": nada foi fechado. Na próxima abertura:
-    d.pasta = None
+    # o programa "caiu": nada foi fechado (num processo morto o Windows já soltou os arquivos). Na próxima abertura:
+    for f in d._arqs.values():
+        f.close()
+    d._arqs, d.pasta = {}, None
     nova = depuracao.Depuracao()
     zs = nova.recuperar()
     assert len(zs) == 1 and not pasta.exists()

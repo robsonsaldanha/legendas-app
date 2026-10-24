@@ -224,6 +224,9 @@ class Depuracao:
         for pasta in sorted(base.glob(f"*{SUFIXO}")):
             if not pasta.is_dir() or pasta == self.pasta:
                 continue
+            if pasta.with_name(pasta.name + ".zip").exists():     # já virou zip; só sobrou a pasta (arquivo preso)
+                shutil.rmtree(pasta, ignore_errors=True)
+                continue
             try:
                 ultima = _ultima_linha(pasta)
                 (pasta / "FECHOU-INESPERADAMENTE.txt").write_text(
