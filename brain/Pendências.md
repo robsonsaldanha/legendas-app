@@ -79,7 +79,7 @@ O site do servidor (`cnt-legendas-server`: `public/`, `paginas/`, `src/layout.js
 
 **Pronto quando:** todas as páginas do site, área do cliente e painel no visual novo, testes do servidor passando, capturas de tela conferidas no celular e no computador.
 
-## P-03 — Conta única CNT (entrar uma vez, usar todos) · decidido em 24/10/2026: contas no hub
+## P-03 — Conta única CNT (entrar uma vez, usar todos) · feito em 24/10/2026 (hub 1.1, servidor 1.8)
 
 Hoje cada produto teria a sua conta. Proposta: a conta vive no **hub** (CNT ID) e os produtos confiam nela.
 - Entrar em `cntoficial.com.br/entrar` vale para `legendas.`, `dubla.` e `api.` (cookie de sessão no domínio `.cntoficial.com.br` com token assinado, ou fluxo de autorização padrão com redirecionamento — decidir).
@@ -148,7 +148,7 @@ Produto separado (`dubla.cntoficial.com.br`), que conversa com o Legendas.
 
 **Pronto quando:** dublar um episódio de 20 min PT↔ES com 3 personagens, revisão no editor e exportação, dentro do custo definido.
 
-## P-08 — API CNT para empresas (integração) · decidido em 24/10/2026
+## P-08 — API CNT para empresas (integração) · feito em 24/10/2026 (servidor 1.9)
 
 **Decisão do Róbson:** a API **não processa mídia** (nada de enviar vídeo para transcrever/traduzir no servidor). Ela serve para **integrar os sistemas** da empresa com o CNT: cadastros, regras, produção e licenças. O processamento continua no computador de quem usa o programa.
 - **Acesso:** chaves de API por conta de empresa (criadas na área do cliente, com nome, permissões — leitura/escrita por recurso — e validade; mostradas uma vez; guardadas só como resumo SHA-256), registro de cada uso.
@@ -172,7 +172,7 @@ Produto separado (`dubla.cntoficial.com.br`), que conversa com o Legendas.
 ### P-10 — Validar com o uso real · contínua
 Validar com vídeos e projetos reais da usuária (filme com intervalo, legenda de outra versão, relatório de produtividade); testar no Windows dela (janelas Abrir/Salvar, cofre de senhas, vídeo tocando, F11/F12, dois perfis do Windows ao mesmo tempo); instalar no PC deles e testar nos dois perfis; confirmar assinatura e atalhos que faltam; confirmar com o cliente as regras do perfil em português; calibrar a sincronia com legendas acertadas à mão (quanto antes da fala ela gosta de entrar).
 
-### P-11 — Ligar a produção · aprovado em 24/10/2026
+### P-11 — Ligar a produção · feito em 24/10/2026 (falta: termos revisados por advogado e dados do MEI/CNPJ no painel)
 nginx + certificado de `legendas.cntoficial.com.br`, variável `CNT_PROD_ATIVO` no CI, termos revisados por advogado, dados da empresa (MEI/CNPJ) no painel.
 
 ### P-12 — PIX automático e nota fiscal · futuro (quando houver conta PJ)

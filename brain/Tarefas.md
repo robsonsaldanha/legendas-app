@@ -16,14 +16,14 @@ _(nada no momento)_
 ### Família CNT — hub, conta única, novo visual
 - [x] T-001 · P-01 · Layout e direção aprovados pelo Róbson (24/10/2026); textos editáveis no painel do hub
 - [x] T-002 · P-01 · Hub público no ar em `cntoficial.com.br` (repositório `cnt-hub`, substitui o CNT System, que foi desligado com cópia completa) — 24/10/2026
-- [ ] T-003 · P-01 · Área logada do hub (início com produtos contratados, faturas, suporte, conta, privacidade) — hoje `/entrar` só leva à área de cada produto; depende de T-010
+- [x] T-003 · P-01 · Área da conta no hub (`/conta`: produtos, trocar senha, sair) — hub 1.1, 24/10/2026; faturas, licenças e suporte continuam na área de cada produto
 - [x] T-004 · P-01 · Painel do Róbson no hub (`/admin`: produtos, casos, textos, WhatsApp, empresa) — 24/10/2026
 - [x] T-005 · P-02 · Tokens e CSS base do visual novo (no `cnt-server/public/site.css`; o hub e a Dubla copiam) — 24/10/2026
 - [x] T-006 · P-02 · Site do Legendas no visual novo em homologação (`dev-legendas`) — servidor 1.5, 24/10/2026
 - [x] T-007 · P-02 · Área do cliente (menu lateral) e painel do Legendas no visual novo — servidor 1.5, 24/10/2026
-- [ ] T-008 · P-02 · Visual novo em produção (`legendas.`) — aprovado em 24/10/2026
+- [x] T-008 · P-02 · Visual novo em produção (`legendas.`) — servidor 1.7+ em produção, 24/10/2026
 - [x] T-009 · P-03 · Decidido: contas no hub; os produtos confirmam a sessão com o hub — 24/10/2026
-- [ ] T-010 · P-03 · Conta única CNT (entrar uma vez) + migração das contas do Legendas
+- [x] T-010 · P-03 · Conta única CNT (entrar uma vez no hub) + migração das contas do Legendas — hub 1.1 / servidor 1.8, 24/10/2026
 
 ### CNT Legendas — novas funções
 - [x] T-020 · P-04 · Camada por sistema (`core/plataforma.py`): pastas, id da máquina, abrir no gerenciador, Documentos — 2.17
@@ -56,17 +56,17 @@ _(nada no momento)_
 
 ### API CNT
 - [x] ~~T-060 · P-08 · Fila de processamento no servidor~~ — descartado em 24/10/2026: a API é só de integração
-- [ ] T-061 · P-08 · Chaves de API, permissões e ambiente de teste
-- [ ] T-062 · P-08 · Recursos `clientes`, `glossarios`, `perfis`, `producao`, `licencas` + webhooks assinados
-- [ ] T-063 · P-08 · Limites por chave e registro de uso (sem cobrança por uso)
-- [ ] T-064 · P-08 · Documentação pública (OpenAPI) em `/api/docs`
+- [x] T-061 · P-08 · Chaves de API por licença de equipe (área do cliente → API), permissões por recurso, validade, revogar — servidor 1.9 (ambiente de teste = dev-legendas)
+- [x] T-062 · P-08 · Recursos `clientes`, `glossarios`, `perfis`, `producao`, `licencas` + webhooks assinados — servidor 1.9
+- [x] T-063 · P-08 · 120 pedidos/min por chave e registro de uso (90 dias) — servidor 1.9
+- [x] T-064 · P-08 · Documentação pública em `/api/docs` e `/api/openapi.json` — servidor 1.9
 
 ### Operação e o que já existia
 - [ ] T-070 · P-10 · Validar com vídeos e projetos reais dela (filme com intervalo, legenda de outra versão, relatório)
 - [ ] T-071 · P-10 · Testar no Windows dela (Abrir/Salvar, cofre de senhas, vídeo, F11/F12, dois perfis)
 - [ ] T-072 · P-10 · Confirmar assinatura e atalhos que faltam; regras do perfil em português com o cliente
 - [ ] T-073 · P-10 · Calibrar a sincronia com legendas acertadas à mão
-- [ ] T-074 · P-11 · Ligar a produção (nginx, certificado, `CNT_PROD_ATIVO`) — aprovado em 24/10/2026
+- [x] T-074 · P-11 · Produção ligada: `legendas.cntoficial.com.br` com certificado, servidor em `main`, `CNT_PROD_ATIVO=1` no CI — 24/10/2026
 - [ ] T-075 · P-11 · Termos revisados por advogado; dados do MEI/CNPJ no painel
 - [ ] T-076 · P-12 · PIX automático + nota fiscal (quando houver conta PJ)
 - [ ] T-077 · P-13 · Lembrete de renovação (e-mail e programa)
@@ -86,6 +86,7 @@ Resumo por versão (detalhes em [[Fases]] e [[Decisões]]).
 - [x] 2.18 — legenda ao vivo (entrada de áudio, fila do operador, página de legenda, arquivo do evento)
 - [x] 2.19 — audiodescrição no editor (espaços sem fala, verificação, voz, sugestão por IA, exportações e áudio mixado)
 - [x] 2.20 — tradução ao vivo (segunda faixa) e gravar a audiodescrição com a própria voz
+- [x] Hub 1.1 / servidor 1.8–1.9 — conta única CNT e API de integração; produção ligada
 - [x] 2.21 / servidor 1.7 — ao vivo e audiodescrição em todos os planos (menos a avaliação)
 - [x] Servidor 1.6 — instalador por sistema (download e atualização)
 - [x] Servidor 1.0–1.4 — licenças, site, área do cliente, painel, status, termos/LGPD, sincronia, suporte, modo manutenção

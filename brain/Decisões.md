@@ -366,3 +366,8 @@
 4. **Legenda ao vivo e audiodescrição:** em **todos os planos, menos a avaliação** de 1 dia (recursos `ao_vivo` e `audiodescricao`).
 5. **Validação com ela:** fica para quando todos os sistemas estiverem prontos (o que ela testou antes da atualização pelo site funcionava).
 6. **Produção:** aprovada (T-008, T-074).
+
+## 2026-10-24 — Produção ligada, conta única e API (servidor 1.7–1.9, hub 1.1)
+- **Produção:** `legendas.cntoficial.com.br` no ar (nginx + certificado; servidor na `main`); variável `CNT_PROD_ATIVO=1` no repositório: cada push na `main` publica a versão `v<versão>.<montagem>` e registra o instalador e o pacote de atualização no servidor de produção.
+- **Conta única:** detalhes no `brain/` do hub e do servidor. A área do cliente do Legendas entra pelo hub; a senha é a da conta CNT.
+- **API de integração:** `legendas.cntoficial.com.br/api/docs` (detalhes no `brain/` do servidor).
