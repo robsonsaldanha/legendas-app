@@ -196,6 +196,6 @@ class Janela:
 
 def icone_do_programa() -> Path | None:
     """legendas.ico fica na pasta do programa instalado (ao lado de cntboot.py)."""
-    raiz = Path(os.environ.get("CNT_INSTALL_ROOT") or Path(__file__).resolve().parent.parent)
-    p = raiz / "legendas.ico"
+    from core.config import app_root
+    p = app_root() / "legendas.ico"
     return p if p.exists() else None

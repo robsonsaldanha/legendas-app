@@ -66,7 +66,8 @@ def dialog_command() -> list[str]:
         from pathlib import Path
         if Path(alt).exists():
             exe = alt
-    return [exe, "-m", "app.dialogs"]
+    from core.config import module_cmd
+    return module_cmd(exe, "app.dialogs")      # o código desta versão (também depois de uma atualização)
 
 
 def ask(kind: str, multiple: bool = False, title: str = "", initial: str | None = None,

@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+from .config import app_root, module_cmd
+
 _NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 SIZE_TEXT = {"small": "~480 MB", "medium": "~1,5 GB", "large-v3": "~3 GB"}
 SIZES = {"small": "Systran/faster-whisper-small", "medium": "Systran/faster-whisper-medium",
@@ -82,10 +84,10 @@ def transcribe_words(wav16: Path, out_json: Path, size: str = "large-v3", device
     devices = ["cuda", "cpu"] if device == "auto" else [device]
     last = ""
     for dev in devices:
-        cmd = [_python(), "-m", "core.whisper_local", str(wav16), str(out_json), size, dev, language or "",
-               "1" if full else "0", prompt or "", "1" if multi else "0"]
+        cmd = module_cmd(_python(), "core.whisper_local", str(wav16), str(out_json), size, dev, language or "",
+                         "1" if full else "0", prompt or "", "1" if multi else "0")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                cwd=str(Path(__file__).resolve().parent.parent), creationflags=_NO_WINDOW)
+                                cwd=str(app_root()), creationflags=_NO_WINDOW)
         try:
             for line in proc.stdout:
                 if cancelled and cancelled():

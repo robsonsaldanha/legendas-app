@@ -25,6 +25,8 @@ import wave
 from pathlib import Path
 from typing import Callable
 
+from .config import app_root, module_cmd
+
 import numpy as np
 
 MODEL_NAME = "UVR-MDX-NET-Voc_FT.onnx"
@@ -47,7 +49,7 @@ def model_path() -> Path | None:
     cands = []
     if os.environ.get("CNT_SEP_MODEL"):
         cands.append(Path(os.environ["CNT_SEP_MODEL"]))
-    cands += [here / "models" / MODEL_NAME, here.parent / "models" / MODEL_NAME]
+    cands += [here / "models" / MODEL_NAME, here.parent / "models" / MODEL_NAME, app_root() / "models" / MODEL_NAME]
     return next((p for p in cands if p.exists()), None)
 
 
@@ -223,9 +225,9 @@ def run_separation(src_wav: Path, out_wav16: Path, use_gpu: str = "auto",
     model = model_path()
     if model is None:
         raise SeparationError("O separador de voz não está instalado nesta versão.")
-    cmd = [_python(), "-m", "core.separate", str(src_wav), str(out_wav16), str(model), use_gpu]
+    cmd = module_cmd(_python(), "core.separate", str(src_wav), str(out_wav16), str(model), use_gpu)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                            cwd=str(Path(__file__).resolve().parent.parent), creationflags=_NO_WINDOW)
+                            cwd=str(app_root()), creationflags=_NO_WINDOW)
     where, err = "", ""
     try:
         for line in proc.stdout:

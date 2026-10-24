@@ -108,11 +108,32 @@ def logs_dir() -> Path:
     return p
 
 
+def code_root() -> Path:
+    """Pasta do código que está rodando: a do programa instalado ou, depois de uma atualização,
+    `%ProgramData%\\CNT Legendas\\versoes\\<versão>` (só tem app/, core/ e lib/)."""
+    return Path(__file__).resolve().parent.parent
+
+
 def app_root() -> Path:
-    """Pasta do aplicativo instalado (onde ficam bin/ffmpeg.exe etc.)."""
+    """Pasta do aplicativo instalado (onde ficam bin/ffmpeg.exe, models/, python/ etc.).
+    A partida (`cntboot`) informa em CNT_INSTALL_ROOT; o código pode estar em outra pasta."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
+    env = os.environ.get("CNT_INSTALL_ROOT")
+    if env and Path(env).is_dir():
+        return Path(env)
+    return code_root()
+
+
+_MODULE_BOOT = ("import sys, runpy; sys.path.insert(0, sys.argv[1]); m = sys.argv[2]; "
+                "sys.argv = [m] + sys.argv[3:]; runpy.run_module(m, run_name='__main__', alter_sys=True)")
+
+
+def module_cmd(python: str, module: str, *args: str) -> list[str]:
+    """Comando para `python -m <module>` com o código desta versão. O Python embutido ignora a
+    pasta atual e o PYTHONPATH (arquivo ._pth): sem isto, o processo auxiliar rodaria o código
+    antigo da pasta do programa em vez do código da atualização."""
+    return [python, "-c", _MODULE_BOOT, str(code_root()), module, *[str(a) for a in args]]
 
 
 @dataclass

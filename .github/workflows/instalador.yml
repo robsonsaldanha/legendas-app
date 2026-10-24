@@ -83,6 +83,11 @@ jobs:
           $esperado = "$((& $py -c 'import core; print(core.__version__)').Trim()).$env:CNT_BUILD"
           if ($info -notmatch [regex]::Escape("$esperado $env:CNT_CANAL $esperado")) { throw "versão/canal errados: $info (esperado $esperado $env:CNT_CANAL)" }
           "::notice title=Partida::$info"
+          # pacote de atualização: o código numa pasta de versão, com ffmpeg e modelos do programa instalado
+          $pac = "$env:RUNNER_TEMP\pacote"
+          Expand-Archive (Get-ChildItem build\Output\Atualizacao_CNT_Legendas_*.zip | Select-Object -First 1).FullName $pac -Force
+          & $py packaging\teste_pacote.py $pac "$env:ProgramFiles\CNT Legendas"
+          if ($LASTEXITCODE) { throw "o pacote de atualização não roda sobre o programa instalado" }
           # janela própria (WebView2): abre pelo atalho de verdade, espera a tela desenhar e fecha
           $res = "$env:RUNNER_TEMP\janela.txt"
           $wv = Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" -ErrorAction SilentlyContinue

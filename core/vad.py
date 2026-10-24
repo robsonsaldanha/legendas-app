@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+from .config import app_root
+
 import numpy as np
 
 log = logging.getLogger(__name__)
@@ -34,7 +36,7 @@ def model_paths() -> list[Path]:
     paths = []
     if os.environ.get("CNT_VAD_MODEL"):
         paths.append(Path(os.environ["CNT_VAD_MODEL"]))
-    paths += [here / "models" / MODEL_NAME, here.parent / "models" / MODEL_NAME]
+    paths += [here / "models" / MODEL_NAME, here.parent / "models" / MODEL_NAME, app_root() / "models" / MODEL_NAME]
     if getattr(sys, "frozen", False):
         paths.append(Path(sys.executable).parent / "models" / MODEL_NAME)
     return paths
