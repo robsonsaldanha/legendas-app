@@ -272,3 +272,13 @@
 - Entram na tradução pela API (trabalhos do editor e do "Novo trabalho": `obra_id` nos parâmetros), na tradução pelo ChatGPT (projeto do episódio aberto) e na transcrição (palavras-chave).
 - Telas: Configurações → **Glossário geral**; projeto → menu ⋯ → **Glossário do projeto…**; a janela de tradução mostra "Glossário: N termos (X geral · Y do cliente · Z do projeto)". Editor de glossário com importar/exportar CSV (`app/static/glossario.js`).
 - Perfil na nuvem: `glossario_geral` (junta com o daqui) e `glossarios_projeto` pelo nome do projeto (só preenche projeto com o mesmo nome que ainda não tem glossário).
+
+## 2026-10-24 — Plano da 2.15 (antes de começar): sete pedidos do Róbson
+1. **Memória de tradução**, sem pipocar na tela: ao salvar uma tradução, os pares original → tradução ficam guardados (por idioma, cliente e projeto). No editor, quando a legenda selecionada tem original e já houve uma tradução igual ou muito parecida antes, aparece **uma linha discreta** abaixo do texto ("Já traduzido: … · Usar"). Nada de janelas nem avisos.
+2. **Formato de entrega**: padrão `.srt`. Também `.vtt`, `.ttml` (DFXP/IMSC) e `.ass`. Quem muda o padrão: **global** (Configurações), **equipe** (Workspace da empresa, no site), **cliente** e **projeto** — o mais específico vale (projeto > cliente > equipe > global). Na hora de entregar dá para trocar só daquela vez. O "Salvar" do editor continua em `.srt` (arquivo de trabalho).
+3. **Prazo de entrega** por episódio/filme, opcional. A barra do topo mostra a próxima entrega prevista; no editor, o prazo do episódio aberto.
+4. **Histórico de versões** da legenda: cada "Salvar" guarda uma versão (até 50 por arquivo); no editor, "Versões…" lista, compara com a atual (o que mudou em cada legenda) e restaura (vira alteração não salva, dá para desfazer).
+5. **Corretor ortográfico**: só indica e sugere. Abaixo do texto da legenda, as palavras com possível erro aparecem com sugestões clicáveis; "Adicionar ao dicionário" guarda a palavra (dicionário pessoal, entra no perfil na nuvem). Nomes próprios (inicial maiúscula), números e termos dos glossários não são marcados. Biblioteca `pyspellchecker` (Python puro, vai no pacote de atualização).
+6. **Aviso na bandeja** quando um trabalho em segundo plano termina (ou falha); clicar abre o trabalho.
+7. **Relatar um problema**: no programa (Configurações e menu da bandeja), descrição + e-mail + registro técnico (com consentimento) → servidor → painel "Suporte".
+- Pendências para o futuro (anotadas em [[Fases]]): PIX automático e nota fiscal pelo **Mercado Pago** quando houver conta PJ; lembrete de renovação por e-mail e no programa.

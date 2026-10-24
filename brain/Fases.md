@@ -82,6 +82,9 @@
 - [x] 2.10.0: licença (1 dia de avaliação, modo grátis, ativação por código, recursos pagos) e atualização automática obrigatória pelos canais desenvolvimento/produção (ver Licenciamento.md). Precisa ser instalada uma vez pelo instalador.
 - [x] 2.13.0: perfil na nuvem (um por computador ativado; restaurar em PC novo/formatado; exportar/importar arquivo), Workspace da empresa no programa (perfis "Empresa: …", clientes e glossários compartilhados), métricas de produção no servidor (área do cliente → Produção; Workspace → Produção da equipe)
 - [x] 2.14.0: glossário em três níveis — geral (Configurações), cliente e projeto (menu ⋯ do projeto); o mais específico vale
+- [ ] 2.15 (em andamento): memória de tradução, formato de entrega (srt padrão; vtt/ttml/ass por global/equipe/cliente/projeto), prazo de entrega, histórico de versões, corretor ortográfico, aviso de trabalho concluído na bandeja, "Relatar um problema"
+- [ ] **Futuro:** PIX automático + nota fiscal pelo **Mercado Pago** quando o Róbson tiver conta PJ (substitui a aprovação manual do PIX)
+- [ ] **Futuro:** lembrete de renovação (e-mail e aviso no programa alguns dias antes do vencimento, com o link do pagamento)
 - [ ] Apagar cliente/glossário no Workspace propagar para os colegas (hoje apagar não se propaga, de propósito)
 - [ ] Ligar a produção (nginx + certificado de legendas.cntoficial.com.br, variável CNT_PROD_ATIVO) quando o Róbson aprovar; termos revisados por advogado
 - [ ] Nuitka nos módulos de licença; repositório privado + runner próprio
