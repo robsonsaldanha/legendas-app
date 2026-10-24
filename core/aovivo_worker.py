@@ -95,9 +95,9 @@ def principal(argv: list[str] | None = None) -> int:
     except Exception as e:  # noqa: BLE001
         emitir(tipo="erro", mensagem=f"Não consegui carregar o reconhecimento de fala: {e}")
         return 2
-    cmd = [a.ffmpeg, "-hide_banner", "-loglevel", "error", *entrada_ffmpeg(a.fonte), "-vn", "-ac", "1", "-ar", str(TAXA), "-f", "s16le", "-"]
+    cmd = [a.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", *entrada_ffmpeg(a.fonte), "-vn", "-ac", "1", "-ar", str(TAXA), "-f", "s16le", "-"]
     try:
-        ff = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        ff = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               creationflags=0x08000000 if sys.platform == "win32" else 0)
     except OSError as e:
         emitir(tipo="erro", mensagem=f"Não consegui abrir a entrada de áudio: {e}")

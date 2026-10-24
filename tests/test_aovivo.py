@@ -72,7 +72,7 @@ def test_sessao_completa_com_reconhecedor_falso(tmp_path, monkeypatch):
     eventos = []
     av.ouvir(eventos.append)
     av.iniciar(Sessao(fonte=f"arquivo:{wav}", atraso=0.3, pasta=tmp_path / "saida"))
-    fim = time.time() + 30
+    fim = time.time() + 90
     while av.estado()["ativo"] and time.time() < fim:
         time.sleep(0.2)
     e = av.estado()

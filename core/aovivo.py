@@ -237,7 +237,8 @@ class AoVivo:
             self.sessao = sessao
             cmd = self._module_cmd(self._python, "core.aovivo_worker", "--fonte", sessao.fonte, "--idioma", sessao.idioma,
                                    "--modelo", sessao.modelo, "--prompt", prompt[:800], "--ffmpeg", str(self._ffmpeg()))
-            self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+            self._proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                          text=True, encoding="utf-8",
                                           creationflags=0x08000000 if sys.platform == "win32" else 0)
         threading.Thread(target=self._ler, args=(self._proc, sessao), daemon=True, name="aovivo-ler").start()
         threading.Thread(target=self._relogio, args=(sessao,), daemon=True, name="aovivo-relogio").start()

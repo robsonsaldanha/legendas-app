@@ -367,9 +367,13 @@ def mixar(video: str | Path, faixa: str | Path, trechos: list[tuple[float, float
         f"[0:a:0]aformat=channel_layouts=stereo,volume='{expressao_volume(trechos, abaixar)}':eval=frame[base];"
         "[1:a]aformat=channel_layouts=stereo,volume=1.0[ad];"
         "[base][ad]amix=inputs=2:normalize=0:duration=first[mix]", encoding="utf-8")
-    r = subprocess.run([ffmpeg, "-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-i", str(video), "-i", str(faixa),
-                        "-filter_complex_script", str(script), "-map", "[mix]", "-ar", str(TAXA_SAIDA),
-                        "-c:a", "pcm_s16le", str(destino)], capture_output=True, creationflags=_NO_WINDOW)
+    def rodar(opcao: str):
+        return subprocess.run([ffmpeg, "-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-i", str(video), "-i", str(faixa),
+                               opcao, str(script), "-map", "[mix]", "-ar", str(TAXA_SAIDA),
+                               "-c:a", "pcm_s16le", str(destino)], capture_output=True, creationflags=_NO_WINDOW)
+    r = rodar("-/filter_complex")                      # ffmpeg 7.1 em diante (o 8 não aceita mais o jeito antigo)
+    if r.returncode != 0 and b"filter_complex" in (r.stderr or b"") and b"ption" in (r.stderr or b""):
+        r = rodar("-filter_complex_script")            # ffmpeg mais antigo
     script.unlink(missing_ok=True)
     if r.returncode != 0:
         raise RuntimeError("Não consegui mixar o áudio: " + (r.stderr or b"").decode("utf-8", "replace").strip()[-300:])
