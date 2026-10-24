@@ -24,14 +24,19 @@ Decisões de 2026-10-22/23 (conversa com o Róbson):
 
 ## Planos (editáveis no painel)
 
-| Plano | Preço mensal | Computadores |
-|---|---|---|
-| Avaliação | — | 1 (24 h, tudo liberado) |
-| Grátis | R$ 0 | projetos, editor, tradução à mão |
-| Individual | R$ 49,99 | 1 |
-| Profissional | R$ 49,99 o primeiro + R$ 29,99 cada computador a mais | 2 a 20 |
-| Enterprise | sob consulta | 21 ou mais |
-| Vitalícia (oculto) | — | o que o painel definir |
+Atualizado em 2026-10-24 (servidor 1.1; detalhes no `brain/Decisões.md` do repositório do servidor):
+
+| Plano | Preço mensal | Licenças | Observação |
+|---|---|---|---|
+| Avaliação | — | 1 | 24 h, tudo liberado |
+| Grátis | R$ 0 | — | projetos, editor, tradução à mão |
+| Individual | R$ 49,90 | 1 | |
+| Teamwork (código `profissional`) | R$ 49,90 a primeira + R$ 29,90 cada adicional | 2 ou mais (a pessoa escolhe) | |
+| Business / Enterprise | sob cotação | 10 ou mais | plano de **equipe**: Workspace da empresa (só a conta compradora configura) |
+| Exclusivo | o que o painel definir | — | plano visível só para um cliente |
+| Vitalícia (oculto) | — | o que o painel definir | cortesia |
+
+A compra cria a **conta do cliente** (e-mail + senha); a área do cliente fica em `/login` → `/conta`. Termos, privacidade e cookies em `/termos`, `/privacidade`, `/cookies` (dados legais editáveis no painel); status em `/status`.
 
 O programa não conhece preços: só a **lista de recursos** que veio na licença assinada.
 
