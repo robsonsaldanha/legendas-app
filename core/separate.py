@@ -218,14 +218,14 @@ def to16k_mono(x: np.ndarray, sr: int) -> np.ndarray:
 
 def run_separation(src_wav: Path, out_wav16: Path, use_gpu: str = "auto",
                    progress: Callable[[float], None] | None = None,
-                   cancelled: Callable[[], bool] | None = None) -> str:
+                   cancelled: Callable[[], bool] | None = None, out_me: Path | None = None) -> str:
     """Separa num processo à parte (libera a placa ao terminar). Grava a voz em mono 16 kHz.
 
     Devolve onde rodou ("placa de vídeo"/"processador")."""
     model = model_path()
     if model is None:
         raise SeparationError("O separador de voz não está instalado nesta versão.")
-    cmd = module_cmd(_python(), "core.separate", str(src_wav), str(out_wav16), str(model), use_gpu)
+    cmd = module_cmd(_python(), "core.separate", str(src_wav), str(out_wav16), str(model), use_gpu, *([str(out_me)] if out_me else []))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                             cwd=str(app_root()), creationflags=_NO_WINDOW)
     where, err = "", ""
@@ -260,10 +260,19 @@ def _python() -> str:
 def _main(argv: list[str]) -> int:
     src, dst, model = argv[0], argv[1], argv[2]
     use_gpu = argv[3] if len(argv) > 3 else "auto"
+    me = argv[4] if len(argv) > 4 else ""        # CNT Dubla: grava também a música e os efeitos (original − voz), estéreo
     mix, sr = read_wav(src, as_int16=True)
     if sr != SR:
         raise SystemExit(f"áudio precisa estar em {SR} Hz")
     t0 = time.time()
+    if me:
+        voc, where = separate(mix, model, use_gpu, mono=False,
+                              progress=lambda p: print(json.dumps({"p": round(p, 3)}), flush=True))
+        resto = mix.astype(np.float32) / 32768 - voc
+        write_wav(me, resto, sr)
+        print(json.dumps({"onde": where, "segundos": round(time.time() - t0, 1)}), flush=True)
+        write_wav(dst, to16k_mono(voc, sr), 16000)
+        return 0
     voc, where = separate(mix, model, use_gpu, mono=True,
                           progress=lambda p: print(json.dumps({"p": round(p, 3)}), flush=True))
     del mix
