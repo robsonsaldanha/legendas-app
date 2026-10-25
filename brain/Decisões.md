@@ -395,3 +395,7 @@
 - **Licença da Dubla:** recursos `dublagem` (gravar takes, transcrever, sugerir personagens, M&E, exportar), `vozes_ia` (vozes por IA e sugestões de adaptação) e `clonagem` (voz clonada). Sem licença: criar e organizar projetos e editar o roteiro. A avaliação de 1 dia leva os três. Planos no servidor: Dublador e Estúdio, **sob consulta** até o Róbson pôr os preços.
 - **Tela:** selo da licença no topo (abre a janela de ativar/conferir), Configurações com licença, chave do serviço de IA (a mesma guardada pelo Legendas, se houver) e "Procurar atualização"; aviso de versão nova no topo.
 - **Montagem:** o mesmo programa montado (`build\CNTLegendas`, agora com `dubla\`) gera dois instaladores no Windows (`dubla.iss`, instala em "CNT Dubla", atalho `cntboot --produto dubla`) e dois pacotes no Mac/Linux (cópia por clone/ligação, sem gastar disco). O pacote de atualização é o mesmo arquivo, registrado no servidor da Dubla com a versão dela. Segredos do CI: `CNT_DUBLA_TOKEN_DEV` / `CNT_DUBLA_TOKEN_PROD`.
+
+## 2026-10-24 — Preços da Dubla e lista enxuta
+- CNT Dubla: **Dublador R$ 249,90 por mês**; **Business** (estúdios e empresas) **sob cotação** (servidor 1.11).
+- Saíram da lista (decisão do Róbson): T-057 (motor de clonagem local numa placa de vídeo) e T-075 (termos revisados por advogado, dados do MEI). Testar quando der.
