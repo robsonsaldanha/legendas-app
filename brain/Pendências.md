@@ -134,7 +134,7 @@ Roteiro e áudio de audiodescrição (descrição das cenas para pessoas cegas),
 
 **Pronto quando:** um episódio inteiro com roteiro, verificação, faixa mixada e exportações.
 
-## P-07 — CNT Dubla (estúdio de dublagem) · decidido em 24/10/2026
+## P-07 — CNT Dubla (estúdio de dublagem) · em pausa (26/10/2026): reestruturar a partir da pesquisa de mercado
 
 **Decisões do Róbson (24/10/2026):**
 - **Programa separado** ("CNT Dubla"), com instalador, ícone, janela e licença próprios — o motor por baixo é o mesmo do Legendas (mesmo repositório: pasta `dubla/` + `core/`).

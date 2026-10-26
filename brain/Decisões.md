@@ -399,3 +399,7 @@
 ## 2026-10-24 — Preços da Dubla e lista enxuta
 - CNT Dubla: **Dublador R$ 249,90 por mês**; **Business** (estúdios e empresas) **sob cotação** (servidor 1.11).
 - Saíram da lista (decisão do Róbson): T-057 (motor de clonagem local numa placa de vídeo) e T-075 (termos revisados por advogado, dados do MEI). Testar quando der.
+
+## 2026-10-26 — CNT Dubla em pausa para reestruturar
+- O Róbson achou que a Dubla 0.3 não ficou do jeito que o mercado trabalha. O site `dubla.` mostra só "em breve" (licença, atualização e painel seguem no ar) e a vitrine voltou para "em breve". O código continua no repositório.
+- Próximo passo: pesquisa do que dubladores e estúdios usam (adaptação com banda rítmica e marcações, integração com a mesa de gravação, gravação remota, gestão de anéis/escalação/agenda, formatos de entrega) e nova estrutura do produto, decidida com ele antes de programar.
