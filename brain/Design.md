@@ -16,7 +16,7 @@ Telas aprovadas pelo Róbson em 2026-10-22 (proposta "CNT Legendas — proposta 
 
 ## Tokens
 
-Cores: as do `:root` (grafite + lima) continuam. Novos: `--tip-bg` (dica), `--tip-line`, `--ink-2` (texto secundário com contraste ≥ 4,5:1 sobre `--panel`).
+Cores: as do `:root` (grafite + dourado da logo; até 26/10/2026 era lima) continuam. Novos: `--tip-bg` (dica), `--tip-line`, `--ink-2` (texto secundário com contraste ≥ 4,5:1 sobre `--panel`).
 
 Tipografia: Inter para tudo; Anton só no título da página (`.ds-title`, 44 px). Corpo 15 px / 1,5.
 
@@ -28,10 +28,10 @@ Alvos de clique ≥ 40 px (botões 44 px; "?" 24 px com área de 32 px).
 
 - **`.ds-page`**: coluna da página (máx. 1180 px), blocos com 32 px entre si.
 - **`.ds-head`**: título (Anton) + subtítulo + ações à direita; quebra em telas estreitas.
-- **`.ds-help`** — botão "?": `<button class="ds-help" aria-expanded aria-controls>`. Abre a **`.ds-tip`** (fundo `--tip-bg`, borda lima, título em negrito + texto + ×). Teclado: Enter/Espaço abre e fecha; Esc fecha. Uma dica aberta por vez. A função `helpBtn(id)` usa o texto de `HELP[id]`; a escrita das dicas: o que é, quando usar e o que acontece com os arquivos.
+- **`.ds-help`** — botão "?": `<button class="ds-help" aria-expanded aria-controls>`. Abre a **`.ds-tip`** (fundo `--tip-bg`, borda dourada, título em negrito + texto + ×). Teclado: Enter/Espaço abre e fecha; Esc fecha. Uma dica aberta por vez. A função `helpBtn(id)` usa o texto de `HELP[id]`; a escrita das dicas: o que é, quando usar e o que acontece com os arquivos.
 - **`.ds-row`**: linha de projeto (nome + meta | progresso | próximo passo | botão). Quebra em 2 linhas abaixo de 900 px.
-- **`.ds-track`**: trilha de 4 passos (Arquivos → Traduzir → Revisar → Entregar). Feito = lima; atual = lima 45% + rótulo lima; a fazer = cinza. É uma `<ol>`, com o passo atual marcado com `aria-current="step"`.
-- **`.ds-choice`**: cartão de escolha (botão com `aria-pressed`), borda lima quando escolhido.
+- **`.ds-track`**: trilha de 4 passos (Arquivos → Traduzir → Revisar → Entregar). Feito = dourado; atual = dourado 45% + rótulo dourado; a fazer = cinza. É uma `<ol>`, com o passo atual marcado com `aria-current="step"`.
+- **`.ds-choice`**: cartão de escolha (botão com `aria-pressed`), borda dourada quando escolhido.
 - **`.ds-set`**: lista de configurações (título + valor atual + "?" + botão de ação), uma linha por item; o técnico fica em "Avançado" recolhido.
 - **`.ds-chip`**: pílula de resumo ("3 em andamento").
 

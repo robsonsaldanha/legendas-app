@@ -53,7 +53,7 @@ Página única, longa, com rolagem por seções. Layout (definido pelo Róbson a
 12. **Botão flutuante de WhatsApp** (canto inferior direito) e **aviso de cookies** (canto inferior esquerdo, "Aceitar todos" / "Só essenciais", com link para a política).
 
 **Visual:** identidade da CNT, layout da referência.
-- Cores: grafite quase preto de fundo (tokens atuais `--bg`/`--panel`), texto claro; **cor de destaque = lima da CNT** (`--accent` #C9D94B) nos botões e na palavra destacada; seção de produtos em off-white; dourado só no logo.
+- Cores: grafite quase preto de fundo (tokens atuais `--bg`/`--panel`), texto claro; **cor de destaque = dourado da logo** (`--accent` #DDB06A; no tema claro #8C6418) nos botões e na palavra destacada; seção de produtos em off-white. (Até 26/10/2026 era lima.)
 - Tipografia: títulos na fonte display da marca (hoje Anton) ou numa geométrica em negrito, grandes (60–72 px no computador); texto em Inter; rótulos e endereços em mono.
 - Muito respiro (seções de ~600–900 px de altura), cantos arredondados nos cartões, animações suaves ao rolar (aparecer de baixo), sem exagero. Respeitar `prefers-reduced-motion`.
 - Celular primeiro: tudo empilhado, menu vira gaveta, títulos ~40 px.
@@ -174,6 +174,17 @@ Roteiro e áudio de audiodescrição (descrição das cenas para pessoas cegas),
 - **Documentação** pública (OpenAPI) em `/api/docs` do servidor do Legendas (depois `api.cntoficial.com.br/docs`).
 
 **Pronto quando:** uma empresa de teste cria a chave, cadastra um cliente com glossário pela API, a equipe vê no programa, e a produção volta para a empresa pelo webhook.
+
+---
+
+## P-16 — Projeto central da equipe (legendagem + dublagem) · rascunho
+
+Pedido do Róbson em 26/10/2026, depois de entender o fluxo das empresas de localização (detalhes em [[Fluxo de localização]]).
+- **Ideia:** um lugar onde o coordenador acompanha o filme inteiro — legenda e dublagem lado a lado, por idioma —, com o material recebido, quem faz cada etapa, prazos, aprovações do cliente, glossário e nomes únicos para as duas trilhas e as versões do vídeo.
+- **Trilha A:** o CNT Legendas (já existe). **Trilha B:** a CNT Dubla reestruturada (P-07).
+- **A decidir com o Róbson antes de programar:** quem é o primeiro cliente (empresa grande, estúdio pequeno, autônomo); se fica no Workspace da área do cliente ou num programa próprio; como o cliente final aprova; como tratar versão nova do vídeo.
+
+**Pronto quando:** a estrutura (telas e quem faz o quê em cada etapa) estiver aprovada pelo Róbson.
 
 ---
 

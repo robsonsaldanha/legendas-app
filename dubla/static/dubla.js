@@ -328,7 +328,7 @@ async function abaElenco(p) {
   const vozTxt = (v) => (!v ? "Voz do sistema" : v.tipo === "servico" ? `Serviço: ${v.voz || "marin"}` : v.tipo === "clonada" ? "Clonada (com termo)" : "Voz do sistema");
   $("#aba").innerHTML = `<div class="db-grid2">
     <section class="panel"><h2>Personagens</h2><table class="db-tabela"><thead><tr><th></th><th>Nome</th><th>Dublador</th><th>Voz por IA</th><th>Falas</th><th>Anéis</th></tr></thead>
-      <tbody>${p.personagens.map((x) => `<tr data-id="${x.id}"><td><input type="color" name="cor" value="${esc(x.cor || "#C9D94B")}" aria-label="Cor"></td>
+      <tbody>${p.personagens.map((x) => `<tr data-id="${x.id}"><td><input type="color" name="cor" value="${esc(x.cor || "#DDB06A")}" aria-label="Cor"></td>
         <td><input type="text" name="nome" value="${esc(x.nome)}" style="width:140px"></td>
         <td><select name="dublador_id"><option value="">—</option>${dubladores.map((d) => `<option value="${d.id}" ${d.id === x.dublador_id ? "selected" : ""}>${esc(d.nome)}</option>`).join("")}</select></td>
         <td><button class="btn sm" data-a="voz">${esc(vozTxt(x.voz_ia))}</button></td>

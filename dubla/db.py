@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS consentimentos (    -- clonagem de voz: termo assinad
 );
 """
 
-CORES = ["#C9D94B", "#5BC0EB", "#F25F5C", "#B388EB", "#FFB627", "#4ECDC4", "#FF8C61", "#9BC53D", "#E980FC", "#7DCFB6"]
+CORES = ["#DDB06A", "#5BC0EB", "#F25F5C", "#B388EB", "#FFB627", "#4ECDC4", "#FF8C61", "#9BC53D", "#E980FC", "#7DCFB6"]
 
 
 def agora() -> str:

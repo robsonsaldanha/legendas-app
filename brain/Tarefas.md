@@ -56,6 +56,9 @@ _(nada no momento)_
 - [x] T-058 · P-07 · Integração: botão "Dublagem" no editor do Legendas manda vídeo + legenda (+ original) para "Recebidos" da Dubla; a Dubla entrega a legenda com o texto dublado (.srt) — Dubla 0.2 / Legendas 2.22
 - [x] T-059 · P-07 · Instalador próprio, licença própria (produto "dubla" no servidor e na conta CNT), site `dubla.` — Dubla 0.3 / servidor 1.10 / hub 1.2 (preços dos planos: sob consulta até o Róbson definir)
 
+- [ ] T-090 · P-16 · Desenhar o projeto central da equipe (legendagem + dublagem): telas e quem faz o quê em cada etapa, a partir de [[Fluxo de localização]]
+- [ ] T-091 · P-07 · Reestruturar a CNT Dubla a partir da pesquisa de mercado (decisões: primeiro cliente, banda rítmica, integração com a mesa de gravação, gravação remota)
+
 ### API CNT
 - [x] ~~T-060 · P-08 · Fila de processamento no servidor~~ — descartado em 24/10/2026: a API é só de integração
 - [x] T-061 · P-08 · Chaves de API por licença de equipe (área do cliente → API), permissões por recurso, validade, revogar — servidor 1.9 (ambiente de teste = dev-legendas)

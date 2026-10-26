@@ -93,6 +93,7 @@
 - [x] 2.21.0: legenda ao vivo e audiodescrição viram recursos da licença (todos os planos, menos a avaliação)
 - [x] CNT Dubla 0.1 (programa separado, `python -m dubla`): roteiro de dublagem, personagens (sugestão pela voz), anéis, escalação, estúdio de gravação com takes, direção, M&E, mixagem e entregas, vozes por IA (sistema/serviço) e termo de consentimento de voz
 - [x] 2.22.0 / CNT Dubla 0.2: botão "Dublagem" no editor manda o vídeo e a legenda para a CNT Dubla; a Dubla entrega também a legenda com o texto dublado
+- [x] 2.23.0: cor de destaque dourada (a da logo) no programa, no site, no hub e nos painéis
 - [x] CNT Dubla 0.3: instalador próprio (Windows, Mac e Linux), licença e atualização próprias (dubla.cntoficial.com.br), site e área do cliente pela conta CNT
 - Próximos passos (família CNT, Mac/Linux, ao vivo, audiodescrição, dublagem, API e pendências antigas): ver [[Tarefas]] e [[Pendências]]
 - [x] 2.11.0: janela própria (WebView2), sem abas nem barra de endereço; o X pergunta antes de fechar

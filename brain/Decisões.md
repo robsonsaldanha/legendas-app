@@ -403,3 +403,10 @@
 ## 2026-10-26 — CNT Dubla em pausa para reestruturar
 - O Róbson achou que a Dubla 0.3 não ficou do jeito que o mercado trabalha. O site `dubla.` mostra só "em breve" (licença, atualização e painel seguem no ar) e a vitrine voltou para "em breve". O código continua no repositório.
 - Próximo passo: pesquisa do que dubladores e estúdios usam (adaptação com banda rítmica e marcações, integração com a mesa de gravação, gravação remota, gestão de anéis/escalação/agenda, formatos de entrega) e nova estrutura do produto, decidida com ele antes de programar.
+
+## 2026-10-26 — 2.23: destaque dourado (o da logo) em toda a família CNT
+- Pedido do Róbson: o verde-lima vira o dourado da logo no programa, nos sites (Legendas, hub) e nos painéis.
+- Tema escuro: `--accent` #DDB06A (meio do degradê da logo), passar o mouse #EBC587, texto sobre o destaque #1F1606. Tema claro e seções claras do site: #8C6418 (contraste ≥ 4,5:1 sobre o fundo claro).
+- Como o dourado ficava parecido com o amarelo de aviso, o aviso passou a laranja (#F0A04B; no tema claro #A0521A). Forma de onda dourada (#CFA463). O selo "Em todos os planos"/"No ar" ficou dourado; "Em breve" ficou cinza.
+- O verde continua só onde quer dizer "funcionando" (ponto "Online", status do servidor).
+- Capturas do site refeitas com o programa novo.
