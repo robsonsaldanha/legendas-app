@@ -95,3 +95,58 @@ def test_bad_zip_rejected(chave, tmp_path):
     z.write_bytes(buf.getvalue())
     with pytest.raises(A.AtualizacaoError):
         up.aplicar_patch(z)
+
+
+def test_novidades_limpas():
+    """A mensagem da versão vira itens curtos, sem número de versão, marcas do CI e assinaturas."""
+    notas = ("2.24.0: tela de atualização com etapas e contagem [skip ci]\n\n- mostra o que mudou ao reabrir\n"
+             "* erro com código\nCo-Authored-By: alguém\nClaude-Session: x")
+    assert A.novidades(notas) == ["Tela de atualização com etapas e contagem", "Mostra o que mudou ao reabrir", "Erro com código"]
+    assert A.novidades("") == []
+
+
+def test_executar_espera_a_tela_e_anota_o_resultado(chave, tmp_path, monkeypatch):
+    """Instalada a versão nova, fica em `pronto` até a tela contar 3, 2, 1; anota de→para antes de reiniciar.
+    Na abertura seguinte, a versão igual ou maior = sucesso; menor = a nova não abriu (ER-RA-441)."""
+    import threading
+    up = A.Atualizador(device_id="d" * 64)
+    up.info = {"versao": "9.0.0", "pacote": "patch", "notas": "9.0.0: Novidade boa"}
+    monkeypatch.setattr(up, "baixar", lambda destino: (destino.write_bytes(pacote()), destino)[1])
+    chamado = []
+    t = threading.Thread(target=up.executar, args=(lambda *a: chamado.append(a),))
+    t.start()
+    for _ in range(100):
+        if up.estado == "pronto":
+            break
+        threading.Event().wait(0.05)
+    assert up.estado == "pronto" and chamado == []          # espera a contagem da tela
+    up.confirmar_reinicio()
+    t.join(5)
+    assert chamado == [("patch",)] and up.estado == "reiniciando"
+    r = A.resultado_ao_abrir("9.0.0")
+    assert r["situacao"] == "sucesso" and r["novidades"] == ["Novidade boa"]
+    r = A.resultado_ao_abrir("2.0.0")                        # a partida voltou para a anterior
+    assert r["situacao"] == "erro" and r["codigo"] == "ER-RA-441" and "9.0.0" in r["mensagem"]
+    A.marcar_visto()
+    assert A.resultado_ao_abrir("9.0.0") is None
+
+
+def test_executar_com_erro_tem_codigo(chave, monkeypatch):
+    up = A.Atualizador(device_id="d" * 64)
+    up.info = {"versao": "9.0.0", "pacote": "patch"}
+
+    def falha(destino):
+        raise A.AtualizacaoError("O arquivo baixado não confere.", "ER-RS-603")
+    monkeypatch.setattr(up, "baixar", falha)
+    up.executar(lambda *a: None, esperar_confirmacao=False)
+    assert up.estado == "erro" and up.codigo == "ER-RS-603" and up.to_dict()["codigo"] == "ER-RS-603"
+    assert A.resultado_ao_abrir() is None                     # nada foi instalado: nada a mostrar depois
+
+
+def test_primeira_abertura_depois_da_versao_antiga(chave):
+    """Vindo de uma versão que ainda não anotava (2.23), a 2.24 mostra as novidades dela uma vez."""
+    assert A.resultado_ao_abrir("2.23.0.56") is None             # primeira vez: só anota a versão
+    r = A.resultado_ao_abrir("2.24.0.60")
+    assert r["situacao"] == "sucesso" and r["de"] == "2.23.0.56" and len(r["novidades"]) >= 3
+    A.marcar_visto()
+    assert A.resultado_ao_abrir("2.24.0.60") is None             # não repete

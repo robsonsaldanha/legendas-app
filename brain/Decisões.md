@@ -410,3 +410,9 @@
 - Como o dourado ficava parecido com o amarelo de aviso, o aviso passou a laranja (#F0A04B; no tema claro #A0521A). Forma de onda dourada (#CFA463). O selo "Em todos os planos"/"No ar" ficou dourado; "Em breve" ficou cinza.
 - O verde continua só onde quer dizer "funcionando" (ponto "Online", status do servidor).
 - Capturas do site refeitas com o programa novo.
+
+## 2026-10-26 — 2.24: atualização passo a passo e "o que mudou" ao reabrir
+- Pedido do Róbson: com atualizações pequenas o programa abria, fechava e reabria tão rápido que parecia defeito. Agora a tela mostra os passos (procurar, baixar com %, instalar), conta 3, 2, 1 e diz "Reiniciando o aplicativo…" antes de fechar.
+- Ao reabrir, "Atualização concluída" com o que mudou, ou "Erro na atualização" com o código (ER-RA-441: a versão nova não abriu e a partida voltou para a anterior). Caixa para não mostrar mais a tela de novidades; erros aparecem sempre.
+- **As notas da versão são a mensagem do commit** (o CI manda para o servidor): a partir de agora, o commit de versão do programa é escrito para quem usa — primeira linha `X.Y.Z: resumo` e um item por novidade, em português simples. Linhas técnicas ficam fora ou num commit separado.
+- Quem atualizar da 2.22/2.23 vê o fluxo antigo nessa primeira vez (é o código antigo que baixa); ao abrir a 2.24, as novidades aparecem pela lista local `NOVIDADES_LOCAIS`.

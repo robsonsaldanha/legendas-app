@@ -75,7 +75,7 @@ class App:
             if info["estado"] != "disponivel":
                 return info
         self.updater.estado = "baixando"
-        threading.Thread(target=self.updater.executar, args=(self._reiniciar,), daemon=True, name="atualizacao").start()
+        threading.Thread(target=self.updater.executar, args=(self._reiniciar, False), daemon=True, name="atualizacao").start()
         return self.updater.to_dict()
 
 

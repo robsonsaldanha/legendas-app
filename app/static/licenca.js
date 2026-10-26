@@ -87,56 +87,159 @@ async function refreshLicenseSoon() {
   }
 }
 
-/* ------------------------------------------------------------ atualização obrigatória */
+/* ------------------------------------------------------------ atualização ao abrir (2.24)
+   Ao abrir, a tela mostra cada passo — procurando, baixando (com %), instalando — e, com a versão nova
+   instalada, conta 3, 2, 1 antes de fechar e reabrir. Assim o fechar-e-abrir não parece defeito.
+   Na abertura seguinte, mostra se deu certo (com o que mudou) ou o erro com o código. */
 
-const UPD_BUSY = ["verificando", "disponivel", "baixando", "aplicando", "reiniciando", "instalando"];
+const UPD_BUSY = ["verificando", "disponivel", "baixando", "aplicando", "pronto", "reiniciando", "instalando"];
+const UPD_MIN_MS = 900;                       // cada passo fica na tela pelo menos isso (para dar para ler)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function updOverlay() {
+  let ov = document.querySelector(".upd-ov");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.className = "upd-ov";
+    ov.setAttribute("role", "alertdialog");
+    ov.setAttribute("aria-live", "polite");
+    ov.setAttribute("aria-label", "Atualização do CNT Legendas");
+    document.body.appendChild(ov);
+  }
+  return ov;
+}
+
+const UPD_PASSOS = ["Procurar", "Baixar", "Instalar", "Reiniciar"];
+function updDraw(ov, { passo, titulo, texto = "", pct = null, versaoAtual = "", extra = "" }) {
+  ov.innerHTML = `<div class="upd-box">
+    <ol class="upd-passos" aria-label="Etapas da atualização">${UPD_PASSOS.map((n, i) =>
+      `<li class="${i < passo ? "feito" : i === passo ? "atual" : ""}" ${i === passo ? 'aria-current="step"' : ""}>${esc(n)}</li>`).join("")}</ol>
+    <h2>${esc(titulo)}</h2>${texto ? `<p class="muted">${texto}</p>` : ""}
+    ${pct != null ? `<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>
+      <p class="upd-pct tnum">${pct}%</p>` : extra ? "" : `<div class="upd-spin" aria-hidden="true"></div>`}
+    ${extra}
+    ${versaoAtual ? `<p class="muted small">Versão atual: ${esc(versaoAtual)}</p>` : ""}</div>`;
+}
 
 async function updateGate() {
   let u = S.state?.atualizacao;
-  if (!u || u.estado === "parado") { refreshLicenseSoon(); return; }
-  let ov = null;
-  const draw = () => {
-    const pct = Math.round((u.progresso || 0) * 100);
-    const t = {
-      verificando: ["Procurando atualizações…", ""],
-      disponivel: [`Nova versão ${u.versao}`, "Preparando o download…"],
-      baixando: [`Baixando a versão ${u.versao}`, `${pct}%${u.tamanho ? ` de ${fmtSize(u.tamanho)}` : ""}`],
-      aplicando: [`Instalando a versão ${u.versao}`, "Quase lá…"],
-      reiniciando: ["Reiniciando o CNT Legendas", "A página recarrega sozinha."],
-      instalando: [`Instalando a versão ${u.versao}`, "O instalador está rodando. O programa reabre sozinho quando terminar; pode fechar esta página."],
-    }[u.estado] || ["", ""];
-    if (!ov) {
-      ov = document.createElement("div");
-      ov.className = "upd-ov";
-      ov.setAttribute("role", "alertdialog");
-      ov.setAttribute("aria-live", "polite");
-      document.body.appendChild(ov);
+  if (!u || !UPD_BUSY.includes(u.estado) && u.estado !== "erro") { refreshLicenseSoon(); await mostrarResultadoDaAtualizacao(); return; }
+  const ov = updOverlay();
+  let ultimo = "", desde = 0;
+  const passo = async (estado) => {           // tempo mínimo de cada passo antes de trocar
+    if (estado !== ultimo) {
+      const falta = UPD_MIN_MS - (Date.now() - desde);
+      if (ultimo && falta > 0) await sleep(falta);
+      ultimo = estado; desde = Date.now();
     }
-    ov.innerHTML = `<div class="upd-box"><h2>${esc(t[0])}</h2><p class="muted">${esc(t[1])}</p>
-      ${u.estado === "baixando" ? `<div class="bar"><i style="width:${pct}%"></i></div>` : `<div class="upd-spin" aria-hidden="true"></div>`}
-      ${u.notas && u.estado !== "verificando" ? `<details><summary>O que muda</summary><p class="small">${esc(u.notas)}</p></details>` : ""}
-      <p class="muted small">Versão atual: ${esc(u.versao_atual)}</p></div>`;
   };
-  while (UPD_BUSY.includes(u.estado)) {
-    draw();
-    if (u.estado === "reiniciando") { await waitRestartAndReload(); return; }
-    if (u.estado === "instalando") return;           // o instalador fecha e reabre o programa
-    await new Promise((r) => setTimeout(r, 600));
+  while (true) {
+    const novo = u.versao ? `a versão ${u.versao}` : "a versão nova";
+    if (u.estado === "verificando") {
+      await passo("verificando");
+      updDraw(ov, { passo: 0, titulo: "Procurando atualizações…", versaoAtual: u.versao_atual });
+    } else if (u.estado === "disponivel" || u.estado === "baixando") {
+      await passo("baixando");
+      const pct = Math.round((u.progresso || 0) * 100);
+      updDraw(ov, { passo: 1, titulo: `Baixando ${novo}`, pct,
+        texto: u.tamanho ? `${fmtSize(Math.round((u.progresso || 0) * u.tamanho))} de ${fmtSize(u.tamanho)}` : "", versaoAtual: u.versao_atual });
+    } else if (u.estado === "aplicando") {
+      await passo("aplicando");
+      updDraw(ov, { passo: 2, titulo: "Instalando a atualização…", texto: "Não feche o programa.", versaoAtual: u.versao_atual });
+    } else if (u.estado === "pronto") {
+      await passo("pronto");
+      await contagemEReinicio(ov, u);
+      return;
+    } else if (u.estado === "reiniciando" || u.estado === "instalando") {
+      updDraw(ov, { passo: 3, titulo: "Reiniciando o aplicativo…", texto: u.estado === "instalando"
+        ? "O instalador está rodando (o Windows pode pedir permissão). O programa reabre sozinho quando terminar." : "Ele abre de novo em alguns segundos." });
+      if (u.estado === "reiniciando") await waitRestartAndReload();
+      return;
+    } else if (u.estado === "erro") {
+      await passo("erro");
+      await erroNaAtualizacao(ov, u);
+      break;
+    } else {                                   // atualizado, sem conexão ou parado: segue para o programa
+      await passo("fim");
+      break;
+    }
+    await sleep(400);
     try { u = await api("GET", "/api/atualizacao"); } catch { u = { ...u, estado: "reiniciando" }; }
   }
-  if (u.estado === "erro") toast(`A atualização não deu certo: ${u.erro}. O programa segue na versão atual; ela será tentada de novo na próxima abertura.`, true);
-  ov?.remove();
+  ov.remove();
   refreshLicenseSoon();
+  await mostrarResultadoDaAtualizacao();
+}
+
+/* Versão nova instalada: 3, 2, 1 → "Reiniciando o aplicativo…" (1 s) → fecha e reabre. */
+async function contagemEReinicio(ov, u) {
+  const instalador = u.pacote && u.pacote !== "patch";
+  for (let n = 3; n >= 1; n--) {
+    updDraw(ov, { passo: 3, titulo: "Atualização instalada", texto: instalador
+      ? `O instalador da versão ${esc(u.versao || "")} abre em <b class="tnum">${n}</b>…`
+      : `Reiniciando o aplicativo em <b class="tnum">${n}</b>…`, extra: `<div class="upd-contagem tnum" aria-hidden="true">${n}</div>` });
+    await sleep(1000);
+  }
+  updDraw(ov, { passo: 3, titulo: "Reiniciando o aplicativo…", texto: "Ele abre de novo em alguns segundos, já na versão nova." });
+  await sleep(1000);
+  try { await api("POST", "/api/atualizacao/reiniciar"); } catch { /* o servidor já pode estar fechando */ }
+  if (!instalador) await waitRestartAndReload();
+}
+
+async function erroNaAtualizacao(ov, u) {
+  await new Promise((ok) => {
+    updDraw(ov, { passo: 1, titulo: "Não foi possível atualizar agora",
+      texto: `${esc(u.erro || "A atualização não terminou.")}<br><span class="small">O programa continua na versão atual e tenta de novo na próxima vez que abrir.</span>`,
+      extra: `<p class="upd-codigo">Código do erro: <b class="mono">${esc(u.codigo || "ER-RA-440")}</b></p>
+        <div class="row" style="justify-content:center"><button class="btn primary" id="upd-seguir">Continuar na versão atual</button></div>`,
+      versaoAtual: u.versao_atual });
+    const b = document.getElementById("upd-seguir");
+    b.focus();
+    b.addEventListener("click", ok, { once: true });
+  });
+  try { await api("POST", "/api/atualizacao/continuar"); } catch { /* segue */ }
+}
+
+/* Depois de reabrir: "atualizado com sucesso" (com o que mudou) ou o erro com o código. */
+async function mostrarResultadoDaAtualizacao() {
+  let r;
+  try { r = await api("GET", "/api/atualizacao/resultado"); } catch { return; }
+  const res = r.resultado;
+  if (!res) return;
+  if (res.situacao === "sucesso" && !r.mostrar_novidades) { api("POST", "/api/atualizacao/resultado/visto", {}).catch(() => {}); return; }
+  const ok = res.situacao === "sucesso";
+  const lista = (res.novidades || []).length
+    ? `<ul class="upd-novidades">${res.novidades.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>`
+    : `<p class="muted">Correções e melhorias internas.</p>`;
+  const corpo = ok
+    ? `<p><b>O CNT Legendas foi atualizado com sucesso</b> para a versão ${esc(res.versao)}${res.de ? ` (antes: ${esc(res.de)})` : ""}.</p>
+       <h3 class="upd-sub">O que mudou</h3>${lista}
+       <label class="check" style="margin-top:14px"><input type="checkbox" id="upd-nao-mostrar"> Não mostrar esta tela nas próximas atualizações</label>
+       <p class="muted small">Dá para ligar de novo em Configurações › Novidades da versão.</p>`
+    : `<p><b>A atualização não foi concluída.</b></p><p>${esc(res.mensagem || "")}</p>
+       <p class="upd-codigo">Código do erro: <b class="mono">${esc(res.codigo || "ER-RA-441")}</b></p>
+       <p class="muted small">Se acontecer de novo, use “Relatar um problema” e informe esse código.</p>`;
+  let nao = false;
+  await new Promise((fim) => {
+    const m = modal(ok ? "Atualização concluída" : "Erro na atualização", corpo,
+      `<button class="btn primary" data-k="ok" autofocus>${ok ? "Começar a usar" : "Entendi"}</button>`, { onClose: fim });
+    m.ov.addEventListener("change", (e) => { if (e.target.id === "upd-nao-mostrar") nao = e.target.checked; });
+    m.ov.querySelector('[data-k="ok"]').addEventListener("click", () => m.close());
+  });
+  try {
+    const v = await api("POST", "/api/atualizacao/resultado/visto", { nao_mostrar: nao });
+    if (S.state?.settings) S.state.settings.mostrar_novidades = v.mostrar_novidades;
+  } catch { /* tenta de novo na próxima abertura */ }
 }
 
 async function waitRestartAndReload() {
-  await new Promise((r) => setTimeout(r, 2500));
+  await sleep(2500);
   for (let i = 0; i < 120; i++) {
     try {
       const r = await fetch("/api/atualizacao", { headers: { "X-Token": TOKEN } });
-      if (r.ok) { const u = await r.json(); if (u.estado !== "reiniciando") { location.reload(); return; } }
+      if (r.ok) { const u = await r.json(); if (!["reiniciando", "pronto"].includes(u.estado)) { location.reload(); return; } }
     } catch { /* ainda reiniciando */ }
-    await new Promise((r) => setTimeout(r, 1000));
+    await sleep(1000);
   }
   location.reload();
 }
