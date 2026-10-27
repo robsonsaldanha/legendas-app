@@ -32,6 +32,8 @@ const HELP = {
     "Todo computador tem 1 dia de avaliação com tudo liberado. Depois, criar projetos e traduzir à mão continuam grátis; o resto precisa de licença. O código de ativação chega por e-mail depois da compra e ativa um computador, uma vez. O programa confere a licença ao abrir e funciona até 30 dias sem internet."],
   "cfg-versao": ["Versão do programa",
     "Ao abrir, o programa procura versão nova e atualiza sozinho, mostrando cada passo (procurar, baixar, instalar) e contando 3, 2, 1 antes de reabrir. Com ele aberto, confere a cada 30 minutos e pergunta se quer atualizar agora: antes, oferece salvar a legenda aberta, e depois reabre onde você estava."],
+  "cfg-autosalvar": ["Salvamento automático",
+    "Com o editor aberto e alterações feitas, o programa salva sozinho no próprio arquivo a cada tantos minutos (você escolhe, de 1 a 60). Antes de cada salvamento, ele guarda a versão anterior: sempre no histórico de versões (botão 🕘 do editor) e, se você quiser, também ao lado da legenda ou numa pasta sua. Assim, se a luz cair ou o computador travar, você perde no máximo os últimos minutos — e dá para voltar atrás se não gostar do que foi salvo."],
   "cfg-novidades": ["Novidades da versão",
     "Depois de uma atualização, ao abrir, o programa mostra a versão nova e o que mudou. Desligado, ele abre direto. Se a atualização der erro, o aviso com o código aparece sempre."],
   "cfg-bandeja": ["Bandeja do sistema",

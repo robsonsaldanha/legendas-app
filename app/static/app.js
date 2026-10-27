@@ -1134,6 +1134,8 @@ async function renderSettings() {
         `<button class="ds-btn sm ${(st.licenca || {}).modo === "licenciada" ? "" : "primary"}" data-action="licenca">${(st.licenca || {}).modo === "licenciada" ? "Ver" : "Ativar"}</button>`)}
       ${setRow("cfg-versao", "Versão do programa", `${esc(st.versao_completa || st.version || "")} · o programa se atualiza sozinho ao abrir e avisa quando houver versão nova`,
         `<button class="ds-btn sm" data-action="check-update">Procurar atualização</button>`)}
+      ${setRow("cfg-autosalvar", "Salvamento automático", esc(resumoAutosalvar(s)),
+        `<button class="ds-btn sm" data-action="autosalvar">Ajustar</button>`)}
       ${setRow("cfg-novidades", "Novidades da versão", `<label class="check"><input type="checkbox" id="s-novidades" ${s.mostrar_novidades !== false ? "checked" : ""}>
           Depois de cada atualização, mostrar ao abrir o que mudou</label>`, "")}
       ${st.janela ? setRow("cfg-bandeja", "Bandeja do sistema", `<label class="check"><input type="checkbox" id="s-bandeja" ${s.bandeja !== false ? "checked" : ""}>
@@ -1308,6 +1310,7 @@ async function renderSettings() {
         toast("Configurações salvas.");
       }
       if (a === "check-update") await checkUpdate(true);
+      if (a === "autosalvar") await autosalvarModal();
       if (a === "perfil") await perfilModal();
       if (a === "glossario-geral") await glossarioGeral();
       if (a === "relatar") relatarProblema();
@@ -1481,3 +1484,55 @@ document.addEventListener("drop", (e) => e.preventDefault());
   setInterval(() => { if (!document.hidden) refreshRunningCount(); }, 5000);
   perfilAoAbrir();
 })();
+
+/* ================================================================ salvamento automático (2.25) */
+
+const AUTO_BACKUP = {
+  historico: "no histórico de versões do programa (botão 🕘 do editor)",
+  ao_lado: "ao lado da legenda (nome.anterior.srt)",
+  pasta: "numa pasta escolhida",
+};
+function resumoAutosalvar(s) {
+  if (s.autosalvar === false) return "Desligado: a legenda só é salva quando você clica em Salvar.";
+  const min = +s.autosalvar_min || 1;
+  return `A cada ${min} minuto${min === 1 ? "" : "s"} com alterações, salva no próprio arquivo. A versão anterior fica ${AUTO_BACKUP[s.autosalvar_backup] || AUTO_BACKUP.historico}${s.autosalvar_backup === "pasta" && s.autosalvar_pasta ? `: ${s.autosalvar_pasta}` : ""}.`;
+}
+
+async function autosalvarModal() {
+  const s = S.state.settings || {};
+  const modo = s.autosalvar_backup || "historico";
+  const m = modal("Salvamento automático", `
+    <label class="check"><input type="checkbox" id="as-on" ${s.autosalvar !== false ? "checked" : ""}> Salvar sozinho as alterações do editor</label>
+    <label class="field"><span>De quanto em quanto tempo</span>
+      <span class="row" style="gap:8px;align-items:center"><input type="number" id="as-min" min="1" max="60" step="1" value="${+s.autosalvar_min || 1}" style="width:90px"> minuto(s)
+        <span class="muted small">(de 1 a 60; só salva se houver alteração)</span></span></label>
+    <fieldset class="stack" style="border:0;padding:0;margin:0"><legend class="small" style="margin-bottom:6px">Antes de salvar, guardar a versão anterior</legend>
+      ${Object.entries({ historico: "No histórico de versões do programa (botão 🕘 do editor). Não cria arquivo na sua pasta.",
+        ao_lado: "Também ao lado da legenda, como “nome.anterior.srt” (sempre a última versão antes de salvar).",
+        pasta: "Também numa pasta que eu escolher, com data e hora no nome." })
+        .map(([k, t]) => `<label class="check"><input type="radio" name="as-bk" value="${k}" ${modo === k ? "checked" : ""}> ${esc(t)}</label>`).join("")}
+    </fieldset>
+    <div class="stack" id="as-pasta-box" ${modo === "pasta" ? "" : "hidden"}>
+      <div class="row" style="gap:8px"><input type="text" id="as-pasta" value="${esc(s.autosalvar_pasta || "")}" placeholder="Pasta das cópias" style="flex:1">
+        <button class="btn" type="button" id="as-escolher">Escolher…</button></div>
+      <label class="field"><span>Quantas cópias manter por legenda</span><input type="number" id="as-manter" min="1" max="500" value="${+s.autosalvar_manter || 20}" style="width:90px"></label>
+    </div>
+    <p class="muted small">O histórico de versões guarda sempre as 50 últimas de cada legenda. A legenda de origem do cliente nunca é alterada: o primeiro salvamento vai para uma cópia “(editada)”.</p>`,
+    `<button class="btn" data-k="cancelar">Cancelar</button><button class="btn primary" data-k="salvar">Salvar</button>`, { wide: true });
+  m.ov.addEventListener("change", (e) => { if (e.target.name === "as-bk") m.$("#as-pasta-box").hidden = e.target.value !== "pasta"; });
+  m.$("#as-escolher").addEventListener("click", async () => {
+    try { const { paths } = await api("POST", "/api/dialog", { kind: "folder", title: "Pasta das cópias anteriores" }); if (paths?.[0]) m.$("#as-pasta").value = paths[0]; }
+    catch (e) { toast(e.message, true); }
+  });
+  m.$('[data-k="cancelar"]').addEventListener("click", () => m.close());
+  m.$('[data-k="salvar"]').addEventListener("click", async () => {
+    const min = Math.round(+m.$("#as-min").value);
+    if (!(min >= 1 && min <= 60)) { toast("Escolha um tempo de 1 a 60 minutos.", true); return; }
+    const bk = m.$('input[name="as-bk"]:checked')?.value || "historico";
+    try {
+      S.state.settings = await api("PUT", "/api/settings", { autosalvar: m.$("#as-on").checked, autosalvar_min: min, autosalvar_backup: bk,
+        autosalvar_pasta: m.$("#as-pasta").value.trim(), autosalvar_manter: Math.round(+m.$("#as-manter").value || 20) });
+      m.close(); toast("Salvamento automático ajustado."); renderSettings();
+    } catch (e) { toast(e.message, true); }
+  });
+}

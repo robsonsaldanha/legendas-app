@@ -416,3 +416,9 @@
 - Ao reabrir, "Atualização concluída" com o que mudou, ou "Erro na atualização" com o código (ER-RA-441: a versão nova não abriu e a partida voltou para a anterior). Caixa para não mostrar mais a tela de novidades; erros aparecem sempre.
 - **As notas da versão são a mensagem do commit** (o CI manda para o servidor): a partir de agora, o commit de versão do programa é escrito para quem usa — primeira linha `X.Y.Z: resumo` e um item por novidade, em português simples. Linhas técnicas ficam fora ou num commit separado.
 - Quem atualizar da 2.22/2.23 vê o fluxo antigo nessa primeira vez (é o código antigo que baixa); ao abrir a 2.24, as novidades aparecem pela lista local `NOVIDADES_LOCAIS`.
+
+## 2026-10-26 — 2.25: salvamento automático no editor
+- Pedido do Róbson: salvar a cada minuto, guardando antes a versão anterior, com tempo configurável e personalizável.
+- Configurações › Salvamento automático: ligado por padrão, **a cada 1 minuto** (1 a 60) e só quando há alteração. Salva no próprio arquivo (o mesmo do "Salvar"); a legenda de origem do cliente continua protegida (o primeiro salvamento vai para a cópia "(editada)").
+- **Versão anterior** guardada antes de cada salvamento (automático ou não): sempre no histórico (🕘, origem "Antes de salvar"); opcionalmente **ao lado da legenda** (`<nome>.anterior.srt`) ou **numa pasta escolhida** (com data e hora no nome, mantendo as N mais novas — padrão 20).
+- Não salva com uma janela aberta na frente nem legenda nova sem arquivo (a barra de baixo avisa "salve uma vez…"). Erro no salvamento automático aparece só na barra de baixo e tenta de novo no próximo intervalo.

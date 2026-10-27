@@ -22,6 +22,7 @@ import time
 import uuid
 from core.languages import LANG_SUFFIX
 from dataclasses import dataclass, field
+from glob import escape as glob_escape
 from pathlib import Path
 
 import numpy as np
@@ -379,8 +380,12 @@ class EditorManager:
         if self.db is not None and hasattr(self.db, "mark_generated"):
             self.db.mark_generated(path)
 
-    def save(self, sid: str, raw: list[dict], path: str | None = None) -> dict:
+    def save(self, sid: str, raw: list[dict], path: str | None = None, auto: bool = False) -> dict:
+        """Salva no arquivo. `auto` = salvamento automático (2.25): igual ao Salvar, mas não escolhe arquivo
+        novo; antes de sobrescrever, guarda a versão anterior conforme as Configurações."""
         s = self._get(sid)
+        if auto and (path or s.srt is None):
+            raise EditorError("Salve uma vez para ligar o salvamento automático.", 409)
         target = Path(path) if path else s.srt
         if target is None:
             raise EditorError("Escolha onde salvar a legenda.", 409)
@@ -405,10 +410,12 @@ class EditorManager:
             stamp = time.strftime("%Y%m%d-%H%M%S")
             shutil.copy2(target, bdir / f"{target.stem}.{stamp}.srt")
             s.backed_up = True
-        self._gravar(cues, target, "srt", s.language, "editor.salvar")
+        if target.exists():
+            self._copia_anterior(target)
+        self._gravar(cues, target, "srt", s.language, "editor.autosalvar" if auto else "editor.salvar")
         self._mark(target)
         s.srt = target
-        self._guardar_versao(target, cues, "salvar", raw, s)
+        self._guardar_versao(target, cues, "automatico" if auto else "salvar", raw, s)
         self._record(s, cues, "salvar", target, raw)
         return {"path": str(target), "name": target.name, "count": len(cues),
                 "saved_at": time.strftime("%H:%M:%S"), "redirected": redirected,
@@ -636,6 +643,30 @@ class EditorManager:
             raise err
         depuracao.registrar(tipo, "gravou e conferiu", destino=depois, legendas_conferidas=conferidas,
                             ms=int((_t.perf_counter() - t0) * 1000))
+
+    def _copia_anterior(self, target: Path) -> None:
+        """Antes de sobrescrever: guarda o que estava no arquivo (2.25). Nunca impede salvar."""
+        st = Settings.load()
+        try:
+            anteriores = read_srt(target)
+        except Exception:  # noqa: BLE001  (arquivo ilegível: guarda os bytes como estão)
+            anteriores = None
+        try:
+            if anteriores is not None:          # sempre no histórico (botão 🕘); repetido não duplica
+                versoes.guardar(editor_dir() / "versoes", target, anteriores, "anterior")
+            modo = st.autosalvar_backup
+            if modo == "ao_lado":
+                shutil.copy2(target, target.with_name(f"{target.stem}.anterior.srt"))
+            elif modo == "pasta" and st.autosalvar_pasta:
+                destino = Path(st.autosalvar_pasta)
+                destino.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, destino / f"{target.stem} {time.strftime('%Y-%m-%d %H-%M-%S')}.srt")
+                manter = max(1, int(st.autosalvar_manter or 20))
+                copias = sorted(destino.glob(f"{glob_escape(target.stem)} ????-??-?? ??-??-??.srt"))
+                for velha in copias[:-manter]:
+                    velha.unlink(missing_ok=True)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Não consegui guardar a cópia anterior de %s: %s", target, e)
 
     def _guardar_versao(self, arquivo: Path, cues: list[Cue], origem: str, raw: list[dict] | None, s: Session) -> None:
         """Histórico de versões e memória de tradução. Nunca impede salvar."""

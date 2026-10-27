@@ -982,10 +982,17 @@ class Handler(BaseHTTPRequestHandler):
                    "parallel_requests": int, "align": str, "keep_job_days": int,
                    "translator_name": str, "use_gpu": str, "whisper_model": str,
                    "transcribe_engine": str, "transcribe_multilang": bool, "bandeja": bool,
-                   "formato_entrega": str, "mostrar_novidades": bool}
+                   "formato_entrega": str, "mostrar_novidades": bool, "autosalvar": bool,
+                   "autosalvar_min": int, "autosalvar_backup": str, "autosalvar_pasta": str, "autosalvar_manter": int}
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))
+        s.autosalvar_min = min(60, max(1, int(s.autosalvar_min or 1)))
+        s.autosalvar_manter = min(500, max(1, int(s.autosalvar_manter or 20)))
+        if s.autosalvar_backup not in ("historico", "ao_lado", "pasta"):
+            s.autosalvar_backup = "historico"
+        if s.autosalvar_backup == "pasta" and not s.autosalvar_pasta:
+            raise ApiError("Escolha a pasta onde guardar as cópias anteriores.")
         if "editor" in data:
             ed = data["editor"]
             if not isinstance(ed, dict) or len(json.dumps(ed)) > 8000:
@@ -1704,7 +1711,7 @@ class Handler(BaseHTTPRequestHandler):
     @route("POST", r"/api/editor/(\w+)/save")
     def api_editor_save(self, sid):
         b = self._body()
-        return self.app.editor.save(sid, b.get("cues", []), b.get("path") or None)
+        return self.app.editor.save(sid, b.get("cues", []), b.get("path") or None, auto=bool(b.get("auto")))
 
     @route("POST", r"/api/editor/(\w+)/qc")
     def api_editor_qc(self, sid):

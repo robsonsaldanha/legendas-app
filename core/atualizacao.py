@@ -273,6 +273,8 @@ NOVIDADES_LOCAIS = {
                "Depois de atualizar, esta tela mostra o que mudou (dá para desligar)",
                "Se a atualização der errado, aparece o aviso com o código do erro",
                "Destaque dourado, a cor da logo da CNT"],
+    "2.25.0": ["O editor salva sozinho a cada minuto (o tempo dá para mudar em Configurações › Salvamento automático)",
+               "Antes de cada salvamento, a versão anterior fica guardada: no histórico (botão 🕘) e, se quiser, ao lado da legenda ou numa pasta sua"],
 }
 
 

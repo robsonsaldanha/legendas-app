@@ -89,7 +89,7 @@ function restore(stackFrom, stackTo) {
   drawAll();
 }
 function changed(snap = true, which = null) {
-  ED.dirty = true;
+  ED.dirty = true; ED.rev = (ED.rev || 0) + 1;
   if (which == null) recheckAll();
   else {
     for (const i of [which - 1, which, which + 1]) {
@@ -114,7 +114,7 @@ async function save(asNew = false) {
       path = paths[0];
     }
     const r = await api("POST", `/api/editor/${ED.sid}/save`, { cues: sortedCues(), path });
-    ED.srt = r.path; ED.name = r.name; ED.dirty = false; ED.savedAt = r.saved_at;
+    ED.srt = r.path; ED.name = r.name; ED.dirty = false; ED.savedAt = r.saved_at; ED.lastSaveAt = Date.now(); ED.autoMsg = ""; ED.autoAt = 0;
     document.getElementById("ed-name").textContent = r.name;
     drawStatus();
     if (r.redirected) {
@@ -124,6 +124,43 @@ async function save(asNew = false) {
     return true;
   } catch (e) { toast(e.message, true); return false; }
 }
+/* Salvamento automático (2.25): com alterações, a cada N minutos (Configurações › Salvamento automático)
+   salva no próprio arquivo; antes, o programa guarda a versão anterior. Não abre janelas: o resultado
+   aparece na barra de baixo. "Salvar como" e legenda ainda sem arquivo continuam no Salvar normal. */
+let autoSalvando = false;
+async function autoSalvarTick() {
+  const st = S.state?.settings || {};
+  if (!ED.sid || !ED.dirty || autoSalvando || st.autosalvar === false) return;
+  if (!location.hash.startsWith("#/editor/") || document.querySelector(".modal-bg")) return;   // não salva com janela aberta
+  const min = Math.min(60, Math.max(1, +st.autosalvar_min || 1));
+  if (Date.now() - (ED.lastSaveAt || 0) < min * 60000) return;
+  if (!ED.srt) {
+    if (ED.autoMsg !== "semarquivo") { ED.autoMsg = "semarquivo"; drawStatus(); }
+    return;
+  }
+  autoSalvando = true;
+  const quando = ED.rev;
+  try {
+    const r = await api("POST", `/api/editor/${ED.sid}/save`, { cues: sortedCues(), auto: true });
+    ED.srt = r.path; ED.name = r.name; ED.savedAt = r.saved_at; ED.lastSaveAt = Date.now(); ED.autoMsg = "ok"; ED.autoAt = Date.now();
+    if (ED.rev === quando) ED.dirty = false;              // mexeu enquanto salvava: continua "não salvo"
+    const nm = document.getElementById("ed-name"); if (nm) nm.textContent = r.name;
+    if (r.redirected) toast(`Salvamento automático: as alterações vão para “${r.name}”. A legenda de origem não é alterada.`);
+  } catch (e) {
+    ED.lastSaveAt = Date.now();                             // tenta de novo no próximo intervalo
+    ED.autoMsg = "erro:" + e.message;
+  } finally { autoSalvando = false; drawStatus(); }
+}
+setInterval(autoSalvarTick, 5000);
+
+function textoSalvo() {
+  if (ED.autoMsg === "semarquivo" && ED.dirty) return ["warn", "Alterações não salvas · salve uma vez para ligar o salvamento automático"];
+  if (ED.autoMsg.startsWith("erro:") && ED.dirty) return ["warn", `Salvamento automático não conseguiu salvar: ${ED.autoMsg.slice(5)}`];
+  if (ED.dirty) return ["warn", "Alterações não salvas"];
+  if (ED.autoMsg === "ok" && ED.savedAt) return ["muted", `Salvo automaticamente às ${ED.savedAt}`];
+  return ["muted", ED.savedAt ? `Salvo às ${ED.savedAt}` : "Sem alterações"];
+}
+
 function sortedCues() {
   const selCue = ED.cues[ED.sel];
   ED.cues.sort((a, b) => a.start - b.start);
@@ -145,7 +182,7 @@ async function renderEditor(sid) {
   Object.assign(ED, {
     sid, name: data.name, srt: data.srt, video: data.video, fps: data.fps, duration: data.duration || 0,
     language: data.language, profile: data.profile, cues: data.cues.slice().sort((a, b) => a.start - b.start),
-    sel: 0, dirty: false, undo: [], redo: [], peaks: null, savedAt: "", playUntil: null,
+    sel: 0, dirty: false, undo: [], redo: [], peaks: null, savedAt: "", playUntil: null, lastSaveAt: Date.now(), autoMsg: "", autoAt: 0,
     hasVideo: data.has_video, hasAudio: data.has_audio,
     detected: data.detected, suggested: data.suggested_target,
     clientId: data.client_id || null, shots: data.shots || null, adEspacos: null, itemId: data.item_id || null, prazo: data.prazo || "", lastAct: Date.now(),
@@ -1258,7 +1295,7 @@ function drawStatus() {
     <span class="muted">${esc(ED.profile.name)}</span>
     ${ED.prazo ? (() => { const t = prazoTexto(ED.prazo); return `<span class="ds-prazo ${t.nivel}" title="Prazo de entrega deste episódio">Entrega ${esc(t.texto)}</span>`; })() : ""}
     <span class="grow"></span>
-    <span class="${ED.dirty ? "warn" : "muted"}">${ED.dirty ? "Alterações não salvas" : ED.savedAt ? `Salvo às ${ED.savedAt}` : "Sem alterações"}</span>
+    ${(() => { const [c, t] = textoSalvo(); return `<span class="${c}" title="${esc(t)}">${esc(t)}</span>`; })()}
     <span class="net-slot">${typeof NET !== "undefined" ? NET.html : ""}</span>`;
 }
 
