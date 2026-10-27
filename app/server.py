@@ -281,7 +281,7 @@ class App:
                 if info["estado"] == "disponivel":
                     self.updater.executar(self._reiniciar_cb(port))
             finally:
-                if self.updater.estado not in ("baixando", "aplicando", "reiniciando", "instalando"):
+                if self.updater.estado not in ("baixando", "aplicando", "pronto", "reiniciando", "instalando", "erro"):
                     self.atualizando_na_partida = False
         threading.Thread(target=run, daemon=True, name="atualizacao").start()
 
@@ -289,13 +289,23 @@ class App:
         """A tela "Atualizando…" só cobre a página na atualização obrigatória ao abrir (ou quando ela mandou
         atualizar). Versão nova achada com o programa aberto vira só o ⚠ ao lado do status (2.16)."""
         d = self.updater.to_dict()
-        if d["estado"] == "disponivel" and not getattr(self, "atualizando_na_partida", False):
+        na_partida = getattr(self, "atualizando_na_partida", False)
+        if d["estado"] == "disponivel" and not na_partida:
+            return {**d, "estado": "parado"}
+        if d["estado"] == "parado" and na_partida:        # a consulta ainda vai começar: a tela já diz "Procurando…"
+            return {**d, "estado": "verificando"}
+        if d["estado"] == "erro" and getattr(self, "erro_visto", False):   # ela já viu o aviso e seguiu
             return {**d, "estado": "parado"}
         return d
 
+    def fim_da_tela_de_atualizacao(self) -> None:
+        """A tela de atualização ao abrir terminou (ou ela fechou o aviso de erro)."""
+        self.atualizando_na_partida = False
+        self.erro_visto = True
+
     def check_update(self) -> dict:
         """Com o programa aberto (a cada 30 min ou pelo menu): só pergunta ao servidor."""
-        if self.updater.estado in ("baixando", "aplicando", "reiniciando", "instalando"):
+        if self.updater.estado in ("baixando", "aplicando", "pronto", "reiniciando", "instalando"):
             return self.updater.to_dict()
         return self.updater.verificar()
 
@@ -306,6 +316,7 @@ class App:
             if info["estado"] != "disponivel":
                 return info
         self.retomar_ao_reabrir = retomar
+        self.erro_visto = False
         self.updater.estado = "baixando"
         threading.Thread(target=self.updater.executar, args=(self._reiniciar_cb(self.port),), daemon=True,
                          name="atualizacao").start()
@@ -867,7 +878,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @route("GET", r"/api/atualizacao")
     def api_atualizacao(self):
-        return self.app.updater.to_dict()
+        return self.app._atualizacao_para_tela()
 
     @route("POST", r"/api/key")
     def api_key_set(self):
@@ -971,7 +982,7 @@ class Handler(BaseHTTPRequestHandler):
                    "parallel_requests": int, "align": str, "keep_job_days": int,
                    "translator_name": str, "use_gpu": str, "whisper_model": str,
                    "transcribe_engine": str, "transcribe_multilang": bool, "bandeja": bool,
-                   "formato_entrega": str}
+                   "formato_entrega": str, "mostrar_novidades": bool}
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))
@@ -1759,6 +1770,34 @@ class Handler(BaseHTTPRequestHandler):
         b = self._body()
         return self.app.editor.rewrap(b.get("text", ""), b.get("profile_key") or None,
                                       b.get("language") or None)
+
+    @route("POST", r"/api/atualizacao/reiniciar")
+    def api_update_restart_now(self):
+        """A tela mostrou a contagem 3, 2, 1: pode fechar e reabrir."""
+        self.app.updater.confirmar_reinicio()
+        return self.app.updater.to_dict()
+
+    @route("POST", r"/api/atualizacao/continuar")
+    def api_update_continue(self):
+        """Erro na atualização ao abrir: ela escolheu seguir na versão atual."""
+        self.app.fim_da_tela_de_atualizacao()
+        return {"ok": True}
+
+    @route("GET", r"/api/atualizacao/resultado")
+    def api_update_result(self):
+        from core import atualizacao
+        r = atualizacao.resultado_ao_abrir()
+        return {"resultado": r, "mostrar_novidades": Settings.load().mostrar_novidades}
+
+    @route("POST", r"/api/atualizacao/resultado/visto")
+    def api_update_result_seen(self):
+        from core import atualizacao
+        if self._body().get("nao_mostrar"):
+            s = Settings.load()
+            s.mostrar_novidades = False
+            s.save()
+        atualizacao.marcar_visto()
+        return {"ok": True, "mostrar_novidades": Settings.load().mostrar_novidades}
 
     @route("POST", r"/api/atualizacao/verificar")
     def api_update_check(self):

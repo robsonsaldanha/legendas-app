@@ -395,3 +395,24 @@
 - **Licença da Dubla:** recursos `dublagem` (gravar takes, transcrever, sugerir personagens, M&E, exportar), `vozes_ia` (vozes por IA e sugestões de adaptação) e `clonagem` (voz clonada). Sem licença: criar e organizar projetos e editar o roteiro. A avaliação de 1 dia leva os três. Planos no servidor: Dublador e Estúdio, **sob consulta** até o Róbson pôr os preços.
 - **Tela:** selo da licença no topo (abre a janela de ativar/conferir), Configurações com licença, chave do serviço de IA (a mesma guardada pelo Legendas, se houver) e "Procurar atualização"; aviso de versão nova no topo.
 - **Montagem:** o mesmo programa montado (`build\CNTLegendas`, agora com `dubla\`) gera dois instaladores no Windows (`dubla.iss`, instala em "CNT Dubla", atalho `cntboot --produto dubla`) e dois pacotes no Mac/Linux (cópia por clone/ligação, sem gastar disco). O pacote de atualização é o mesmo arquivo, registrado no servidor da Dubla com a versão dela. Segredos do CI: `CNT_DUBLA_TOKEN_DEV` / `CNT_DUBLA_TOKEN_PROD`.
+
+## 2026-10-24 — Preços da Dubla e lista enxuta
+- CNT Dubla: **Dublador R$ 249,90 por mês**; **Business** (estúdios e empresas) **sob cotação** (servidor 1.11).
+- Saíram da lista (decisão do Róbson): T-057 (motor de clonagem local numa placa de vídeo) e T-075 (termos revisados por advogado, dados do MEI). Testar quando der.
+
+## 2026-10-26 — CNT Dubla em pausa para reestruturar
+- O Róbson achou que a Dubla 0.3 não ficou do jeito que o mercado trabalha. O site `dubla.` mostra só "em breve" (licença, atualização e painel seguem no ar) e a vitrine voltou para "em breve". O código continua no repositório.
+- Próximo passo: pesquisa do que dubladores e estúdios usam (adaptação com banda rítmica e marcações, integração com a mesa de gravação, gravação remota, gestão de anéis/escalação/agenda, formatos de entrega) e nova estrutura do produto, decidida com ele antes de programar.
+
+## 2026-10-26 — 2.23: destaque dourado (o da logo) em toda a família CNT
+- Pedido do Róbson: o verde-lima vira o dourado da logo no programa, nos sites (Legendas, hub) e nos painéis.
+- Tema escuro: `--accent` #DDB06A (meio do degradê da logo), passar o mouse #EBC587, texto sobre o destaque #1F1606. Tema claro e seções claras do site: #8C6418 (contraste ≥ 4,5:1 sobre o fundo claro).
+- Como o dourado ficava parecido com o amarelo de aviso, o aviso passou a laranja (#F0A04B; no tema claro #A0521A). Forma de onda dourada (#CFA463). O selo "Em todos os planos"/"No ar" ficou dourado; "Em breve" ficou cinza.
+- O verde continua só onde quer dizer "funcionando" (ponto "Online", status do servidor).
+- Capturas do site refeitas com o programa novo.
+
+## 2026-10-26 — 2.24: atualização passo a passo e "o que mudou" ao reabrir
+- Pedido do Róbson: com atualizações pequenas o programa abria, fechava e reabria tão rápido que parecia defeito. Agora a tela mostra os passos (procurar, baixar com %, instalar), conta 3, 2, 1 e diz "Reiniciando o aplicativo…" antes de fechar.
+- Ao reabrir, "Atualização concluída" com o que mudou, ou "Erro na atualização" com o código (ER-RA-441: a versão nova não abriu e a partida voltou para a anterior). Caixa para não mostrar mais a tela de novidades; erros aparecem sempre.
+- **As notas da versão são a mensagem do commit** (o CI manda para o servidor): a partir de agora, o commit de versão do programa é escrito para quem usa — primeira linha `X.Y.Z: resumo` e um item por novidade, em português simples. Linhas técnicas ficam fora ou num commit separado.
+- Quem atualizar da 2.22/2.23 vê o fluxo antigo nessa primeira vez (é o código antigo que baixa); ao abrir a 2.24, as novidades aparecem pela lista local `NOVIDADES_LOCAIS`.

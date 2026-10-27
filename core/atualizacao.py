@@ -77,7 +77,13 @@ def versoes_dir() -> Path:
 
 
 class Atualizador:
-    """Estado mostrado na tela: verificando → (atualizado | disponivel → baixando → aplicando → reiniciar) | erro."""
+    """Estado mostrado na tela: verificando → (atualizado | disponivel → baixando → aplicando → pronto → reiniciar) | erro.
+
+    `pronto` (2.24): a versão nova já está instalada; o programa espera a tela mostrar a contagem 3, 2, 1
+    e confirmar (`confirmar_reinicio`) antes de fechar e reabrir — assim ninguém acha que ele "fechou sozinho".
+    """
+
+    ESPERA_CONFIRMACAO = 60.0      # sem tela aberta para confirmar, reinicia sozinho depois disso
 
     def __init__(self, http_get=None, device_id: str | None = None):
         self._get = http_get
@@ -86,12 +92,19 @@ class Atualizador:
         self.info: dict | None = None
         self.progresso = 0.0
         self.erro = ""
+        self.codigo = ""
         self._lock = threading.Lock()
+        self._confirmado = threading.Event()
 
     def to_dict(self) -> dict:
         i = self.info or {}
         return {"estado": self.estado, "versao_atual": versao_atual(), "versao": i.get("versao"), "pacote": i.get("pacote"),
-                "tamanho": i.get("tamanho"), "notas": i.get("notas"), "progresso": round(self.progresso, 3), "erro": self.erro}
+                "tamanho": i.get("tamanho"), "notas": i.get("notas"), "novidades": novidades(i.get("notas")),
+                "progresso": round(self.progresso, 3), "erro": self.erro, "codigo": getattr(self, "codigo", "")}
+
+    def confirmar_reinicio(self) -> None:
+        """A tela terminou a contagem: pode fechar e reabrir."""
+        self._confirmado.set()
 
     def _http(self):
         if self._get:
@@ -186,24 +199,124 @@ class Atualizador:
             if d.name != keep:
                 shutil.rmtree(d, ignore_errors=True)
 
-    def executar(self, reiniciar) -> None:
-        """Baixa e aplica; no fim chama `reiniciar(pacote)`. Roda numa thread."""
+    def executar(self, reiniciar, esperar_confirmacao: bool = True) -> None:
+        """Baixa e aplica; fica em `pronto` até a tela confirmar (ou o tempo acabar) e então chama
+        `reiniciar(pacote)`. Antes de reiniciar, anota a tentativa para a próxima abertura dizer se deu certo.
+        Roda numa thread."""
         try:
+            self.erro = self.codigo = ""
+            self._confirmado.clear()
             if self.info["pacote"] == "patch":
                 with tempfile.TemporaryDirectory() as td:
                     z = self.baixar(Path(td) / "pacote.zip")
                     self.estado = "aplicando"
                     self.aplicar_patch(z)
-                self.estado = "reiniciando"
-                reiniciar("patch")
+                args = ("patch",)
             else:
                 destino = Path(tempfile.gettempdir()) / f"Instalador_{_agente().replace('-', '_')}_{self.info['versao']}.exe"
                 self.baixar(destino)
-                self.estado = "instalando"
-                reiniciar("instalador", destino)
+                args = ("instalador", destino)
+            registrar_tentativa(versao_atual(), self.info["versao"], self.info.get("notas") or "", self.info["pacote"])
+            self.estado = "pronto"
+            if esperar_confirmacao:
+                self._confirmado.wait(self.ESPERA_CONFIRMACAO)
+            self.estado = "reiniciando" if args[0] == "patch" else "instalando"
+            reiniciar(*args)
         except Exception as e:  # noqa: BLE001
             log.exception("Atualização falhou")
+            from .erros import classificar
             self.estado, self.erro = "erro", str(e)
+            self.codigo = getattr(e, "codigo", None) or classificar(e) or "ER-RA-440"
+
+
+# ---------------------------------------------------------------- resultado da última atualização (2.24)
+# Antes de fechar para atualizar, o programa anota "de → para". Na próxima abertura compara com a versão que
+# realmente abriu: igual ou maior = deu certo (mostra as novidades); menor = a versão nova não abriu e a partida
+# voltou para a anterior (mostra o erro com o código ER-RA-441).
+
+def _arquivo_resultado() -> Path:
+    from .config import data_dir
+    return data_dir() / "atualizacao-resultado.json"
+
+
+def novidades(notas: str | None) -> list[str]:
+    """Texto do que mudou (vem da mensagem da versão) em itens curtos, sem marcas internas."""
+    import re
+    itens = []
+    for linha in str(notas or "").splitlines():
+        t = linha.strip()
+        if not t or t.lower().startswith(("co-authored-by", "claude-session", "signed-off-by")):
+            continue
+        t = re.sub(r"\[(skip ci|instalador|ci skip)\]", "", t, flags=re.I).strip()
+        t = re.sub(r"^\d+\.\d+(\.\d+)*\s*[:—-]\s*", "", t)            # "2.24.0: …" → "…"
+        t = re.sub(r"^[-*•]\s*", "", t).strip()
+        if t:
+            itens.append(t[0].upper() + t[1:])
+    return itens[:20]
+
+
+def registrar_tentativa(de: str, para: str, notas: str, pacote: str) -> None:
+    try:
+        import datetime
+        _arquivo_resultado().write_text(json.dumps({
+            "situacao": "pendente", "de": de, "para": para, "notas": notas, "pacote": pacote,
+            "em": datetime.datetime.now(datetime.timezone.utc).isoformat()}, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        log.warning("Não consegui anotar a atualização", exc_info=True)
+
+
+# O que mudou nas versões em que a mensagem ainda não vinha do servidor (atualizadas pela versão antiga,
+# que não anotava a tentativa). Da 2.24 em diante, o texto vem com a própria atualização.
+NOVIDADES_LOCAIS = {
+    "2.24.0": ["Ao abrir, a atualização aparece passo a passo: procurar, baixar (com a porcentagem), instalar e reiniciar",
+               "Antes de reabrir, o programa conta 3, 2, 1 — ele não fecha mais \"do nada\"",
+               "Depois de atualizar, esta tela mostra o que mudou (dá para desligar)",
+               "Se a atualização der errado, aparece o aviso com o código do erro",
+               "Destaque dourado, a cor da logo da CNT"],
+}
+
+
+def _arquivo_ultima_aberta() -> Path:
+    from .config import data_dir
+    return data_dir() / "versao-aberta.txt"
+
+
+def _base(v: str) -> str:
+    return ".".join(str(v).split(".")[:3])
+
+
+def resultado_ao_abrir(atual: str | None = None) -> dict | None:
+    """O que mostrar ao abrir depois de uma atualização (ou None)."""
+    atual = atual or versao_atual()
+    try:
+        anterior = _arquivo_ultima_aberta().read_text(encoding="utf-8").strip()
+    except OSError:
+        anterior = ""
+    try:
+        _arquivo_ultima_aberta().write_text(atual, encoding="utf-8")
+    except OSError:
+        pass
+    try:
+        r = json.loads(_arquivo_resultado().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # sem anotação: a versão anterior era antiga demais para anotar; se subiu de versão, conta como atualização
+        if anterior and cmp_versao(atual, anterior) > 0 and _base(atual) in NOVIDADES_LOCAIS:
+            registrar_tentativa(anterior, atual, "\n".join(NOVIDADES_LOCAIS[_base(atual)]), "patch")
+            return resultado_ao_abrir(atual)
+        return None
+    para = str(r.get("para") or "")
+    if para and cmp_versao(atual, para) >= 0:
+        return {"situacao": "sucesso", "versao": atual, "de": r.get("de"), "novidades": novidades(r.get("notas"))}
+    return {"situacao": "erro", "versao": atual, "de": r.get("de"), "para": para, "codigo": "ER-RA-441",
+            "mensagem": f"A versão {para} foi baixada, mas não chegou a abrir; o programa continuou na versão {atual}. "
+                        "Ela será tentada de novo na próxima vez que abrir o programa."}
+
+
+def marcar_visto() -> None:
+    try:
+        _arquivo_resultado().unlink()
+    except OSError:
+        pass
 
 
 def rodar_instalador(exe: Path) -> None:

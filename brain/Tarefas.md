@@ -53,9 +53,11 @@ _(nada no momento)_
 - [x] T-054 · P-07 · Anéis e escalação (personagem → dublador; anéis e minutos por dublador) — Dubla 0.1
 - [x] T-055 · P-07 · Estúdio: pré-rolagem com contagem, áudio guia, takes pelo microfone, ouvir com o vídeo, ajuste fino de sincronia, aprovar, situação e nota de direção — Dubla 0.1
 - [x] T-056 · P-07 · M&E (do cliente ou separado no computador), mixagem e entregas (mix, faixas por personagem, vídeo dublado, roteiro .docx, anéis por dublador) — Dubla 0.1
-- [ ] T-057 · P-07 · Vozes por IA: ~~voz do sistema~~, ~~serviço pago (chave do cliente)~~, ~~registro do termo de consentimento~~ (Dubla 0.1); falta instalar o motor de clonagem local e testar numa placa de vídeo
 - [x] T-058 · P-07 · Integração: botão "Dublagem" no editor do Legendas manda vídeo + legenda (+ original) para "Recebidos" da Dubla; a Dubla entrega a legenda com o texto dublado (.srt) — Dubla 0.2 / Legendas 2.22
 - [x] T-059 · P-07 · Instalador próprio, licença própria (produto "dubla" no servidor e na conta CNT), site `dubla.` — Dubla 0.3 / servidor 1.10 / hub 1.2 (preços dos planos: sob consulta até o Róbson definir)
+
+- [ ] T-090 · P-16 · Desenhar o projeto central da equipe (legendagem + dublagem): telas e quem faz o quê em cada etapa, a partir de [[Fluxo de localização]]
+- [ ] T-091 · P-07 · Reestruturar a CNT Dubla a partir da pesquisa de mercado (decisões: primeiro cliente, banda rítmica, integração com a mesa de gravação, gravação remota)
 
 ### API CNT
 - [x] ~~T-060 · P-08 · Fila de processamento no servidor~~ — descartado em 24/10/2026: a API é só de integração
@@ -70,7 +72,6 @@ _(nada no momento)_
 - [ ] T-072 · P-10 · Confirmar assinatura e atalhos que faltam; regras do perfil em português com o cliente
 - [ ] T-073 · P-10 · Calibrar a sincronia com legendas acertadas à mão
 - [x] T-074 · P-11 · Produção ligada: `legendas.cntoficial.com.br` com certificado, servidor em `main`, `CNT_PROD_ATIVO=1` no CI — 24/10/2026
-- [ ] T-075 · P-11 · Termos revisados por advogado; dados do MEI/CNPJ no painel
 - [ ] T-076 · P-12 · PIX automático + nota fiscal (quando houver conta PJ)
 - [ ] T-077 · P-13 · Lembrete de renovação (e-mail e programa)
 - [ ] T-078 · P-14 · Workspace: apagar propaga, com lixeira de 30 dias

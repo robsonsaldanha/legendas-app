@@ -264,3 +264,22 @@ def test_transcribe_engine_setting(server, monkeypatch):
     call(port, "PUT", "/api/settings", {"transcribe_engine": "xyz", "whisper_model": "?"}, token=app.token)
     st, s = call(port, "GET", "/api/state", token=app.token)
     assert s["local_transcribe"] is True and s["settings"]["whisper_model"] == "large-v3"
+
+
+def test_tela_de_resultado_da_atualizacao(server):
+    """Depois de atualizar: a tela pede o resultado; "não mostrar mais" desliga as novidades (erros continuam)."""
+    app, port, tmp = server
+    from core import atualizacao as A
+    from core.config import Settings
+    assert call(port, "GET", "/api/atualizacao/resultado", token=app.token)[1]["resultado"] is None
+    A.registrar_tentativa("1.0.0", "1.0.0", "1.0.0: tela nova de atualização", "patch")
+    st, r = call(port, "GET", "/api/atualizacao/resultado", token=app.token)
+    assert r["resultado"]["situacao"] == "sucesso" and r["mostrar_novidades"] is True
+    st, r = call(port, "POST", "/api/atualizacao/resultado/visto", {"nao_mostrar": True}, token=app.token)
+    assert r["mostrar_novidades"] is False and Settings.load().mostrar_novidades is False
+    assert call(port, "GET", "/api/atualizacao/resultado", token=app.token)[1]["resultado"] is None
+    # ao abrir com a atualização em andamento, a tela já começa em "Procurando atualizações…"
+    app.atualizando_na_partida = True
+    assert call(port, "GET", "/api/atualizacao", token=app.token)[1]["estado"] == "verificando"
+    call(port, "POST", "/api/atualizacao/continuar", {}, token=app.token)
+    assert call(port, "GET", "/api/atualizacao", token=app.token)[1]["estado"] == "parado"

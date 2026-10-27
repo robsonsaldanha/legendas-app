@@ -256,7 +256,7 @@ function edPrefsHtml() {
         ${num("sub.size", "Tamanho (%)", 50, 200, 5)}${ck("sub.bold", "Negrito")}
       </section>
       <section><h3>Forma de onda</h3>
-        <div class="grid-2">${col("wave.sel", "Onda da legenda selecionada", "#ffffff")}${col("wave.fg", "Onda", "#b5d334")}
+        <div class="grid-2">${col("wave.sel", "Onda da legenda selecionada", "#ffffff")}${col("wave.fg", "Onda", "#cfa463")}
         ${col("wave.bg", "Fundo", "#101418")}${col("wave.head", "Cursor (posição do vídeo)", "#e5484d")}</div>
         ${ck("wave.grid", "Mostrar linhas de grade")}${ck("wave.invertWheel", "Inverter a direção da roda do mouse")}
         ${ck("wave.snapShots", "Encaixar nos cortes de cena ao arrastar (segure Shift para não encaixar)")}

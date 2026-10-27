@@ -1,4 +1,4 @@
-/* CNT Legendas — tema grafite com acento lima (escuro por padrão) e tema claro.
+/* CNT Legendas — tema grafite com acento dourado (o da logo) (escuro por padrão) e tema claro.
    Fontes locais (OFL): Anton (títulos), Inter (texto), JetBrains Mono (rótulos e números). */
 
 @font-face { font-family: "Anton"; src: url("/fonts/anton-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
@@ -19,13 +19,13 @@
   --ink: #E9ECEF;
   --muted: #8E98A4;
   --line: #2F353D;
-  --accent: #C9D94B;
-  --accent-hover: #D7E566;
-  --accent-soft: rgba(201, 217, 75, .12);
-  --accent-line: rgba(201, 217, 75, .35);
-  --on-accent: #191C0B;
-  --warn: #E7C64A;
-  --warn-bg: rgba(231, 198, 74, .12);
+  --accent: #DDB06A;
+  --accent-hover: #EBC587;
+  --accent-soft: rgba(221, 176, 106, .12);
+  --accent-line: rgba(221, 176, 106, .35);
+  --on-accent: #1F1606;
+  --warn: #F0A04B;
+  --warn-bg: rgba(240, 160, 75, .12);
   --err: #EF7272;
   --err-bg: rgba(239, 114, 114, .12);
   --ok: #52C88E;
@@ -35,8 +35,8 @@
   --violet: #A98BF0;
   --violet-bg: rgba(169, 139, 240, .13);
   --screen: #0B0D10;
-  --focus: #C9D94B;
-  --hero: linear-gradient(120deg, #2A3022 0%, #23282C 55%, #262B1F 100%);
+  --focus: #DDB06A;
+  --hero: linear-gradient(120deg, #30291D 0%, #23282C 55%, #2B261C 100%);
   --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 10px 30px rgba(0,0,0,.25);
   --radius-s: 8px;
   --radius-m: 14px;
@@ -54,13 +54,13 @@
   --ink: #1B1F24;
   --muted: #5E6874;
   --line: #DCE0E5;
-  --accent: #6F7F12;
-  --accent-hover: #5C6A0E;
-  --accent-soft: rgba(132, 151, 22, .12);
-  --accent-line: rgba(111, 127, 18, .35);
+  --accent: #8C6418;
+  --accent-hover: #73520F;
+  --accent-soft: rgba(140, 100, 24, .12);
+  --accent-line: rgba(140, 100, 24, .35);
   --on-accent: #FFFFFF;
-  --warn: #8A6300;
-  --warn-bg: #FFF4CF;
+  --warn: #A0521A;
+  --warn-bg: #FDEBDC;
   --err: #B3261E;
   --err-bg: #FCE8E6;
   --ok: #1E7A45;
@@ -70,8 +70,8 @@
   --violet: #6B4FC4;
   --violet-bg: #EEE9FB;
   --screen: #0F1317;
-  --focus: #6F7F12;
-  --hero: linear-gradient(120deg, #F3F6E2 0%, #FFFFFF 60%, #F2F5E4 100%);
+  --focus: #8C6418;
+  --hero: linear-gradient(120deg, #F7F0E2 0%, #FFFFFF 60%, #F6F0E4 100%);
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
   color-scheme: light;
 }
@@ -368,9 +368,9 @@ input:disabled, select:disabled { background: var(--panel-2); color: var(--muted
 :root {
   --wave-bg: #0F1419;
   --wave-grid: rgba(255,255,255,.07);
-  --wave-fg: #A9BC3E;
+  --wave-fg: #CFA463;
   --wave-sel: #E8F7F2;
-  --wave-cue: rgba(201,217,75,.08);
+  --wave-cue: rgba(221,176,106,.08);
   --wave-cue-sel: rgba(255,214,102,.16);
   --wave-edge: rgba(255,255,255,.55);
   --wave-text: #DCE4EA;
@@ -379,7 +379,7 @@ input:disabled, select:disabled { background: var(--panel-2); color: var(--muted
   --bad-bg: #F8C9B6;
 }
 :root:not([data-theme="light"]) {
-  --grid-sel: #3A4220; --bad-bg: #4E2622;
+  --grid-sel: #45381F; --bad-bg: #4E2622;
 }
 
 .locked { max-width: 520px; margin: 15vh auto; padding: 0 20px; }
@@ -844,15 +844,15 @@ label.check input { margin-top: 3px; }
    =================================================================== */
 :root, :root[data-theme="dark"] {
   --ink-2: #AAB2BB;
-  --tip-bg: #23281C;
-  --tip-line: rgba(201, 217, 75, .38);
+  --tip-bg: #2A2419;
+  --tip-line: rgba(221, 176, 106, .38);
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s7: 32px; --s8: 40px; --s9: 56px;
   --r-ctl: 10px; --r-card: 14px;
 }
 :root[data-theme="light"] {
   --ink-2: #4E5864;
-  --tip-bg: #F4F7E1;
-  --tip-line: rgba(111, 127, 18, .4);
+  --tip-bg: #F8F1E1;
+  --tip-line: rgba(140, 100, 24, .4);
 }
 
 .ds-page { display: flex; flex-direction: column; gap: var(--s7); max-width: 1180px; padding-bottom: var(--s9); }
@@ -1036,6 +1036,19 @@ details.ds-adv > .ds-adv-body > .panel { margin: 0; }
   animation: upd-spin 0.9s linear infinite; }
 @keyframes upd-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .upd-spin { animation: none; } }
+/* 2.24: etapas da atualização, contagem e o que mudou */
+.upd-passos { list-style: none; display: flex; gap: 6px; justify-content: center; padding: 0; margin: 0 0 18px; flex-wrap: wrap; }
+.upd-passos li { font: 500 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.upd-passos li.feito { color: var(--accent); border-color: var(--accent-line); }
+.upd-passos li.atual { color: var(--on-accent); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+.upd-pct { font: 600 15px var(--font); margin: 6px 0 0; }
+.upd-contagem { font: 400 64px/1 var(--font-display); color: var(--accent); margin: 10px 0 4px; }
+.upd-codigo { margin: 12px 0; }
+.upd-codigo .mono { font-family: var(--font-mono); color: var(--err); }
+.upd-sub { font-size: 14px; margin: 14px 0 6px; }
+.upd-novidades { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-height: 40vh; overflow: auto; }
+
 
 .topbar .lic-pill { white-space: nowrap; }
 .topbar { gap: 10px; }
@@ -1044,16 +1057,16 @@ details.ds-adv > .ds-adv-body > .panel { margin: 0; }
 /* ---------- legenda ao vivo (2.18) ---------- */
 .av-grid { align-items: start; }
 .av-medidor { width: 160px; height: 8px; border-radius: 4px; background: var(--line, #3334); overflow: hidden; }
-.av-medidor i { display: block; height: 100%; width: 0; background: var(--accent, #C9D94B); transition: width .15s; }
+.av-medidor i { display: block; height: 100%; width: 0; background: var(--accent, #DDB06A); transition: width .15s; }
 .av-parcial { min-height: 1.4em; font-style: italic; margin: 10px 0; }
 .av-fila { display: flex; flex-direction: column; gap: 8px; }
 .av-item { display: flex; gap: 8px; align-items: stretch; }
 .av-item textarea { flex: 1; resize: none; font-size: 16px; line-height: 1.35; padding: 8px 10px; }
-.av-item:focus-within textarea { outline: 2px solid var(--accent, #C9D94B); }
+.av-item:focus-within textarea { outline: 2px solid var(--accent, #DDB06A); }
 .av-acoes { display: flex; flex-direction: column; gap: 4px; align-items: stretch; min-width: 84px; }
 .av-acoes .mono { text-align: center; }
 .av-pub { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow: auto; }
-.av-linha { padding: 6px 10px; border-left: 3px solid var(--accent, #C9D94B); background: var(--panel-2, #0001); border-radius: 4px; }
+.av-linha { padding: 6px 10px; border-left: 3px solid var(--accent, #DDB06A); background: var(--panel-2, #0001); border-radius: 4px; }
 
 /* ---------- audiodescrição (2.19) ---------- */
 .ad-drawer { overflow: auto; }

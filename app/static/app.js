@@ -1134,6 +1134,8 @@ async function renderSettings() {
         `<button class="ds-btn sm ${(st.licenca || {}).modo === "licenciada" ? "" : "primary"}" data-action="licenca">${(st.licenca || {}).modo === "licenciada" ? "Ver" : "Ativar"}</button>`)}
       ${setRow("cfg-versao", "Versão do programa", `${esc(st.versao_completa || st.version || "")} · o programa se atualiza sozinho ao abrir e avisa quando houver versão nova`,
         `<button class="ds-btn sm" data-action="check-update">Procurar atualização</button>`)}
+      ${setRow("cfg-novidades", "Novidades da versão", `<label class="check"><input type="checkbox" id="s-novidades" ${s.mostrar_novidades !== false ? "checked" : ""}>
+          Depois de cada atualização, mostrar ao abrir o que mudou</label>`, "")}
       ${st.janela ? setRow("cfg-bandeja", "Bandeja do sistema", `<label class="check"><input type="checkbox" id="s-bandeja" ${s.bandeja !== false ? "checked" : ""}>
           Manter o ícone ao lado do relógio; o X esconde a janela em vez de fechar</label>`, "") : ""}
       ${setRow("cfg-perfil", "Perfil na nuvem", `<span id="pf-resumo">${esc(perfilResumo(S.perfil))}</span>`,
@@ -1235,6 +1237,12 @@ async function renderSettings() {
     try {
       S.state.settings = await api("PUT", "/api/settings", { formato_entrega: e.target.value });
       toast(`Entregas em ${e.target.selectedOptions[0].textContent}, a não ser que o cliente ou o projeto peça outro.`);
+    } catch (err) { toast(err.message, true); }
+  });
+  document.getElementById("s-novidades")?.addEventListener("change", async (e) => {
+    try {
+      S.state.settings = await api("PUT", "/api/settings", { mostrar_novidades: e.target.checked });
+      toast(e.target.checked ? "Depois de atualizar, o programa mostra o que mudou." : "O programa não mostra mais o que mudou (erros de atualização continuam aparecendo).");
     } catch (err) { toast(err.message, true); }
   });
   document.getElementById("s-bandeja")?.addEventListener("change", async (e) => {

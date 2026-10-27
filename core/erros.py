@@ -69,6 +69,7 @@ CATALOGO: dict[str, str] = {
     "ER-RA-420": "Recurso que precisa de licença",
     "ER-RA-430": "Licença: não foi possível conferir ou gravar",
     "ER-RA-440": "Atualização: não foi possível aplicar",
+    "ER-RA-441": "Atualização: a versão nova não abriu (o programa voltou para a anterior)",
     "ER-RA-500": "Erro interno inesperado do programa",
     "ER-RA-510": "Erro no banco de dados do programa",
     "ER-RA-601": "Serviço de IA: chave ausente ou recusada",
