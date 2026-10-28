@@ -1,0 +1,23 @@
+@font-face{font-family:Anton;src:url(../fontes/anton-400.woff2);font-weight:400}
+@font-face{font-family:Inter;src:url(../fontes/inter-400.woff2);font-weight:400}
+@font-face{font-family:Inter;src:url(../fontes/inter-500.woff2);font-weight:500}
+@font-face{font-family:Inter;src:url(../fontes/inter-600.woff2);font-weight:600}
+@font-face{font-family:Inter;src:url(../fontes/inter-700.woff2);font-weight:700}
+:root{--bg:#16191D;--side:#1A1E23;--panel:#1F2329;--panel2:#262B32;--ink:#E9ECEF;--muted:#A3ADB8;--line:#2F353D;
+--accent:#DDB06A;--accent2:#EBC587;--on:#1F1606;--ok:#52C88E;--info:#5BA8E8;--violet:#A98BF0;--warn:#F0A04B}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+h1,h2,h3{font-family:Anton,Impact,sans-serif;font-weight:400;letter-spacing:.01em;line-height:1.05}
+.pg{position:relative;overflow:hidden;page-break-after:always;break-after:page;background:var(--bg)}
+.pg:last-child{page-break-after:auto;break-after:auto}
+.shot{border-radius:10px;border:1px solid #3a414b;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.03)}
+.shot img{display:block;width:100%}
+.gold{color:var(--accent)}
+.eyebrow{font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);font-weight:600}
+.tag{display:inline-block;border:1px solid rgba(221,176,106,.5);background:rgba(221,176,106,.12);color:var(--accent2);border-radius:999px;padding:5px 14px;font-size:11px;font-weight:600;letter-spacing:.04em}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.ico{width:34px;height:34px;border-radius:9px;background:rgba(221,176,106,.14);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:17px;margin-bottom:10px}
+.ico svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.foot{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;padding:0 48px;height:34px;font-size:9.5px;color:#7f8996;border-top:1px solid var(--line);background:var(--side)}
+.foot b{color:var(--accent);font-weight:600}
+.pg img[alt]{width:100%;display:block}

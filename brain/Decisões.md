@@ -416,3 +416,9 @@
 - Ao reabrir, "Atualização concluída" com o que mudou, ou "Erro na atualização" com o código (ER-RA-441: a versão nova não abriu e a partida voltou para a anterior). Caixa para não mostrar mais a tela de novidades; erros aparecem sempre.
 - **As notas da versão são a mensagem do commit** (o CI manda para o servidor): a partir de agora, o commit de versão do programa é escrito para quem usa — primeira linha `X.Y.Z: resumo` e um item por novidade, em português simples. Linhas técnicas ficam fora ou num commit separado.
 - Quem atualizar da 2.22/2.23 vê o fluxo antigo nessa primeira vez (é o código antigo que baixa); ao abrir a 2.24, as novidades aparecem pela lista local `NOVIDADES_LOCAIS`.
+
+## 2026-10-28 — Materiais comerciais (PDFs e PowerPoint)
+- Criada a pasta `materiais-comerciais/`: apresentação comercial (PDF), ficha técnica com tour das telas (PDF), guia do usuário passo a passo (PDF) e apresentação em PowerPoint. Todos dizem que o aplicativo está em constante atualização.
+- As telas são capturas do programa real (versão 2.24) com dados fictícios; texto sem marcas de terceiros (regra do CLAUDE.md): a IA e o assistente de IA são descritos pela função.
+- Preços e planos vêm de `brain/Licenciamento.md` (24/10/2026) e estão marcados como "sujeitos a alteração"; revisar antes de cada envio.
+- Dublagem ficou fora dos materiais (em pausa para reestruturar).
