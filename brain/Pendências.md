@@ -207,3 +207,47 @@ Hoje apagar cliente/glossário no Workspace da empresa não chega aos colegas (d
 
 ### P-15 — Proteção do código de licença · futuro
 Compilar os módulos de licença, repositório privado e máquina própria para os builds.
+
+### P-17 — Fluxo e Navegação: consistência e contexto · rascunho
+Melhorar a coerência visual e a navegação contextual do programa (desktop).
+- **Unificar Design System:** migrar telas legadas (`renderNew()`, `renderResult()` e afins) das classes `.panel`/`.btn`/`.grid-2` para o padrão novo `.ds-page`/`.ds-btn`/`.ds-form`, eliminando a duplicidade de estilos.
+- **Home como painel real:** ajustar breadcrumb e ênfase da rota `#/inicio` para funcionar como dashboard principal (projetos recentes em destaque; abertura avulsa como ação secundária), removendo a contradição atual com o texto "use Projetos".
+- **Navegação contextual:** em telas de projeto/episódio (`#/obra/*`), oferecer atalho direto na barra lateral ou breadcrumb com dropdown para voltar ao projeto pai ou trocar de episódio sem depender do botão Voltar do navegador.
+- **Escopo:** apenas desktop (o sistema não é mobile; responsividade móvel vale só para o site público).
+
+**Pronto quando:** todas as telas internas usarem o DS novo, home reformulada e aprovada pelo Róbson, e navegação entre obra/episódio estiver fluida sem recarregar página inteira.
+
+### P-18 — Formulário "Novo Trabalho": validação e clareza · rascunho
+Tornar o fluxo de criação de trabalho mais previsível e menos propenso a erros tardios.
+- **Validação em tempo real:** feedback visual imediato nos campos (borda, mensagem inline) e desabilitação proativa do botão "Iniciar" enquanto houver pendência; nada de erro só ao submeter.
+- **Resumo lateral ativo:** transformar o painel `#summary` em checklist que alerta combinações incomuns (ex.: traduzir sem perfil, idioma origem = destino) antes do envio.
+- **Zonas de arrastar distintas:** separar visualmente as áreas de legenda, vídeo e texto, com labels claros e validação cromática ao arrastar (verde = compatível, vermelho = incompatível).
+- **Migrar para o DS novo** (ligado a P-17): usar componentes `.ds-*` no formulário inteiro.
+
+**Pronto quando:** usuário consegue identificar e corrigir problemas de preenchimento antes de clicar em "Iniciar", sem mensagens de erro genéricas pós-submissão.
+
+### P-19 — Performance percebida: skeletons e transições · rascunho
+Reduzir a sensação de lentidão e de "piscar" entre telas do programa.
+- **Skeletons imediatos:** renderizar esqueleto da tela assim que a rota mudar; popular dados assincronamente e mostrar spinner apenas nas seções dependentes (evitar tela branca em `renderNew()`/`renderProfilesPage()`).
+- **Transições suaves:** adicionar animações CSS mínimas (`opacity`, `transform`) entre telas para evitar re-render brusco de todo o `#main`.
+- **Escopo:** apenas desktop; não otimizar para mobile.
+
+**Pronto quando:** troca de rota nunca mostra tela branca por mais de ~100 ms e transição é perceptivelmente mais suave em máquinas de referência.
+
+### P-20 — Status de salvamento visível e confiável · rascunho
+Tornar o estado de salvamento do editor imediatamente perceptível e confiável, evitando perda de trabalho silenciosa.
+- **Indicador próximo ao nome:** mover o status de salvamento para a linha do título (`#ed-name`), com ícone de estado (✓ salvo, ↻ salvando, ⚠️ erro/não salvo) e texto curto; a barra inferior continua como detalhe secundário.
+- **Feedback de erro claro:** quando o salvamento automático falhar, mostrar banner discreto no topo do editor (não só toast) com botão "Tentar agora" e motivo resumido; manter até o usuário agir ou o próximo sucesso.
+- **Estado "sem arquivo":** destacar visualmente que alterações não serão salvas automaticamente enquanto não houver um caminho definido, com ação rápida "Salvar como…" ao lado do aviso.
+- **Escopo:** apenas desktop; não alterar fluxo de salvamento, só a comunicação visual.
+
+**Pronto quando:** usuário identifica em < 1 s se o arquivo está salvo, salvando ou com problema, sem precisar olhar para a barra inferior; erros de salvamento têm ação clara e visível.
+
+### P-21 — Lista de legendas com densidade variável · rascunho
+Permitir que a lista de cues se adapte ao conteúdo e à preferência do usuário, ganhando área útil para textos longos e compactando linhas curtas.
+- **Ajuste global de densidade:** controle na toolbar da lista (ou nas configurações do editor) com 3 níveis: compacta, padrão e espaçada; persistir preferência por usuário.
+- **Truncamento inteligente:** linhas acima de N caracteres mostram versão truncada com reticências; expansão automática ao focar/selecionar a linha ou ao passar o mouse (configurável).
+- **Altura dinâmica por cue:** permitir que cada linha ocupe entre 1 e 3 linhas visuais conforme o texto, respeitando o nível de densidade escolhido; recalcular scroll ao editar.
+- **Escopo:** apenas desktop; não alterar estrutura de dados nem ordem das legendas.
+
+**Pronto quando:** usuário consegue alternar densidade sem recarregar, textos longos ficam legíveis sem ocupar toda a tela e a navegação por teclado permanece fluida.
