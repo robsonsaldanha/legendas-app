@@ -251,3 +251,13 @@ Permitir que a lista de cues se adapte ao conteúdo e à preferência do usuári
 - **Escopo:** apenas desktop; não alterar estrutura de dados nem ordem das legendas.
 
 **Pronto quando:** usuário consegue alternar densidade sem recarregar, textos longos ficam legíveis sem ocupar toda a tela e a navegação por teclado permanece fluida.
+
+### P-22 — Diagnóstico e correção da medição de latência · rascunho
+O sistema reporta "Conexão Lenta (~14s)" enquanto o ping ICMP do Windows mostra ~14ms; é preciso entender e corrigir a medição para evitar falsos positivos de lentidão.
+- **Causa identificada:** o sistema mede uma requisição HTTP completa (`httpx.get` em `/v1/saude`) e não um ping ICMP; o tempo inclui handshake TCP/TLS + processamento do servidor, além de possível desrespeito ao timeout ou acúmulo de tentativas.
+- **Investigar no servidor:** confirmar se `/v1/saude` está demorando ~14s para responder (banco, gargalo na aplicação Python, fila); testar com `curl -w "%{time_total}\n"` a partir do cliente e de dentro do servidor.
+- **Revisar a medição no cliente (`core/conexao.py`):** garantir que o timeout de 6s é respeitado em todas as condições; verificar se o valor exibido é média/acumulado de retries; isolar o tempo de rede do tempo de resposta da aplicação.
+- **Comunicar melhor o resultado:** separar visualmente "latência de rede" de "tempo de resposta do serviço", evitando que o usuário confunda problema de rede com problema do servidor.
+- **Escopo:** apenas diagnóstico e ajuste da medição; não alterar o endpoint `/v1/saude` nem a infraestrutura do servidor nesta pendência.
+
+**Pronto quando:** o valor exibido no programa refletir fielmente o que está lento (rede ou servidor), sem reportar ~14s quando a rede está a 14ms, e houver evidência (log ou teste) da causa raiz corrigida ou documentada.
