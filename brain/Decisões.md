@@ -449,3 +449,9 @@
 - O selo reaproveita a conexão (keep-alive 90 s): o número mostrado passa a ser o tempo de resposta, não o aperto de mão TLS a cada 15 s.
 - Lançador: não confere a licença de novo; espera a conferência que já começou ao abrir (até 6 s; sem resposta, fica a guardada). "Verificando atualizações" espera no máximo 15 s e segue na versão que tem. Pausas mínimas menores (0,5 s).
 
+## 2026-10-30 — 2.27.2: Ao vivo com endereço de página de vídeo
+- O Róbson colou o link de uma página de vídeo (site de vídeos) em "Endereço de uma transmissão" e recebeu o erro cru do ffmpeg ("Invalid data found…"). O ffmpeg abre transmissões (rtmp, srt, rtsp, .m3u8, áudio direto), não páginas com player.
+- `core/aovivo.conferir_endereco`: endereço http(s) de site de vídeo conhecido é recusado antes de começar, com a explicação e o caminho (endereço da transmissão, ou som do computador). Outros http(s) seguem (podem ser áudio direto).
+- `aovivo_worker.explicar_erro`: erros do ffmpeg viram frase clara (abrir entrada, transmissão fora do ar, aparelho de áudio), com o detalhe técnico no fim.
+- Não extraímos áudio de dentro de páginas de sites de vídeo (contra os termos desses sites e quebra a cada mudança deles). Proposta em aberto: entrada "Som do computador" (captura do que toca nos alto-falantes), que serve para qualquer site.
+

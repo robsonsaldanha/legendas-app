@@ -231,3 +231,15 @@ def test_avaliacao_nao_tem_ao_vivo(server):
     r = c.getresponse()
     d = json.loads(r.read()); c.close()
     assert r.status == 402 and "todos os planos" in d["error"]
+
+
+def test_endereco_de_pagina_de_video():
+    """Página de site de vídeo não é transmissão: avisa antes de tentar (o ffmpeg só diria 'Invalid data')."""
+    from core.aovivo import conferir_endereco
+    from core.aovivo_worker import explicar_erro
+    assert "página" in conferir_endereco("https://www.youtube.com/watch?v=alrmv8HOAVA")
+    assert conferir_endereco("https://youtu.be/abc") and conferir_endereco("https://m.twitch.tv/canal")
+    assert conferir_endereco("https://cdn.exemplo.com/live/index.m3u8") == ""
+    assert conferir_endereco("rtmp://servidor/live/chave") == ""
+    m = explicar_erro("[in#0] Error opening input: Invalid data found when processing input")
+    assert m.startswith("Não foi possível abrir a entrada de áudio") and "Invalid data" in m

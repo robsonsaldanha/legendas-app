@@ -1632,6 +1632,12 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError("Escolha a entrada de áudio.")
         if fonte.startswith("arquivo:") and not Path(fonte[8:]).is_file():
             raise ApiError("Arquivo não encontrado. Ele pode ter sido movido ou apagado.", 404)
+        if fonte.startswith("url:"):
+            from core.aovivo import conferir_endereco
+            if not fonte[4:].strip():
+                raise ApiError("Cole o endereço da transmissão.")
+            if aviso := conferir_endereco(fonte[4:]):
+                raise ApiError(aviso)
         try:
             perfil = get_profile(b["perfil"]) if b.get("perfil") else default_profile_for(str(b.get("idioma") or "pt"))
         except (KeyError, ValueError, OSError):

@@ -96,6 +96,7 @@
 - [x] 2.26.0: modo foco, anotações por legenda, tela de cinema, autocompletar e glossário do projeto aprendido, entrega com comparação/nota de qualidade/relatório em PDF, ritmo e previsão (a partir do 3º trabalho)
 - [x] 2.27.0: lançador antes do programa (janela pequena: atualização com barra e MB que andam, licença e conferência dos arquivos, depois abre o programa)
 - [x] 2.27.1: abertura e selo de conexão rápidos (IPv4 primeiro, conexão reaproveitada, limites de espera no lançador)
+- [x] 2.27.2: Ao vivo explica quando o endereço é de uma página de vídeo e traduz os erros da entrada de áudio
 - [x] 2.25.0: salvamento automático no editor (a cada 1 min, configurável) guardando a versão anterior (histórico, ao lado ou numa pasta)
 - [x] 2.24.0: atualização passo a passo ao abrir (procurar, baixar com %, instalar, contagem 3-2-1 e reiniciar); ao reabrir, o que mudou ou o erro com o código
 - [x] 2.23.0: cor de destaque dourada (a da logo) no programa, no site, no hub e nos painéis

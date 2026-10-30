@@ -25,6 +25,26 @@ log = logging.getLogger("legendas.aovivo")
 
 # ------------------------------------------------------------------ entradas de áudio
 
+# Sites de vídeo: o endereço é de uma página (com o player), não do áudio da transmissão.
+PAGINAS_DE_VIDEO = ("youtube.com", "youtu.be", "twitch.tv", "facebook.com", "fb.watch", "instagram.com", "vimeo.com",
+                    "tiktok.com", "kick.com", "dailymotion.com", "x.com", "twitter.com")
+
+
+def conferir_endereco(endereco: str) -> str:
+    """"" = dá para tentar; senão, a explicação para ela (endereço de página de vídeo, não de transmissão)."""
+    from urllib.parse import urlparse
+    u = urlparse(endereco.strip())
+    if u.scheme.lower() not in ("http", "https"):
+        return ""                                   # rtmp, srt, rtsp, udp…: o ffmpeg abre direto
+    host = (u.hostname or "").lower()
+    if any(host == d or host.endswith("." + d) for d in PAGINAS_DE_VIDEO):
+        return ("Esse é o endereço da página de um site de vídeo, não da transmissão em si: o programa não consegue "
+                "tirar o áudio de dentro da página. Use o endereço da transmissão (rtmp, srt ou um link terminado em "
+                ".m3u8, que quem transmite fornece) ou, para legendar o que está tocando no navegador, escolha como "
+                "entrada o som do computador (no Windows, “Mixagem estéreo”, quando aparece na lista).")
+    return ""
+
+
 def listar_entradas(ffmpeg: str) -> list[dict]:
     """Dispositivos de áudio que o ffmpeg enxerga neste computador: [{id, nome}]."""
     out: list[dict] = []
