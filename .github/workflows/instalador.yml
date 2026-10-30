@@ -258,7 +258,7 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-22.04, sistema: linux, nome: Linux }
-          - { os: macos-14, sistema: mac, nome: "Mac (Apple Silicon)" }
+          - { os: macos-15, sistema: mac, nome: "Mac (Apple Silicon)" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4

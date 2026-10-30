@@ -455,3 +455,6 @@
 - `aovivo_worker.explicar_erro`: erros do ffmpeg viram frase clara (abrir entrada, transmissão fora do ar, aparelho de áudio), com o detalhe técnico no fim.
 - Não extraímos áudio de dentro de páginas de sites de vídeo (contra os termos desses sites e quebra a cada mudança deles). Proposta em aberto: entrada "Som do computador" (captura do que toca nos alto-falantes), que serve para qualquer site.
 
+
+## 2026-10-30 — CI do Mac em máquina macOS 15
+- A imagem macOS 14 do GitHub sai do ar em 02/11/2026 e já estava com paradas programadas (a montagem do Mac da 2.27.1 foi cancelada duas vezes sem começar). O CI passou para `macos-15` (Apple Silicon).
