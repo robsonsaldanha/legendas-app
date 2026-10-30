@@ -346,3 +346,22 @@ jobs:
             -H "Content-Type: application/octet-stream" -H "X-Sistema: ${{ matrix.sistema }}" -H "X-Requer-Instalador: $REQ" \
             --data-binary "{\"url\":\"$URL\",\"sha256\":\"$SHA\",\"tamanho\":$TAM}" > /dev/null
           echo "::notice title=Servidor da Dubla::instalador ${{ matrix.sistema }} $DVER registrado ($N)"
+
+  # Depois que a dev passa em tudo, deixa pronto o pedido "liberar para o site" (dev → main).
+  # Aprovar = juntar o pedido; a montagem da main publica no site e na atualização automática.
+  liberacao:
+    name: Pedido de liberação para o site
+    needs: [instalador, unix]
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Abrir ou atualizar o pedido dev → main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 packaging/liberacao.py

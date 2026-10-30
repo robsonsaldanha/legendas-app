@@ -79,7 +79,7 @@ Coleta (hash do computador, MAC em hash, IPs, nome do computador) só para contr
 
 ### Canais
 - `dev`: cada envio ao ramo `dev` que passar nos testes gera um pacote e publica no servidor de desenvolvimento.
-- `producao`: só quando o Róbson aprovar (PR `dev` → `main`). O cliente recebe só `producao`.
+- `producao`: só quando o Róbson aprovar (PR `dev` → `main`). O cliente recebe só `producao`. Desde 30/10 o CI deixa o pedido pronto a cada versão da dev que passar em tudo; aprovar = juntar o pedido (ver Decisões, "Liberação para o site com um clique").
 
 ### Pacote
 - **Patch de código** (`Atualizacao_CNT_Legendas_<versão>.zip`): pastas `app/`, `core/` e `lib/` (bibliotecas em Python puro de `packaging/bibliotecas-no-pacote.txt`) (com `core/canal.json` = `{canal, build}`). O servidor devolve um manifesto assinado com Ed25519 (url, sha256, tamanho); o programa confere assinatura e SHA-256. Pequeno.

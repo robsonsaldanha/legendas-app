@@ -458,3 +458,10 @@
 
 ## 2026-10-30 — CI do Mac em máquina macOS 15
 - A imagem macOS 14 do GitHub sai do ar em 02/11/2026 e já estava com paradas programadas (a montagem do Mac da 2.27.1 foi cancelada duas vezes sem começar). O CI passou para `macos-15` (Apple Silicon).
+
+## 2026-10-30 — Liberação para o site com um clique
+- Problema: o site de produção ficou na 2.24.0.58 enquanto a dev chegou à 2.27.2, porque a liberação dependia de alguém abrir o pedido dev → main à mão.
+- Agora: o CI (job "Pedido de liberação para o site", no fim do `instalador.yml`, só na dev e só se Windows, Mac e Linux passarem) abre ou atualiza o pedido dev → main com a versão, o que entra (assuntos dos commits, sem `brain:`/merges) e o link do instalador de teste. Texto em `core/liberacao.py` (teste `tests/test_liberacao.py`), execução em `packaging/liberacao.py`.
+- **Aprovar = juntar o pedido** (Merge pull request). A montagem da main (≈ 35 min) publica `v<versão>`, registra o instalador dos três sistemas e o pacote no servidor de produção (`CNT_PROD_ATIVO` = 1): o site e a atualização automática passam a oferecer a versão. Não aprovar = deixar aberto; o pedido se atualiza a cada versão nova.
+- Não se promove o binário da dev: o canal (`core/canal.json`) vai dentro da montagem, por isso a main monta de novo.
+- Se o repositório não deixar o CI abrir pedidos, o job só avisa (não derruba a montagem) com o link para abrir à mão.
