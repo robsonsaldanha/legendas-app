@@ -94,6 +94,7 @@
 - [x] CNT Dubla 0.1 (programa separado, `python -m dubla`): roteiro de dublagem, personagens (sugestão pela voz), anéis, escalação, estúdio de gravação com takes, direção, M&E, mixagem e entregas, vozes por IA (sistema/serviço) e termo de consentimento de voz
 - [x] 2.22.0 / CNT Dubla 0.2: botão "Dublagem" no editor manda o vídeo e a legenda para a CNT Dubla; a Dubla entrega também a legenda com o texto dublado
 - [x] 2.26.0: modo foco, anotações por legenda, tela de cinema, autocompletar e glossário do projeto aprendido, entrega com comparação/nota de qualidade/relatório em PDF, ritmo e previsão (a partir do 3º trabalho)
+- [x] 2.27.0: lançador antes do programa (janela pequena: atualização com barra e MB que andam, licença e conferência dos arquivos, depois abre o programa)
 - [x] 2.25.0: salvamento automático no editor (a cada 1 min, configurável) guardando a versão anterior (histórico, ao lado ou numa pasta)
 - [x] 2.24.0: atualização passo a passo ao abrir (procurar, baixar com %, instalar, contagem 3-2-1 e reiniciar); ao reabrir, o que mudou ou o erro com o código
 - [x] 2.23.0: cor de destaque dourada (a da logo) no programa, no site, no hub e nos painéis

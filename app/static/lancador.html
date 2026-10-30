@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="token" content="{{TOKEN}}">
+  <meta name="versao" content="{{VERSION}}">
+  <title>CNT Legendas</title>
+  <style>
+    @font-face { font-family: "Anton"; src: url("/fonts/anton-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("/fonts/inter-600.woff2") format("woff2"); font-weight: 600; }
+    @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono-500.woff2") format("woff2"); font-weight: 500; }
+    :root { --ouro: #DDB06A; --ouro-2: #C59248; --tinta: #F1F2EF; --mudo: #9CA3AB; --fundo: #121214; --linha: #2A2D32; --err: #EF7272; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--fundo); color: var(--tinta); font: 14px/1.45 "Inter", "Segoe UI", system-ui, sans-serif;
+      -webkit-user-select: none; user-select: none; overflow: hidden; }
+    body { background: radial-gradient(120% 90% at 0% 0%, #1d1a14 0%, var(--fundo) 55%); }
+    .l { position: absolute; inset: 0; padding: 30px 40px 26px; display: flex; flex-direction: column; border: 1px solid var(--linha); border-radius: 14px; }
+    .topo { display: flex; align-items: center; gap: 12px; }
+    .topo img { height: 30px; }
+    .topo span { font: 500 11px "JetBrains Mono", monospace; letter-spacing: .32em; color: var(--mudo); }
+    .x { margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 0; background: transparent; color: var(--mudo); font-size: 18px; cursor: pointer; }
+    .x:hover { background: #ffffff14; color: var(--tinta); }
+    .eyebrow { margin-top: 30px; font: 500 11px "JetBrains Mono", monospace; letter-spacing: .2em; text-transform: uppercase; color: var(--ouro); }
+    h1 { margin: 8px 0 4px; font: 400 34px/1.05 "Anton", Impact, sans-serif; letter-spacing: .01em; }
+    .sub { color: #d8dade; min-height: 21px; }
+    .sub b { color: var(--tinta); font-variant-numeric: tabular-nums; }
+    .barra { margin-top: 22px; height: 6px; border-radius: 3px; background: #26282c; overflow: hidden; }
+    .barra i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--ouro-2), var(--ouro)); }
+    .barra.indet i { width: 30% !important; animation: vai 1.1s ease-in-out infinite; }
+    @keyframes vai { 0% { transform: translateX(-110%); } 100% { transform: translateX(360%); } }
+    .passo { margin-top: 10px; display: flex; justify-content: space-between; font: 500 10.5px "JetBrains Mono", monospace; letter-spacing: .16em; text-transform: uppercase; color: var(--mudo); }
+    .passo b { color: var(--ouro); font-weight: 500; }
+    .rodape { margin-top: auto; display: flex; justify-content: space-between; align-items: center; font: 500 10.5px "JetBrains Mono", monospace; letter-spacing: .14em; color: #6d737a; }
+    .erro { color: var(--err); }
+    .acoes { display: flex; gap: 8px; margin-top: 14px; }
+    .acoes button { font: 600 13px "Inter", sans-serif; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--linha); background: #1d1f23; color: var(--tinta); cursor: pointer; }
+    .acoes button.p { background: var(--ouro); border-color: var(--ouro); color: #1F1606; }
+    .cont { font: 400 21px/1 "Anton", sans-serif; color: var(--ouro); margin-left: 4px; vertical-align: -2px; }
+    @media (prefers-reduced-motion: reduce) { .barra.indet i { animation: none; width: 100% !important; opacity: .5; } }
+  </style>
+</head>
+<body>
+  <main class="l" role="status" aria-live="polite">
+    <div class="topo"><img src="/logo.png" alt="CNT"><span>LEGENDAS</span>
+      <button class="x" id="sair" title="Fechar" aria-label="Fechar">×</button></div>
+    <div class="eyebrow" id="eyebrow">Abrindo o programa</div>
+    <h1 id="titulo">Preparando tudo.</h1>
+    <div class="sub" id="sub">Procurando a versão mais recente…</div>
+    <div class="barra indet" id="barra"><i id="fill"></i></div>
+    <div class="passo"><span id="passo">Verificando atualizações</span><b id="pct"></b></div>
+    <div class="acoes" id="acoes" hidden></div>
+    <div class="rodape"><span>CNT · LEGENDAGEM PROFISSIONAL</span><span id="versao"></span></div>
+  </main>
+  <script src="/lancador.js"></script>
+</body>
+</html>

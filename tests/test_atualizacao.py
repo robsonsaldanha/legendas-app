@@ -150,3 +150,19 @@ def test_primeira_abertura_depois_da_versao_antiga(chave):
     assert r["situacao"] == "sucesso" and r["de"] == "2.23.0.56" and len(r["novidades"]) >= 3
     A.marcar_visto()
     assert A.resultado_ao_abrir("2.24.0.60") is None             # não repete
+
+
+def test_integridade_dos_arquivos(tmp_path):
+    """O lançador confere app/ e core/ contra o manifesto da montagem: alterado ou faltando = aviso (ER-RA-450)."""
+    from core import integridade
+    for rel, txt in (("app/a.py", "x = 1\n"), ("core/b.py", "y = 2\n"), ("core/canal.json", "{}")):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(txt)
+    assert integridade.conferir(tmp_path)["situacao"] == "sem_manifesto"
+    integridade.gerar(tmp_path)
+    assert integridade.conferir(tmp_path) == {"situacao": "ok", "alterados": [], "faltando": [], "total": 2}
+    (tmp_path / "core" / "canal.json").write_text('{"canal": "producao"}')          # canal.json não entra
+    (tmp_path / "app" / "a.py").write_text("x = 2\n")
+    (tmp_path / "core" / "b.py").unlink()
+    r = integridade.conferir(tmp_path)
+    assert r["situacao"] == "alterada" and r["alterados"] == ["app/a.py"] and r["faltando"] == ["core/b.py"]

@@ -283,3 +283,19 @@ def test_tela_de_resultado_da_atualizacao(server):
     assert call(port, "GET", "/api/atualizacao", token=app.token)[1]["estado"] == "verificando"
     call(port, "POST", "/api/atualizacao/continuar", {}, token=app.token)
     assert call(port, "GET", "/api/atualizacao", token=app.token)[1]["estado"] == "parado"
+
+
+def test_lancador(server):
+    """2.27: /open?ir=lancador leva ao lançador; ele confere licença e arquivos e avisa quando terminou."""
+    app, port, tmp = server
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    conn.request("GET", f"/open?k={app.token}&ir=lancador", headers={"Host": f"127.0.0.1:{port}"})
+    r = conn.getresponse(); r.read()
+    assert r.status == 302 and r.getheader("Location") == "/lancador"
+    st, html = call(port, "GET", "/lancador", token=app.token)
+    assert st == 200 and "lancador.js" in (html if isinstance(html, str) else html.decode())
+    st, v = call(port, "POST", "/api/lancador/validar", {}, token=app.token)
+    assert st == 200 and v["integridade"]["situacao"] in ("ok", "sem_manifesto") and "modo" in v["licenca"]
+    app.atualizando_na_partida = True
+    st, p = call(port, "POST", "/api/lancador/pronto", {}, token=app.token)
+    assert p == {"janela": False} and app.atualizando_na_partida is False

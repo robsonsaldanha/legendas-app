@@ -333,15 +333,44 @@ class Janela:
     def fechar(self) -> None:
         """Fechar sem perguntar (botão "Fechar o programa", que já perguntou na página)."""
         self.saindo = True
+        if self.janela_lancador is not None:
+            try:
+                self.janela_lancador.destroy()
+            except Exception:  # noqa: BLE001
+                pass
         if self.window is not None:
             try:
                 self.window.destroy()
             except Exception:  # noqa: BLE001
                 pass
 
+    lancador = False
+    janela_lancador = None
+
+    def abrir_principal(self) -> None:
+        """Cria a janela do programa (maximizada) e fecha o lançador."""
+        import webview
+        if self.window is not None:
+            return
+        self.window = webview.create_window(
+            TITULO, self.url, width=1366, height=860, min_size=(1024, 640), maximized=True,
+            text_select=True, background_color="#16191D")
+        self.window.events.closing += self._fechando
+        self.window.events.shown += lambda: self.atualizar_bandeja()
+        if getattr(self, "_ao_carregar", None):
+            self.window.events.loaded += self._ao_carregar
+        lanc, self.janela_lancador = self.janela_lancador, None
+        if lanc is not None:
+            def fechar_lancador():
+                try:
+                    lanc.destroy()
+                except Exception:  # noqa: BLE001
+                    pass
+            self.window.events.shown += fechar_lancador
+
     def mostrar(self) -> None:
         """Atalho clicado de novo ou "Exibir" na bandeja: mostra e traz a janela para a frente."""
-        w = self.window
+        w = self.window or self.janela_lancador
         if w is None:
             return
         try:
@@ -368,13 +397,15 @@ class Janela:
         _ligar_menus_e_atalhos()
         webview.settings["ALLOW_DOWNLOADS"] = True
         webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
-        self.window = webview.create_window(
-            TITULO, self.url, width=1366, height=860, min_size=(1024, 640), maximized=True,
-            text_select=True, background_color="#16191D")
-        self.window.events.closing += self._fechando
-        self.window.events.shown += lambda: self.atualizar_bandeja()
-        if ao_carregar:
-            self.window.events.loaded += ao_carregar
+        self._ao_carregar = ao_carregar
+        if self.lancador:
+            # 2.27: primeiro o lançador (janela pequena, sem moldura): procura atualização, confere a licença e
+            # os arquivos; a janela do programa só abre quando ele termina (abrir_principal).
+            self.janela_lancador = webview.create_window(
+                TITULO, self.url + "&ir=lancador", width=620, height=380, resizable=False, frameless=True,
+                easy_drag=True, background_color="#121214")
+        else:
+            self.abrir_principal()
         armazenamento = data_dir() / "janela"
         armazenamento.mkdir(parents=True, exist_ok=True)
         webview.start(gui="edgechromium", private_mode=False, storage_path=str(armazenamento),

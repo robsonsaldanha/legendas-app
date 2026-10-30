@@ -156,7 +156,7 @@ class Atualizador:
                 from .erros import de_http
                 raise AtualizacaoError(f"O download da atualização falhou ({r.status_code}).", de_http(r.status_code))
             with open(destino, "wb") as f:
-                for chunk in r.iter_bytes(1 << 20):
+                for chunk in r.iter_bytes(1 << 18):
                     f.write(chunk)
                     h.update(chunk)
                     got += len(chunk)

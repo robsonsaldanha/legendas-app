@@ -69,6 +69,7 @@ cp -R "$RAIZ/core" "$RAIZ/app" "$RAIZ/dubla" "$PROG/"; cp "$RAIZ/cntboot.py" "$P
 find "$PROG/core" "$PROG/app" "$PROG/dubla" -name "__pycache__" -type d -prune -exec rm -rf {} +
 printf '{"canal": "%s", "build": %s}' "$CANAL" "$NUM" > "$PROG/core/canal.json"
 "$PY" -m compileall -q -f "$PROG/core" "$PROG/app" "$PROG/dubla" >/dev/null
+"$PY" "$RAIZ/packaging/manifesto.py" "$PROG" >/dev/null     # o lançador confere os arquivos
 
 # ---------------------------------------------------------------- modelos (os mesmos do Windows)
 etapa "modelos"

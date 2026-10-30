@@ -702,10 +702,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(302)
             self.send_header("Set-Cookie", f"{self.app.cookie_name}={self.app.token}; Path=/; "
                                            "HttpOnly; SameSite=Strict")
-            self.send_header("Location", "/")
+            self.send_header("Location", "/lancador" if self.query.get("ir") == "lancador" else "/")
             self.send_header("Content-Length", "0")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
+            return
+        if path == "/lancador":
+            if not self._cookie_ok():
+                self._locked_page()
+                return
+            html = (STATIC / "lancador.html").read_text(encoding="utf-8")
+            html = html.replace("{{TOKEN}}", self.app.token).replace("{{VERSION}}", versao_completa())
+            self._send(200, html.encode("utf-8"), "text/html; charset=utf-8", {
+                "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+                                           "script-src 'self'; connect-src 'self'; frame-ancestors 'none'"})
             return
         if path in ("/aovivo/legenda", "/aovivo/fluxo"):
             if not secrets.compare_digest(self.query.get("k", ""), self.app.aovivo_chave()):
@@ -1838,6 +1848,28 @@ class Handler(BaseHTTPRequestHandler):
         """A tela mostrou a contagem 3, 2, 1: pode fechar e reabrir."""
         self.app.updater.confirmar_reinicio()
         return self.app.updater.to_dict()
+
+    @route("POST", r"/api/lancador/validar")
+    def api_lancador_validar(self):
+        """Lançador: confere a licença no servidor (sem internet, fica a guardada) e os arquivos do programa."""
+        from core import integridade, licenca
+        try:
+            licenca.atual().conferir()
+        except Exception as e:  # noqa: BLE001
+            log.info("Lançador: licença não conferida agora (%s)", e)
+        integ = integridade.conferir()
+        if integ["situacao"] == "alterada":
+            log.warning("Arquivos do programa diferentes do esperado: %s %s", integ["alterados"], integ["faltando"])
+        return {"licenca": self.app.license_state(), "integridade": {**integ, "codigo": "ER-RA-450" if integ["situacao"] == "alterada" else ""}}
+
+    @route("POST", r"/api/lancador/pronto")
+    def api_lancador_pronto(self):
+        """Lançador terminou: abre a janela do programa (ou, no navegador, a página segue para o início)."""
+        self.app.fim_da_tela_de_atualizacao()
+        if self.app.janela is not None:
+            threading.Thread(target=self.app.janela.abrir_principal, daemon=True, name="abrir-janela").start()
+            return {"janela": True}
+        return {"janela": False}
 
     @route("POST", r"/api/atualizacao/continuar")
     def api_update_continue(self):

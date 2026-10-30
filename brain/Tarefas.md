@@ -54,6 +54,7 @@ _(nada no momento)_
 - [x] T-105 · P-23 · Nota de qualidade 0–100 com o porquê
 - [x] T-106 · P-23 · Relatório em PDF para o cliente, com a logo dela
 - [x] T-107 · P-23 · Ritmo e previsão a partir do 3º trabalho (tempo ativo, parado e fora do programa) — 2.26
+- [x] T-108 · Lançador antes do programa: atualização com barra/MB animados, licença e conferência dos arquivos (ER-RA-450) — 2.27
 
 ### CNT Dubla (programa separado, para dubladores e estúdios)
 - [x] T-050 · P-07 · Decidido: programa separado, processa no computador do cliente, foco em dublagem humana, vozes por IA nas três formas (24/10/2026)

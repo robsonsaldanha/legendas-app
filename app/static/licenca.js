@@ -111,14 +111,30 @@ function updOverlay() {
 
 const UPD_PASSOS = ["Procurar", "Baixar", "Instalar", "Reiniciar"];
 function updDraw(ov, { passo, titulo, texto = "", pct = null, versaoAtual = "", extra = "" }) {
-  ov.innerHTML = `<div class="upd-box">
-    <ol class="upd-passos" aria-label="Etapas da atualização">${UPD_PASSOS.map((n, i) =>
-      `<li class="${i < passo ? "feito" : i === passo ? "atual" : ""}" ${i === passo ? 'aria-current="step"' : ""}>${esc(n)}</li>`).join("")}</ol>
-    <h2>${esc(titulo)}</h2>${texto ? `<p class="muted">${texto}</p>` : ""}
-    ${pct != null ? `<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>
-      <p class="upd-pct tnum">${pct}%</p>` : extra ? "" : `<div class="upd-spin" aria-hidden="true"></div>`}
-    ${extra}
-    ${versaoAtual ? `<p class="muted small">Versão atual: ${esc(versaoAtual)}</p>` : ""}</div>`;
+  // monta uma vez e depois só troca o que mudou: o círculo gira sem recomeçar e a barra anda suave
+  if (!ov.querySelector(".upd-box")) {
+    ov.innerHTML = `<div class="upd-box">
+      <ol class="upd-passos" aria-label="Etapas da atualização">${UPD_PASSOS.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
+      <h2 data-u="tit"></h2><p class="muted" data-u="txt"></p>
+      <div class="bar" data-u="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i style="width:0%"></i></div>
+      <p class="upd-pct tnum" data-u="pct"></p>
+      <div class="upd-spin" data-u="spin" aria-hidden="true"></div>
+      <div data-u="extra"></div>
+      <p class="muted small" data-u="ver"></p></div>`;
+  }
+  const q = (k) => ov.querySelector(`[data-u="${k}"]`);
+  ov.querySelectorAll(".upd-passos li").forEach((li, i) => {
+    li.className = i < passo ? "feito" : i === passo ? "atual" : "";
+    if (i === passo) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+  });
+  if (q("tit").textContent !== titulo) q("tit").textContent = titulo;
+  q("txt").innerHTML = texto; q("txt").hidden = !texto;
+  const temBarra = pct != null;
+  q("bar").hidden = !temBarra; q("pct").hidden = !temBarra;
+  if (temBarra) { q("bar").firstElementChild.style.width = `${pct}%`; q("bar").setAttribute("aria-valuenow", pct); q("pct").textContent = `${pct}%`; }
+  q("spin").hidden = temBarra || !!extra;
+  if (q("extra").dataset.v !== extra) { q("extra").innerHTML = extra; q("extra").dataset.v = extra; }
+  q("ver").textContent = versaoAtual ? `Versão atual: ${versaoAtual}` : ""; q("ver").hidden = !versaoAtual;
 }
 
 async function updateGate() {
@@ -139,11 +155,22 @@ async function updateGate() {
       await passo("verificando");
       updDraw(ov, { passo: 0, titulo: "Procurando atualizações…", versaoAtual: u.versao_atual });
     } else if (u.estado === "disponivel" || u.estado === "baixando") {
-      await passo("baixando");
+      if (ultimo !== "baixando") { ultimo = "baixando"; desde = Date.now(); }
       const pct = Math.round((u.progresso || 0) * 100);
       updDraw(ov, { passo: 1, titulo: `Baixando ${novo}`, pct,
-        texto: u.tamanho ? `${fmtSize(Math.round((u.progresso || 0) * u.tamanho))} de ${fmtSize(u.tamanho)}` : "", versaoAtual: u.versao_atual });
-    } else if (u.estado === "aplicando") {
+        texto: u.tamanho ? `${fmtSize(Math.round((u.progresso || 0) * u.tamanho))} de ${fmtSize(u.tamanho)}` : "Baixando…", versaoAtual: u.versao_atual });
+    } else if (u.estado === "aplicando" || u.estado === "pronto") {
+      if (ultimo === "baixando") {               // baixou rápido: mostra a barra chegando a 100% antes de seguir
+        for (const p of [60, 85, 100]) {
+          updDraw(ov, { passo: 1, titulo: `Baixando ${novo}`, pct: p,
+            texto: u.tamanho ? `${fmtSize(Math.round((p / 100) * u.tamanho))} de ${fmtSize(u.tamanho)}` : "", versaoAtual: u.versao_atual });
+          await sleep(260);
+        }
+        ultimo = "baixado";
+      }
+    }
+    if (["verificando", "disponivel", "baixando"].includes(u.estado)) { /* já desenhado acima */ }
+    else if (u.estado === "aplicando") {
       await passo("aplicando");
       updDraw(ov, { passo: 2, titulo: "Instalando a atualização…", texto: "Não feche o programa.", versaoAtual: u.versao_atual });
     } else if (u.estado === "pronto") {
@@ -163,7 +190,7 @@ async function updateGate() {
       await passo("fim");
       break;
     }
-    await sleep(400);
+    await sleep(250);
     try { u = await api("GET", "/api/atualizacao"); } catch { u = { ...u, estado: "reiniciando" }; }
   }
   ov.remove();
