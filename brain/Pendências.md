@@ -188,6 +188,19 @@ Pedido do Róbson em 26/10/2026, depois de entender o fluxo das empresas de loca
 
 ---
 
+## P-23 — Ideias do editor aprovadas pelo Róbson (27/10/2026) · feito na 2.26
+Das 16 ideias propostas, ele aprovou estas (as outras ficaram de fora: revisão por voz, falsos amigos, consistência de tratamento, resumo do dia, modo véspera, portal do cliente, atalhos adaptáveis, pausa inteligente):
+1. **Modo foco** — botão de liga/desliga no editor; o layout continua o mesmo, as outras legendas ficam apagadas (opacas) e a atual em destaque.
+2. **Anotações por legenda** — no menu do botão direito, "Anotação…": texto livre que **não vai para o .srt**, fica no banco do programa (por arquivo e por tempo da legenda). Legenda com anotação mostra um bloquinho de notas numa **coluna própria** da lista (não empurra o texto).
+3. **Tela de cinema** — tela só para assistir e revisar: vídeo grande com a legenda, espaço pausa/continua, e dá para escrever uma anotação na legenda daquele momento (as mesmas anotações do item 2).
+4. **Glossário do projeto aprendido** — quando ela corrige a mesma palavra do mesmo jeito 3 vezes no projeto, o programa **pergunta** se quer pôr no glossário do projeto (só do projeto). E **autocompletar** no texto da legenda, como nos editores de código: sugere termos do glossário (projeto, cliente, geral), nomes e palavras já usadas na legenda; Tab ou Enter aceita, Esc fecha, setas escolhem.
+5. **Comparação na entrega** — ao entregar, abre a tela de comparação: com a entrega anterior (se houver) ou, se é a primeira, com o arquivo original. Destaca o que mudou (texto e tempo), legendas novas e apagadas, e gera o **relatório do que foi feito** (resumo + lista).
+6. **Nota de qualidade** — de 0 a 100 antes de entregar, com o porquê (regras do perfil do cliente: velocidade de leitura, linhas, duração, intervalos, ortografia, glossário).
+7. **Relatório para o cliente** — PDF com o nome e a logo dela (Configurações), mostrando o que foi verificado e a nota; opcional na entrega.
+8. **Ritmo e previsão** — a partir do **3º trabalho feito no programa** (os 2 primeiros servem de base): mede minutos de vídeo, legendas, palavras e caracteres contra o **tempo ativo** no programa, o **tempo aberto parado** e o **tempo fora** (entre começar e entregar). Relatórios disso e previsão de quanto falta / quando termina cada episódio.
+
+---
+
 ## Pendências que já existiam
 
 ### P-10 — Validar com o uso real · contínua

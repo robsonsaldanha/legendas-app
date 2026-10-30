@@ -983,7 +983,8 @@ class Handler(BaseHTTPRequestHandler):
                    "translator_name": str, "use_gpu": str, "whisper_model": str,
                    "transcribe_engine": str, "transcribe_multilang": bool, "bandeja": bool,
                    "formato_entrega": str, "mostrar_novidades": bool, "autosalvar": bool,
-                   "autosalvar_min": int, "autosalvar_backup": str, "autosalvar_pasta": str, "autosalvar_manter": int}
+                   "autosalvar_min": int, "autosalvar_backup": str, "autosalvar_pasta": str, "autosalvar_manter": int,
+                   "relatorio_nome": str, "relatorio_logo": str}
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))
@@ -991,6 +992,9 @@ class Handler(BaseHTTPRequestHandler):
         s.autosalvar_manter = min(500, max(1, int(s.autosalvar_manter or 20)))
         if s.autosalvar_backup not in ("historico", "ao_lado", "pasta"):
             s.autosalvar_backup = "historico"
+        if s.relatorio_logo and (not Path(s.relatorio_logo).is_file()
+                                 or Path(s.relatorio_logo).suffix.lower() not in (".png", ".jpg", ".jpeg")):
+            raise ApiError("A logo precisa ser um arquivo .png ou .jpg que exista no computador.")
         if s.autosalvar_backup == "pasta" and not s.autosalvar_pasta:
             raise ApiError("Escolha a pasta onde guardar as cópias anteriores.")
         if "editor" in data:
@@ -1354,6 +1358,19 @@ class Handler(BaseHTTPRequestHandler):
         depuracao.registrar("editor.abrir", "aberto", sessao=r.get("sid"), legendas=len(r.get("cues") or []), idioma=r.get("language"))
         return r
 
+    @route("GET", r"/api/ritmo")
+    def api_ritmo(self):
+        need("relatorios")
+        return self.app.projects.ritmo()
+
+    @route("GET", r"/api/itens/(\d+)/previsao")
+    def api_item_previsao(self, iid):
+        """Previsão no rodapé do editor: sem licença com relatórios, só não mostra (não abre aviso de licença)."""
+        from core import licenca
+        if not licenca.atual().tem("relatorios"):
+            return {"pronto": False, "previsao": None, "sem_licenca": True}
+        return self.app.projects.previsao(int(iid))
+
     @route("GET", r"/api/report")
     def api_report(self):
         need("relatorios")
@@ -1361,9 +1378,47 @@ class Handler(BaseHTTPRequestHandler):
         return self.app.projects.general_report(q.get("from", ""), q.get("to", ""), q.get("client") or None,
                                                 q.get("status", ""))
 
+    @route("POST", r"/api/editor/(\w+)/entrega/previa")
+    def api_editor_previa_entrega(self, sid):
+        return self.app.editor.previa_entrega(sid, self._body().get("cues", []))
+
+    @route("POST", r"/api/editor/(\w+)/correcao")
+    def api_editor_correcao(self, sid):
+        b = self._body()
+        return self.app.editor.correcao(sid, b.get("de"), b.get("para"))
+
+    @route("POST", r"/api/editor/(\w+)/correcao/decidir")
+    def api_editor_correcao_decidir(self, sid):
+        b = self._body()
+        r = self.app.editor.correcao_decidir(sid, str(b.get("de") or ""), str(b.get("para") or ""), bool(b.get("adicionar")))
+        if b.get("adicionar"):
+            self.app.sincronia.avisar_mudanca()
+        return r
+
+    @route("GET", r"/api/editor/(\w+)/sugestoes")
+    def api_editor_sugestoes(self, sid):
+        return self.app.editor.sugestoes(sid)
+
+    @route("GET", r"/api/editor/(\w+)/notas")
+    def api_editor_notas(self, sid):
+        return self.app.editor.notas(sid)
+
+    @route("POST", r"/api/editor/(\w+)/notas")
+    def api_editor_nota_nova(self, sid):
+        return self.app.editor.nota_salvar(sid, self._body())
+
+    @route("PUT", r"/api/editor/(\w+)/notas/(\d+)")
+    def api_editor_nota(self, sid, nid):
+        return self.app.editor.nota_salvar(sid, self._body(), int(nid))
+
+    @route("DELETE", r"/api/editor/(\w+)/notas/(\d+)")
+    def api_editor_nota_apagar(self, sid, nid):
+        return self.app.editor.nota_apagar(sid, int(nid))
+
     @route("POST", r"/api/editor/(\w+)/beat")
     def api_editor_beat(self, sid):
-        return self.app.editor.beat(sid, float(self._body().get("seconds") or 0))
+        b = self._body()
+        return self.app.editor.beat(sid, float(b.get("seconds") or 0), b.get("ativo", True) is not False)
 
     @route("DELETE", r"/api/recent/(\d+)")
     def api_recent_delete(self, rid):

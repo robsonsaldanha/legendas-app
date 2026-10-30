@@ -28,6 +28,8 @@ const ICONS = {
   sync: "M3 12h4l3-8 4 16 3-8h4",
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5",
   download: "M12 4v12M7 11l5 5 5-5M5 20h14",
+  nota: "M5 4h14v11l-5 5H5zM14 20v-5h5M8 9h8M8 12.5h5",
+  foco: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12.5a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1",
 };
 function ic(name, cls = "") {
   return `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name] || ""}"/></svg>`;

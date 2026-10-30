@@ -616,15 +616,64 @@ class ProjectManager:
             self._event(it["obra_id"], origem, f"{self._label(it)}: {m['legendas']} legendas", iid)
         return m
 
-    def add_time(self, iid: int, seconds: float) -> None:
+    def add_time(self, iid: int, seconds: float, ativo: bool = True) -> None:
+        """Tempo no editor: `ativo` (com teclado, mouse ou vídeo tocando) ou parado (aberto sem atividade)."""
         seconds = max(0.0, min(float(seconds), 300.0))
         if not seconds:
             return
-        self._item(iid)
+        it = self._item(iid)
         day = time.strftime("%Y-%m-%d")
-        self.db._exec("INSERT INTO tempo (item_id, dia, segundos) VALUES (?, ?, ?) "
-                      "ON CONFLICT(item_id, dia) DO UPDATE SET segundos = segundos + excluded.segundos",
-                      (iid, day, seconds))
+        if ativo:
+            self.db._exec("INSERT INTO tempo (item_id, dia, segundos) VALUES (?, ?, ?) "
+                          "ON CONFLICT(item_id, dia) DO UPDATE SET segundos = segundos + excluded.segundos",
+                          (iid, day, seconds))
+            if not it.get("primeira_atividade"):
+                self.db._exec("UPDATE itens SET primeira_atividade = ? WHERE id = ?", (_now(), iid))
+        else:
+            self.db._exec("INSERT INTO tempo (item_id, dia, segundos, parado) VALUES (?, ?, 0, ?) "
+                          "ON CONFLICT(item_id, dia) DO UPDATE SET parado = parado + excluded.parado",
+                          (iid, day, seconds))
+
+    # ------------------------------------------------------------ ritmo e previsão (2.26)
+
+    def trabalhos_entregues(self) -> list[dict]:
+        """Episódios/filmes entregues pelo programa, com os tempos medidos (base do ritmo)."""
+        out = []
+        for r in self.db._q("SELECT i.*, o.name AS obra_name FROM itens i JOIN obras o ON o.id = i.obra_id "
+                            "WHERE EXISTS (SELECT 1 FROM metricas m WHERE m.item_id = i.id AND m.origem = 'entrega') "
+                            "ORDER BY i.id"):
+            ent = self.db._q("SELECT at, data FROM metricas WHERE item_id = ? AND origem = 'entrega' ORDER BY id", (r["id"],))
+            m = json.loads(ent[-1]["data"])
+            t = self.db._q("SELECT COALESCE(SUM(segundos), 0) AS a, COALESCE(SUM(parado), 0) AS p FROM tempo WHERE item_id = ?", (r["id"],))[0]
+            out.append({"item_id": r["id"], "nome": f"{r['obra_name']} — {self._label(dict(r))}",
+                        "video_s": m.get("duracao_video_s") or 0, "legendas": m.get("legendas") or 0,
+                        "palavras": m.get("palavras") or 0, "caracteres": m.get("caracteres") or 0,
+                        "ativo_s": float(t["a"]), "parado_s": float(t["p"]),
+                        "inicio": r["primeira_atividade"] or r["created_at"], "fim": ent[0]["at"]})
+        return out
+
+    def ritmo(self) -> dict:
+        from core import ritmo
+        dias = [r["s"] / 3600 for r in self.db._q("SELECT dia, SUM(segundos) AS s FROM tempo GROUP BY dia HAVING s > 0")]
+        return ritmo.calcular(self.trabalhos_entregues(), dias)
+
+    def previsao(self, iid: int) -> dict:
+        from core import ritmo
+        it = self._item(iid)
+        r = self.ritmo()
+        base = {"pronto": r["pronto"], "faltam": r["faltam"], "trabalhos": r["trabalhos"]}
+        if not r["pronto"] or it["status"] == FINALIZADO:
+            return {**base, "previsao": None}
+        m = self._latest(iid) or {}
+        video = m.get("duracao_video_s") or 0
+        if not video and it.get("video") and Path(it["video"]).exists():
+            try:
+                from core.media import probe
+                video = probe(Path(it["video"])).get("duration") or 0
+            except Exception:  # noqa: BLE001
+                video = 0
+        return {**base, "previsao": ritmo.prever(r, video, m.get("legendas") or 0, self._seconds(iid), it.get("prazo") or ""),
+                "ritmo": {k: r.get(k) for k in ("video_min_por_hora", "legendas_por_hora", "horas_ativas_por_dia")}}
 
     def _latest(self, iid: int) -> dict | None:
         rows = self.db._q("SELECT data, at FROM metricas WHERE item_id = ? ORDER BY id DESC LIMIT 1", (iid,))

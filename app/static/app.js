@@ -1136,6 +1136,8 @@ async function renderSettings() {
         `<button class="ds-btn sm" data-action="check-update">Procurar atualização</button>`)}
       ${setRow("cfg-autosalvar", "Salvamento automático", esc(resumoAutosalvar(s)),
         `<button class="ds-btn sm" data-action="autosalvar">Ajustar</button>`)}
+      ${setRow("cfg-relatorio", "Relatório para o cliente", `${esc(s.relatorio_nome || s.translator_name || "Sem nome")}${s.relatorio_logo ? ` · logo: <span class="mono small">${esc(s.relatorio_logo.split(/[\\/]/).pop())}</span>` : " · sem logo"}`,
+        `<button class="ds-btn sm" data-action="relatorio-cfg">Ajustar</button>`)}
       ${setRow("cfg-novidades", "Novidades da versão", `<label class="check"><input type="checkbox" id="s-novidades" ${s.mostrar_novidades !== false ? "checked" : ""}>
           Depois de cada atualização, mostrar ao abrir o que mudou</label>`, "")}
       ${st.janela ? setRow("cfg-bandeja", "Bandeja do sistema", `<label class="check"><input type="checkbox" id="s-bandeja" ${s.bandeja !== false ? "checked" : ""}>
@@ -1311,6 +1313,7 @@ async function renderSettings() {
       }
       if (a === "check-update") await checkUpdate(true);
       if (a === "autosalvar") await autosalvarModal();
+      if (a === "relatorio-cfg") await relatorioClienteModal();
       if (a === "perfil") await perfilModal();
       if (a === "glossario-geral") await glossarioGeral();
       if (a === "relatar") relatarProblema();
@@ -1533,6 +1536,31 @@ async function autosalvarModal() {
       S.state.settings = await api("PUT", "/api/settings", { autosalvar: m.$("#as-on").checked, autosalvar_min: min, autosalvar_backup: bk,
         autosalvar_pasta: m.$("#as-pasta").value.trim(), autosalvar_manter: Math.round(+m.$("#as-manter").value || 20) });
       m.close(); toast("Salvamento automático ajustado."); renderSettings();
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+/* ================================================================ relatório para o cliente (2.26) */
+
+async function relatorioClienteModal() {
+  const s = S.state.settings || {};
+  const m = modal("Relatório para o cliente", `
+    <p class="muted small">Aparece no topo do relatório em PDF que você pode mandar junto com a entrega (marque na tela de entrega).</p>
+    <label class="field"><span>Nome ou empresa</span><input type="text" id="rc-nome" value="${esc(s.relatorio_nome || "")}" placeholder="${esc(s.translator_name || "Seu nome")}"></label>
+    <label class="field"><span>Logo (.png ou .jpg)</span>
+      <span class="row" style="gap:8px"><input type="text" id="rc-logo" value="${esc(s.relatorio_logo || "")}" placeholder="Nenhuma" style="flex:1">
+        <button class="btn" type="button" id="rc-escolher">Escolher…</button><button class="btn ghost" type="button" id="rc-tirar">Tirar</button></span></label>`,
+    `<button class="btn" data-k="cancelar">Cancelar</button><button class="btn primary" data-k="salvar">Salvar</button>`);
+  m.$("#rc-escolher").addEventListener("click", async () => {
+    try { const { paths } = await api("POST", "/api/dialog", { kind: "imagem", title: "Logo do relatório" }); if (paths?.[0]) m.$("#rc-logo").value = paths[0]; }
+    catch (e) { toast(e.message, true); }
+  });
+  m.$("#rc-tirar").addEventListener("click", () => { m.$("#rc-logo").value = ""; });
+  m.$('[data-k="cancelar"]').addEventListener("click", () => m.close());
+  m.$('[data-k="salvar"]').addEventListener("click", async () => {
+    try {
+      S.state.settings = await api("PUT", "/api/settings", { relatorio_nome: m.$("#rc-nome").value.trim(), relatorio_logo: m.$("#rc-logo").value.trim() });
+      m.close(); toast("Relatório para o cliente ajustado."); renderSettings();
     } catch (e) { toast(e.message, true); }
   });
 }
