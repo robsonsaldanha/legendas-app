@@ -90,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     from .server import App, make_server
 
     setup_logging()
+    from core.rede import preferir_ipv4
+    preferir_ipv4()                  # IPv6 quebrado na rede não pode atrasar cada conexão (2.27.1)
     app = App()
     days = Settings.load().keep_job_days
     try:

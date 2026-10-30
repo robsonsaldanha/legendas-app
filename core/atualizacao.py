@@ -112,7 +112,7 @@ class Atualizador:
         import httpx
 
         def get(url, **kw):
-            return httpx.get(url, timeout=kw.pop("timeout", 15), follow_redirects=True, headers={"User-Agent": _agente()}, **kw)
+            return httpx.get(url, timeout=kw.pop("timeout", httpx.Timeout(15, connect=5)), follow_redirects=True, headers={"User-Agent": _agente()}, **kw)
         return get
 
     def verificar(self) -> dict:
@@ -151,7 +151,7 @@ class Atualizador:
         h = hashlib.sha256()
         total = int(m.get("tamanho") or 0)
         got = 0
-        with httpx.stream("GET", m["url"], timeout=60, follow_redirects=True, headers={"User-Agent": _agente()}) as r:
+        with httpx.stream("GET", m["url"], timeout=httpx.Timeout(60, connect=8), follow_redirects=True, headers={"User-Agent": _agente()}) as r:
             if r.status_code != 200:
                 from .erros import de_http
                 raise AtualizacaoError(f"O download da atualização falhou ({r.status_code}).", de_http(r.status_code))

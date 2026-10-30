@@ -441,3 +441,11 @@
 - O download baixa em pedaços de 256 KB (antes 1 MB), para o progresso andar em downloads pequenos.
 - Na tela de atualização dentro do programa (sem janela, no navegador), o desenho é feito uma vez e só os valores mudam (o giro não reinicia) e a barra anima até 100% antes de instalar.
 
+## 2026-10-30 — 2.27.1: abertura e "ping" lentos (IPv4 primeiro)
+- O Róbson viu o lançador levar mais de 1 minuto em cada passo e o selo de conexão mostrar 14.000 ms (às vezes ~2.400), com `ping` do Windows de 15 ms para a VPS. Servidor medido de fora: ~1 s com TLS, normal.
+- Causa provável: os domínios (atrás da proteção de DNS/proxy) têm IPv4 e IPv6; o Python tenta o IPv6 primeiro e só passa para o IPv4 depois de esgotar o tempo de cada endereço (2 endereços × 6 s ≈ 14 s). O navegador tenta os dois juntos e não sente.
+- **`core/rede.py` `preferir_ipv4()`** (chamado ao abrir): reordena as respostas de endereço com IPv4 antes; IPv6 continua como reserva. Vale para tudo (servidor, atualização, licença, IA).
+- Tempo para abrir conexão: 4 s no selo, 5 s na atualização e na licença, 8 s no download.
+- O selo reaproveita a conexão (keep-alive 90 s): o número mostrado passa a ser o tempo de resposta, não o aperto de mão TLS a cada 15 s.
+- Lançador: não confere a licença de novo; espera a conferência que já começou ao abrir (até 6 s; sem resposta, fica a guardada). "Verificando atualizações" espera no máximo 15 s e segue na versão que tem. Pausas mínimas menores (0,5 s).
+

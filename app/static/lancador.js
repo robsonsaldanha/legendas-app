@@ -51,7 +51,9 @@ async function seguirAtualizacao() {
   let u, ultimo = "";
   for (;;) {
     try { u = await api("GET", "/api/atualizacao"); } catch { u = { estado: "sem_conexao" }; }
-    if (u.estado === "verificando" || u.estado === "parado" && Date.now() - inicio < 600) { await sleep(250); continue; }
+    const passou = Date.now() - inicio;
+    if ((u.estado === "verificando" && passou < 15000) || (u.estado === "parado" && passou < 600)) { await sleep(150); continue; }
+    if (u.estado === "verificando") u = { estado: "sem_conexao" };   // o servidor não respondeu em 15 s: abre na versão que tem
     if (u.estado === "disponivel" || u.estado === "baixando") {
       if (ultimo !== "baixando") { ultimo = "baixando"; tela("Atualização encontrada", `Baixando a versão ${u.versao}.`, "", "Baixando"); }
       const pct = Math.round((u.progresso || 0) * 100);
@@ -69,7 +71,7 @@ async function seguirAtualizacao() {
     } else if (u.estado === "erro") {
       return erroAtualizacao(u);
     } else {                                     // atualizado, sem conexão ou parado
-      if (Date.now() - inicio < 900) await sleep(900 - (Date.now() - inicio));
+      if (Date.now() - inicio < 500) await sleep(500 - (Date.now() - inicio));
       return validar(u.estado === "sem_conexao");
     }
     await sleep(200);
@@ -131,7 +133,7 @@ async function validar(semConexao) {
     : l.modo === "avaliacao" ? "Dia de avaliação" : "Modo grátis";
   tela(null, "Tudo pronto.", `Abrindo o CNT Legendas… <span style="color:var(--mudo)">· ${esc(lic)}${semConexao ? " · sem internet agora" : ""}</span>`, "Concluído");
   await encher(100);
-  await sleep(450);
+  await sleep(250);
   let r = {};
   try { r = await api("POST", "/api/lancador/pronto"); } catch { /* segue */ }
   if (!r.janela) location.replace("/");

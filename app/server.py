@@ -1853,10 +1853,7 @@ class Handler(BaseHTTPRequestHandler):
     def api_lancador_validar(self):
         """Lançador: confere a licença no servidor (sem internet, fica a guardada) e os arquivos do programa."""
         from core import integridade, licenca
-        try:
-            licenca.atual().conferir()
-        except Exception as e:  # noqa: BLE001
-            log.info("Lançador: licença não conferida agora (%s)", e)
+        licenca.esperar_conferencia(6.0)      # a conferência já começou ao abrir; sem resposta em 6 s, fica a guardada
         integ = integridade.conferir()
         if integ["situacao"] == "alterada":
             log.warning("Arquivos do programa diferentes do esperado: %s %s", integ["alterados"], integ["faltando"])

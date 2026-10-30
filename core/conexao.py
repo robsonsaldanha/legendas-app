@@ -21,6 +21,7 @@ log = logging.getLogger("legendas.conexao")
 GOOGLE = "https://www.google.com/generate_204"
 LENTA_MS = 1000
 TIMEOUT = 6.0
+CONECTAR = 4.0      # tempo para abrir a conexão (com IPv4 primeiro, ver core/rede.py)
 
 TEXTO = {
     "verificando": "Conectando…",
@@ -76,13 +77,23 @@ class Monitor:
         self._parar = threading.Event()
         self._fio: threading.Thread | None = None
         self._ultimo_estado = "verificando"
+        self._cliente = None
 
     # ------------------------------------------------------------------ pings
     def _http(self, url: str):
         if self._get:
             return self._get(url)
         import httpx
-        return httpx.get(url, timeout=TIMEOUT, follow_redirects=False, headers={"User-Agent": "CNT-Legendas"})
+        if self._cliente is None:       # conexão reaproveitada: o número mostrado é o tempo de resposta, não o do aperto de mão
+            self._cliente = httpx.Client(timeout=httpx.Timeout(TIMEOUT, connect=CONECTAR), follow_redirects=False,
+                                         headers={"User-Agent": "CNT-Legendas"},
+                                         limits=httpx.Limits(max_keepalive_connections=4, keepalive_expiry=90))
+        try:
+            return self._cliente.get(url)
+        except Exception:
+            self._cliente.close()       # conexão caída: a próxima abre uma nova
+            self._cliente = None
+            raise
 
     def _medir(self, url: str, servidor: bool) -> Ping:
         from .erros import de_http, de_rede
