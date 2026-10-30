@@ -237,15 +237,16 @@ class Depuracao:
 def _ultima_linha(pasta: Path) -> tuple[str, str]:
     """(arquivo, linha) com o maior horário entre todos os .log (as linhas começam com HH:MM:SS.mmm)."""
     melhor = ("", "")
-    chave = ""
-    for f in pasta.glob("*.log"):
+    chave: tuple = ("", False)
+    for f in sorted(pasta.glob("*.log")):
         try:
             linhas = f.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             continue
         for l in reversed(linhas):
             if l.strip():
-                h = l.split(" | ", 1)[0]
+                # no mesmo milésimo, vale a ação (o depuracao.log só anota ligar/desligar)
+                h = (l.split(" | ", 1)[0], f.name != "depuracao.log")
                 if h >= chave:
                     chave, melhor = h, (f.name, l)
                 break
