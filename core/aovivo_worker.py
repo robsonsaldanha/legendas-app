@@ -9,8 +9,11 @@ ou faltar memória, só ele cai. Escreve uma linha JSON por evento na saída pad
   {"tipo": "final", "texto": "…", "t0": 12.3, "t1": 15.9}   fala fechada (silêncio ou 7 s de fala seguida)
   {"tipo": "erro", "mensagem": "…"}
 
-Detector de fala por energia com piso de ruído adaptativo (não precisa de modelo). Com
-CNT_AOVIVO_FALSO=1 não carrega o reconhecedor e devolve "Fala N." (testes).
+  {"tipo": "motor", "nome": "Placa de vídeo"}                quem reconhece (escolhido na tela)
+  {"tipo": "aviso", "mensagem": "…"}                        não para (ex.: reconhecimento atrasado)
+
+Fala achada pelo detector de voz (aovivo_motor.DetectorVoz) e reconhecida em outro fio (Processador),
+para a captura nunca esperar. Com CNT_AOVIVO_FALSO=1 não carrega o reconhecedor e devolve "Fala N." (testes).
 """
 
 from __future__ import annotations
@@ -20,9 +23,12 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 
 import numpy as np
+
+from .aovivo_motor import MOTORES, DetectorVoz, Processador, criar_motor
 
 TAXA = 16000
 BLOCO = int(TAXA * 0.1)          # 100 ms
@@ -46,10 +52,14 @@ def explicar_erro(erro: str) -> str:
     return f"{causa} (detalhe: {erro[-200:]})"
 
 
+_SAIDA = threading.Lock()         # a captura e o fio do reconhecimento escrevem: uma linha inteira por vez
+
+
 def emitir(**ev) -> None:
     # sempre UTF-8 (no Windows a saída padrão é cp1252: "…" e acentos chegariam quebrados)
-    sys.stdout.buffer.write((json.dumps(ev, ensure_ascii=False) + "\n").encode("utf-8"))
-    sys.stdout.flush()
+    with _SAIDA:
+        sys.stdout.buffer.write((json.dumps(ev, ensure_ascii=False) + "\n").encode("utf-8"))
+        sys.stdout.flush()
 
 
 def blocos_sistema(n: int = BLOCO):
@@ -121,34 +131,6 @@ def entrada_ffmpeg(fonte: str) -> list[str]:
     raise SystemExit(f"fonte desconhecida: {fonte}")
 
 
-class Reconhecedor:
-    def __init__(self, modelo: str, idioma: str, prompt: str):
-        self.falso = os.environ.get("CNT_AOVIVO_FALSO") == "1"
-        self.idioma = (idioma or "").split("-")[0] or None
-        self.prompt = prompt or None
-        self.n = 0
-        if self.falso:
-            return
-        from .whisper_local import _cuda_dlls, model_dir, SIZES
-        _cuda_dlls()
-        from faster_whisper import WhisperModel
-        tamanho = modelo if modelo in SIZES else "small"
-        try:
-            self.m = WhisperModel(SIZES[tamanho], device="auto", compute_type="auto", download_root=str(model_dir()))
-        except Exception:  # noqa: BLE001  (placa de vídeo falhou: processador)
-            self.m = WhisperModel(SIZES[tamanho], device="cpu", compute_type="int8", download_root=str(model_dir()))
-
-    def texto(self, audio: np.ndarray, final: bool) -> str:
-        if self.falso:
-            if final:
-                self.n += 1
-                return f"Fala {self.n}."
-            return "…"
-        segs, _ = self.m.transcribe(audio, language=self.idioma, beam_size=1 if not final else 3, vad_filter=False,
-                                    condition_on_previous_text=False, initial_prompt=self.prompt, without_timestamps=True)
-        return " ".join(s.text.strip() for s in segs).strip()
-
-
 def principal(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fonte", required=True)
@@ -156,12 +138,22 @@ def principal(argv: list[str] | None = None) -> int:
     ap.add_argument("--modelo", default="small")
     ap.add_argument("--prompt", default="")
     ap.add_argument("--ffmpeg", default="ffmpeg")
+    ap.add_argument("--motor", default="auto", choices=sorted(MOTORES))
     a = ap.parse_args(argv)
     try:
-        rec = Reconhecedor(a.modelo, a.idioma, a.prompt)
+        motor = criar_motor(a.motor, a.modelo, a.idioma, a.prompt)
+    except RuntimeError as e:
+        emitir(tipo="erro", mensagem=str(e))
+        emitir(tipo="fim", segundos=0)
+        return 2
     except Exception as e:  # noqa: BLE001
         emitir(tipo="erro", mensagem=f"Não consegui carregar o reconhecimento de fala: {e}")
+        emitir(tipo="fim", segundos=0)
         return 2
+    emitir(tipo="motor", nome=motor.nome)
+    detector = DetectorVoz(usar_modelo=os.environ.get("CNT_AOVIVO_FALSO") != "1")   # testes usam bipes: por volume
+    print("reconhecimento:", motor.nome, "| detector de voz:", "modelo" if detector.modelo else "volume", file=sys.stderr, flush=True)
+    proc = Processador(motor, emitir)
     ff = baixador = None
     if a.fonte.startswith("sistema:"):
         try:
@@ -208,7 +200,6 @@ def principal(argv: list[str] | None = None) -> int:
                     return
                 yield np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
     emitir(tipo="pronto")
-    piso = None              # piso de ruído (dB), se adapta
     fala: list[np.ndarray] = []
     inicio_fala = None
     silencio = 0.0
@@ -231,8 +222,7 @@ def principal(argv: list[str] | None = None) -> int:
             print("primeiro bloco de áudio recebido", file=sys.stderr, flush=True)
         dur = len(x) / TAXA
         db = 20 * np.log10(max(1e-6, float(np.sqrt(np.mean(x * x)))))
-        piso = db if piso is None else (min(piso + 0.02, db) if db < piso + 6 else piso + 0.01)   # sobe devagar, desce rápido
-        voz = db > max(piso + 9, -50)
+        voz = detector.voz(x, db)
         if t - ult_nivel >= 0.5:
             emitir(tipo="nivel", db=round(db, 1))
             ult_nivel = t
@@ -248,21 +238,16 @@ def principal(argv: list[str] | None = None) -> int:
             dur_fala = t + dur - inicio_fala
             fechar = silencio >= SILENCIO_FECHA or dur_fala >= FALA_MAXIMA
             if fechar:
-                audio = np.concatenate(fala)
-                txt = rec.texto(audio, final=True)
-                if txt and dur_fala - silencio >= 0.3:
-                    emitir(tipo="final", texto=txt, t0=round(inicio_fala, 2), t1=round(t + dur - silencio, 2))
+                if dur_fala - silencio >= 0.3:          # o reconhecimento vai para outro fio: a captura segue
+                    proc.final(np.concatenate(fala), inicio_fala, t + dur - silencio)
                 fala, inicio_fala, silencio, desde_parcial = [], None, 0.0, 0.0
             elif desde_parcial >= PARCIAL_A_CADA:
                 desde_parcial = 0.0
-                txt = rec.texto(np.concatenate(fala), final=False)
-                if txt:
-                    emitir(tipo="parcial", texto=txt, t0=round(inicio_fala, 2))
+                proc.parcial(np.concatenate(fala), inicio_fala)
         t += dur
     if fala and inicio_fala is not None:
-        txt = rec.texto(np.concatenate(fala), final=True)
-        if txt:
-            emitir(tipo="final", texto=txt, t0=round(inicio_fala, 2), t1=round(t, 2))
+        proc.final(np.concatenate(fala), inicio_fala, t)
+    proc.fechar()
     if ff is not None:
         erro = (ff.stderr.read() or b"").decode("utf-8", "replace").strip() if ff.stderr else ""
         ff.wait()

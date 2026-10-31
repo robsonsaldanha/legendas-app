@@ -101,6 +101,7 @@
 - [x] 2.28.0: Ao vivo com a entrada “Som do computador”: legenda qualquer live que estiver tocando (de qualquer site)
 - [x] 2.29.0: Ao vivo por link: cola o link da live ou do vídeo, player na tela com a legenda por cima, visual completo da legenda (letra, peso, cor, contorno, sombra, tarja) com prévia
 - Liberada em produção (site e atualização automática): 2.29.0.72 em 31/10/2026 (Windows, Mac e Linux).
+- [x] 2.30.0: Ao vivo sem lacunas: detector de voz (fala com música de fundo), reconhecimento em outro fio (a captura não para) e escolha de quem reconhece (automático, placa de vídeo, processador, IA na nuvem)
 - [x] 2.25.0: salvamento automático no editor (a cada 1 min, configurável) guardando a versão anterior (histórico, ao lado ou numa pasta)
 - [x] 2.24.0: atualização passo a passo ao abrir (procurar, baixar com %, instalar, contagem 3-2-1 e reiniciar); ao reabrir, o que mudou ou o erro com o código
 - [x] 2.23.0: cor de destaque dourada (a da logo) no programa, no site, no hub e nos painéis

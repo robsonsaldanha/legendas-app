@@ -371,7 +371,7 @@ def test_som_do_computador(monkeypatch, capsys):
     assert aovivo_worker.principal(["--fonte", "sistema:"]) == 0
     evs = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
     tipos = [e["tipo"] for e in evs]
-    assert tipos[0] == "pronto" and tipos[-1] == "fim"
+    assert tipos[:2] == ["motor", "pronto"] and tipos[-1] == "fim"
     assert [e["texto"] for e in evs if e["tipo"] == "final"] == ["Fala 1.", "Fala 2."]
     erro = next(e["mensagem"] for e in evs if e["tipo"] == "erro")
     assert erro.startswith("Não consegui ouvir o som do computador") and "DEVICE_INVALIDATED" in erro
@@ -380,4 +380,77 @@ def test_som_do_computador(monkeypatch, capsys):
     falso.default_speaker = lambda: None
     assert aovivo_worker.principal(["--fonte", "sistema:"]) == 2
     evs = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
-    assert evs[0]["tipo"] == "erro" and "saída de som" in evs[0]["mensagem"]
+    assert evs[1]["tipo"] == "erro" and "saída de som" in evs[1]["mensagem"]
+
+
+@pytest.mark.skipif(not (__import__("core.vad", fromlist=["available"]).available() and __import__("os").environ.get("CNT_VAD_TEST_WAV")),
+                    reason="detector de voz ou áudio de teste ausentes (o CI baixa os dois)")
+def test_detector_de_voz_ao_vivo():
+    """2.30: fala com música de fundo é fala; música sozinha não (antes, por volume, a fala sumia na música)."""
+    import os
+    from core.aovivo_motor import DetectorVoz
+    with wave.open(os.environ["CNT_VAD_TEST_WAV"]) as w:
+        sp = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32) / 32768
+    sr = 16000
+    t = np.arange(10 * sr) / sr
+    musica = sum(0.08 * np.sin(2 * np.pi * f * t) for f in (220, 277, 330, 440)).astype(np.float32)
+    x = np.concatenate([musica, sp[:10 * sr] + 0.3 * musica]).astype(np.float32)
+    d = DetectorVoz()
+    assert d.modelo
+    blocos = [x[i:i + 1600] for i in range(0, len(x), 1600)]
+    voz = [d.voz(b, 20 * np.log10(max(1e-6, float(np.sqrt(np.mean(b * b)))))) for b in blocos]
+    assert np.mean(voz[:100]) < 0.1 and np.mean(voz[100:]) > 0.5
+
+
+def test_motores_e_processador():
+    """2.30: escolha de quem reconhece; reconhecimento em outro fio, na ordem, avisando quando atrasa."""
+    import threading
+    from core import aovivo_motor as am
+    evs, lock = [], threading.Lock()
+
+    def emitir(**ev):
+        with lock:
+            evs.append(ev)
+
+    class Lento(am.MotorFalso):
+        def texto(self, audio, final):
+            time.sleep(0.05 if final else 0.01)
+            return super().texto(audio, final)
+    p = am.Processador(Lento(), emitir)
+    p.parcial(np.zeros(1600), 0.0)                      # nada esperando: vai
+    for i in range(3):
+        p.final(np.zeros(16000 * 8), i * 10.0, i * 10 + 8.0)
+    p.parcial(np.zeros(1600), 30.0)                     # há falas esperando: descartado
+    p.fechar()
+    finais = [e for e in evs if e["tipo"] == "final"]
+    assert [e["texto"] for e in finais] == ["Fala 1.", "Fala 2.", "Fala 3."] and [e["t0"] for e in finais] == [0, 10, 20]
+    assert sum(e["tipo"] == "parcial" for e in evs) == 1
+    assert any(e["tipo"] == "aviso" and "atrasado" in e["mensagem"] for e in evs)      # 24 s de fala esperando
+
+    # nuvem: em paralelo, mas na ordem; trecho que falha vira aviso e os outros seguem; sem chave: erro claro
+    class Transcritor:
+        def transcribe(self, arq, idioma, prompt, palavras):
+            n = int(open(arq, "rb").read()[-1] != 0)       # o último bloco (não-silêncio) falha
+            time.sleep(0.05)
+            if n:
+                raise RuntimeError("tempo esgotado")
+            return f"{idioma}: {', '.join(palavras)}"
+    evs.clear()
+    m = am.MotorNuvem("es", "Ana, Rio", transcritor=Transcritor())
+    assert m.parciais is False and m.palavras == ["Ana", "Rio"]
+    p = am.Processador(m, emitir)
+    assert p.ex._max_workers == 3
+    p.final(np.zeros(1600), 0, 0.1); p.final(np.zeros(1600), 1, 1.1); p.final(np.ones(1600) * 0.5, 2, 2.1)
+    p.parcial(np.zeros(1600), 3)
+    p.fechar()
+    assert [e["texto"] for e in evs if e["tipo"] == "final"] == ["es: Ana, Rio", "es: Ana, Rio"]
+    assert any(e["tipo"] == "aviso" and "tempo esgotado" in e["mensagem"] for e in evs)
+    import core.openai_client as oc
+    orig = oc.get_api_key
+    oc.get_api_key = lambda: ""
+    try:
+        with pytest.raises(RuntimeError, match="chave de IA"):
+            am.MotorNuvem("pt", "")
+    finally:
+        oc.get_api_key = orig
+    assert set(am.MOTORES) == {"auto", "gpu", "cpu", "nuvem"}
