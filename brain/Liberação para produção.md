@@ -18,7 +18,7 @@
    Se o "Instalador" da dev estiver em andamento, esperar terminar (regra: não enviar nada ao repositório com Instalador rodando no mesmo ramo). A última montagem da dev tem de ter `success` em Testes e Instalador.
 2. **Achar o pedido aberto dev → main:**
    `gh api "repos/robsonsaldanha/legendas-app/pulls?state=open&base=main&head=robsonsaldanha:dev" -q '.[]|.number,.title'`
-   Se não houver, criar: `gh api repos/robsonsaldanha/legendas-app/pulls -f title="Liberar a versão <versão> para o site" -f head=dev -f base=main -f body="…"` (o texto pode vir de `core.liberacao.corpo`).
+   O repositório **não deixa a automação abrir pedidos** (configuração do GitHub; o job só avisa no log), então normalmente não haverá: criar: `gh api repos/robsonsaldanha/legendas-app/pulls -f title="Liberar a versão <versão> para o site" -f head=dev -f base=main -f body="…"` (o texto pode vir de `core.liberacao.corpo`).
 3. **Conferir que dá para juntar:** `gh api repos/robsonsaldanha/legendas-app/pulls/<n> -q '.mergeable'` deve ser `true`. Se der conflito, resolver na dev (nunca reescrever a main), enviar, esperar a montagem e voltar ao passo 1.
 4. **Juntar (é aqui que o Róbson "aprova"):**
    `gh api -X PUT repos/robsonsaldanha/legendas-app/pulls/<n>/merge -f merge_method=merge`

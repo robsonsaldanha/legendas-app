@@ -144,6 +144,7 @@ class Sessao:
     fonte: str
     idioma: str = "pt-BR"
     modelo: str = "small"
+    motor: str = "auto"                              # quem reconhece: auto | gpu | cpu | nuvem (aovivo_motor)
     atraso: float = 3.0
     max_len: int = 42
     max_lines: int = 2
@@ -160,6 +161,8 @@ class Sessao:
     log: Path | None = None
     parando: bool = False
     etapa: str = ""                                  # "Abrindo o link…" (antes de começar a ouvir)
+    motor_nome: str = ""                             # quem está reconhecendo de fato (ex.: automático → placa de vídeo)
+    aviso: str = ""                                  # não para a sessão (ex.: reconhecimento atrasado)
     midia: dict = field(default_factory=dict)       # link: título, se é ao vivo e o player da tela
     traduzir_para: str = ""                          # tradução ao vivo (segunda faixa), ex.: "es-419"
     glossario: list = field(default_factory=list)    # [(termo, tradução)] para a tradução ao vivo
@@ -252,7 +255,8 @@ class AoVivo:
                 threading.Thread(target=self._traduzir_continuo, args=(sessao,), daemon=True, name="aovivo-traducao").start()
             self.sessao = sessao
             cmd = self._module_cmd(self._python, "core.aovivo_worker", "--fonte", sessao.fonte, "--idioma", sessao.idioma,
-                                   "--modelo", sessao.modelo, "--prompt", prompt[:800], "--ffmpeg", str(self._ffmpeg()))
+                                   "--modelo", sessao.modelo, "--prompt", prompt[:800], "--ffmpeg", str(self._ffmpeg()),
+                                   "--motor", sessao.motor)
             sessao.log = sessao.srt.with_suffix(".log")          # o que o processo de captura reclamar (para o suporte)
             self._log_arq = open(sessao.log, "w", encoding="utf-8")
             self._proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=self._log_arq,
@@ -287,6 +291,11 @@ class AoVivo:
                 self._avisar({"tipo": "parcial", "texto": s.parcial})
             elif tipo == "final":
                 s.receber_final(ev.get("texto", ""), float(ev.get("t0", 0)), float(ev.get("t1", 0)), time.time())
+            elif tipo == "motor":
+                s.motor_nome = str(ev.get("nome") or "")
+            elif tipo == "aviso":
+                s.aviso = str(ev.get("mensagem") or "")
+                log.warning("Ao vivo: %s", s.aviso)
             elif tipo == "etapa":
                 s.etapa = str(ev.get("texto") or "")
             elif tipo == "midia":
@@ -453,7 +462,7 @@ class AoVivo:
             return {"ativo": s.ativo, "pronto": s.pronto, "fonte": s.fonte, "modelo": s.modelo, "atraso": s.atraso,
                     "parcial": s.parcial, "nivel": s.nivel, "erro": s.erro, "fila": fila, "publicadas": pub,
                     "segundos": round(agora - s.inicio, 1) if s.inicio else 0, "srt": str(s.srt or ""),
-                    "etapa": s.etapa, "midia": s.midia,
+                    "etapa": s.etapa, "midia": s.midia, "motor": s.motor, "motor_nome": s.motor_nome, "aviso": s.aviso,
                     "total": sum(1 for l in s.linhas if l.estado == "publicada"),
                     "traduzir_para": s.traduzir_para, "srt_trad": str(s.srt_trad or ""),
                     "traducoes": {str(l["id"]): s.traducoes[l["id"]] for l in pub if l["id"] in s.traducoes}}

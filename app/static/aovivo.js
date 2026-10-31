@@ -2,7 +2,7 @@
 "use strict";
 
 const AV_PREF = "cnt.aovivo";
-const AV_PADRAO = { fonte: "url:", modelo: "small", atraso: 3, idioma: "pt-BR", modo: "bloco", fundo: "transparente", cor: "ffffff", tam: 44,
+const AV_PADRAO = { fonte: "url:", motor: "auto", modelo: "small", atraso: 3, idioma: "pt-BR", modo: "bloco", fundo: "transparente", cor: "ffffff", tam: 44,
   pos: "baixo", caixa: false, letra: "padrao", peso: 600, contorno: 2, ccor: "000000", sombra: true, tcor: "000000", topac: 78, linhas: 3 };
 function avPrefs() {
   try { return { ...AV_PADRAO, ...JSON.parse(getPref(AV_PREF, "{}") || "{}") }; }
@@ -37,7 +37,8 @@ async function renderAoVivo() {
             <div class="row" style="gap:6px"><input type="text" id="av-extra" style="flex:1" value="${esc(String(p.fonte || "").replace(/^(arquivo|url):/, ""))}"><button class="btn" data-a="escolher" id="av-escolher">Escolher…</button></div></label>
           <div class="row" style="gap:12px;flex-wrap:wrap">
             <label class="field"><span>Idioma falado</span><select id="av-idioma">${[["pt-BR", "Português"], ["en", "Inglês"], ["es", "Espanhol"]].map(([v, t]) => `<option value="${v}" ${v === p.idioma ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-            <label class="field"><span>Precisão</span><select id="av-modelo">${[["base", "Rápida (computador simples)"], ["small", "Equilibrada"], ["medium", "Alta (precisa de placa de vídeo)"]].map(([v, t]) => `<option value="${v}" ${v === p.modelo ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+            <label class="field"><span>Reconhecimento</span><select id="av-motor">${[["auto", "Automático (placa de vídeo, se houver)"], ["gpu", "Placa de vídeo (rápido, no computador)"], ["cpu", "Processador do computador (mais lento)"], ["nuvem", "IA na nuvem (mais precisa; usa a sua chave de IA, com custo)"]].map(([v, t]) => `<option value="${v}" ${v === p.motor ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+            <label class="field" id="av-modelo-l"><span>Precisão</span><select id="av-modelo">${[["base", "Rápida (computador simples)"], ["small", "Equilibrada"], ["medium", "Alta (precisa de placa de vídeo)"]].map(([v, t]) => `<option value="${v}" ${v === p.modelo ? "selected" : ""}>${t}</option>`).join("")}</select></label>
             <label class="field"><span>Tradução ao vivo</span><select id="av-traducao">${[["", "Nenhuma"], ["es-419", "Espanhol"], ["pt-BR", "Português"], ["en", "Inglês"]].map(([v, t]) => `<option value="${v}" ${v === (p.traducao || "") ? "selected" : ""}>${t}</option>`).join("")}</select></label>
             <label class="field"><span>Espera para corrigir</span><select id="av-atraso">${[0, 2, 3, 5, 8, 12].map((v) => `<option value="${v}" ${Number(p.atraso) === v ? "selected" : ""}>${v ? `${v} segundos` : "Sem espera"}</option>`).join("")}</select></label>
           </div>
@@ -92,7 +93,7 @@ async function renderAoVivo() {
       <div class="row" style="gap:8px;margin-top:10px" id="av-fim" hidden><span class="muted small" id="av-arquivo"></span><button class="btn" data-a="editor">${ic("editor")} Abrir no editor</button></div>
     </section>`;
   const $ = (id) => document.getElementById(id);
-  const ler = () => ({ ...avPrefs(), fonte: fonteAtual(), idioma: $("av-idioma").value, modelo: $("av-modelo").value, atraso: Number($("av-atraso").value),
+  const ler = () => ({ ...avPrefs(), fonte: fonteAtual(), idioma: $("av-idioma").value, modelo: $("av-modelo").value, motor: $("av-motor").value, atraso: Number($("av-atraso").value),
     cliente: $("av-cliente").value, filtro: $("av-filtro").value, modo: $("av-modo").value, fundo: $("av-fundo").value,
     tam: Number($("av-tam").value) || 44, pos: $("av-pos").value, caixa: $("av-caixa").checked,
     cor: $("av-cor").value.slice(1), letra: $("av-letra").value, peso: Number($("av-peso").value), contorno: Number($("av-contorno").value),
@@ -109,6 +110,7 @@ async function renderAoVivo() {
     $("av-extra-t").textContent = v === "url:" ? "Link (copie da barra de endereço do navegador: página da live ou do vídeo, ou endereço da transmissão)" : "Arquivo";
     $("av-extra").placeholder = v === "url:" ? "https://…" : "";
     $("av-escolher").hidden = v !== "arquivo:";
+    $("av-modelo-l").hidden = $("av-motor").value === "nuvem";      // na nuvem não há "precisão" a escolher
     $("av-dica-sistema").hidden = !(v === "sistema:" || v === "pulse:@DEFAULT_MONITOR@");
   }
   let previaT = null;
@@ -135,9 +137,10 @@ async function renderAoVivo() {
     $("av-config").querySelectorAll("select,input").forEach((x) => { x.disabled = ativo; });
     const msg = $("av-msg");
     if (e.erro) { msg.hidden = false; msg.className = "note err"; msg.textContent = e.erro; }
+    else if (ativo && e.aviso) { msg.hidden = false; msg.className = "note warn"; msg.textContent = e.aviso; }
     else if (ativo && !e.pronto) { msg.hidden = false; msg.className = "note"; msg.textContent = e.etapa || "Preparando o reconhecimento de fala… (na primeira vez pode baixar o modelo)"; }
     else msg.hidden = true;
-    $("av-relogio").textContent = ativo ? `· ${fmtHMS(e.segundos || 0)} · ${e.total || 0} legendas` : "";
+    $("av-relogio").textContent = ativo ? `· ${fmtHMS(e.segundos || 0)} · ${e.total || 0} legendas${e.motor_nome ? ` · ${e.motor_nome}` : ""}` : "";
     // player: monta uma vez por mídia (refazer o iframe a cada atualização recomeçaria o vídeo)
     const pl = (e.midia || {}).player || {};
     $("av-player-box").hidden = !(ativo && pl.src);
@@ -209,7 +212,7 @@ async function renderAoVivo() {
       if (a === "iniciar") {
         const p2 = ler(); avSalvar(p2);
         if (p2.fonte.endsWith(":")) { toast("Escolha o arquivo ou escreva o endereço."); return; }
-        desenhar(await api("POST", "/api/aovivo/iniciar", { fonte: p2.fonte, idioma: p2.idioma, modelo: p2.modelo, atraso: p2.atraso, cliente: p2.cliente || null, filtro: p2.filtro, traducao: p2.traducao }));
+        desenhar(await api("POST", "/api/aovivo/iniciar", { fonte: p2.fonte, idioma: p2.idioma, modelo: p2.modelo, motor: p2.motor, atraso: p2.atraso, cliente: p2.cliente || null, filtro: p2.filtro, traducao: p2.traducao }));
       }
       if (a === "parar") desenhar(await api("POST", "/api/aovivo/parar"));
       if (a === "ja") desenhar(await api("POST", `/api/aovivo/linha/${b.dataset.id}`, { acao: "publicar" }));
