@@ -50,6 +50,13 @@ def versao_atual() -> str:
     return f"{v}.{b}" if b else v
 
 
+def versao_exibida() -> str:
+    """Como aparece na tela: 'dev-2.30.0.73' (desenvolvimento) ou 'prod-2.30.0.73' (produção) — o mesmo
+    número nos dois, porque a produção é a mesma montagem do dev (2.31)."""
+    from . import licenca
+    return ("prod-" if licenca.canal() == "producao" else "dev-") + versao_atual()
+
+
 def _agente() -> str:
     from .produto import nome
     return nome().replace(" ", "-")
@@ -98,7 +105,7 @@ class Atualizador:
 
     def to_dict(self) -> dict:
         i = self.info or {}
-        return {"estado": self.estado, "versao_atual": versao_atual(), "versao": i.get("versao"), "pacote": i.get("pacote"),
+        return {"estado": self.estado, "versao_atual": versao_exibida(), "versao": i.get("versao"), "pacote": i.get("pacote"),
                 "tamanho": i.get("tamanho"), "notas": i.get("notas"), "novidades": novidades(i.get("notas")),
                 "progresso": round(self.progresso, 3), "erro": self.erro, "codigo": getattr(self, "codigo", "")}
 

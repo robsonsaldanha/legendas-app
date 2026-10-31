@@ -1,0 +1,37 @@
+name: Liberar para produção
+
+# A versão de produção já foi montada e guardada junto com o desenvolvimento (instalador.yml): mesmos
+# arquivos, mesmo número. Liberar = ativá-la no servidor de produção e torná-la a versão principal no GitHub.
+# Quem libera é a IA, quando o Róbson aprova na conversa (brain/Liberação para produção.md):
+#   git tag liberar-2.31.0.75 origin/dev && git push origin liberar-2.31.0.75
+on:
+  push:
+    tags: ["liberar-*"]
+
+permissions:
+  contents: write
+
+jobs:
+  liberar:
+    name: Liberar a versão guardada
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ativar no servidor de produção e no GitHub
+        env:
+          CNT_TOKEN: ${{ secrets.CNT_TOKEN_PROD }}
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+        run: |
+          V="${GITHUB_REF_NAME#liberar-}"
+          [[ "$V" =~ ^[0-9]+(\.[0-9]+){3}$ ]] || { echo "::error::marca inválida: $GITHUB_REF_NAME (use liberar-<versão completa>)"; exit 1; }
+          [ -n "$CNT_TOKEN" ] || { echo "::error::falta o segredo CNT_TOKEN_PROD"; exit 1; }
+          gh release view "v$V" -R "$R" --json assets -q '.assets[].name' || { echo "::error::a versão v$V não foi guardada (a montagem do dev falhou?)"; exit 1; }
+          curl -fsS -X POST "https://legendas.cntoficial.com.br/v1/admin/versoes/$V/ativar" -H "Authorization: Bearer $CNT_TOKEN"; echo
+          gh release edit "v$V" -R "$R" --prerelease=false --latest
+          D=$(curl -fsS https://legendas.cntoficial.com.br/v1/download)
+          echo "$D"
+          for s in windows mac linux; do
+            echo "$D" | jq -e --arg v "$V" --arg s "$s" '.sistemas[$s].versao == $v' >/dev/null || { echo "::error::o site não mostra $V para $s"; exit 1; }
+          done
+          echo "::notice title=Liberada::$V no site e na atualização automática (Windows, Mac e Linux)"
+          gh api -X DELETE "repos/$R/git/refs/tags/$GITHUB_REF_NAME" || true     # a marca só serve para disparar

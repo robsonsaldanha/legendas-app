@@ -166,3 +166,25 @@ def test_integridade_dos_arquivos(tmp_path):
     (tmp_path / "core" / "b.py").unlink()
     r = integridade.conferir(tmp_path)
     assert r["situacao"] == "alterada" and r["alterados"] == ["app/a.py"] and r["faltando"] == ["core/b.py"]
+
+
+def test_canal_vem_do_programa_instalado(tmp_path, monkeypatch):
+    """2.31: o pacote de atualização não leva canal (é o mesmo no dev e na produção); vale o do instalado."""
+    import json
+    from core import atualizacao, licenca
+    monkeypatch.delenv("CNT_CANAL", raising=False)
+    inst = tmp_path / "instalado" / "core"
+    inst.mkdir(parents=True)
+    (inst / "canal.json").write_text(json.dumps({"canal": "producao", "build": 70}), encoding="utf-8")
+    monkeypatch.setenv("CNT_INSTALL_ROOT", str(tmp_path / "instalado"))
+    assert licenca.canal() == "producao"
+    monkeypatch.setattr(atualizacao, "versao_atual", lambda: "2.31.0.75")      # número vem do pacote aplicado
+    assert atualizacao.versao_exibida() == "prod-2.31.0.75"
+    (inst / "canal.json").write_text(json.dumps({"canal": "desenvolvimento", "build": 70}), encoding="utf-8")
+    assert atualizacao.versao_exibida() == "dev-2.31.0.75"
+    # instalação sem canal (ou código-fonte): o arquivo ao lado; sem nenhum, desenvolvimento
+    (inst / "canal.json").write_text(json.dumps({"build": 70}), encoding="utf-8")
+    assert licenca.canal() in ("desenvolvimento", "producao")
+    monkeypatch.setenv("CNT_INSTALL_ROOT", str(tmp_path / "nao-existe"))
+    monkeypatch.setenv("CNT_CANAL", "producao")
+    assert licenca.canal() == "producao"

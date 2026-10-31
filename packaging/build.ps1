@@ -127,6 +127,8 @@ New-Item -ItemType Directory -Force -Path $PatchRoot | Out-Null
 Copy-Item (Join-Path $App "app") (Join-Path $PatchRoot "app") -Recurse
 Copy-Item (Join-Path $App "core") (Join-Path $PatchRoot "core") -Recurse
 Copy-Item (Join-Path $App "dubla") (Join-Path $PatchRoot "dubla") -Recurse
+# o pacote não leva canal: é o mesmo arquivo no dev e na produção (o canal vem do programa instalado)
+[IO.File]::WriteAllText((Join-Path $PatchRoot "core\canal.json"), (@{ build = $BuildNum } | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
 & python -m pip install --disable-pip-version-check --no-warn-script-location --no-deps --target (Join-Path $PatchRoot "lib") `
     -r (Join-Path $PSScriptRoot "bibliotecas-no-pacote.txt")
 if ($LASTEXITCODE) { throw "falha ao instalar as bibliotecas do pacote" }
@@ -186,4 +188,15 @@ if ($LASTEXITCODE) { throw "falha ao gerar o instalador" }
 $Stage = "inno setup (Dubla)"
 & $iscc /Q "/DAppVersion=$DublaFull" "/DBuildDir=$Build" (Join-Path $PSScriptRoot "dubla.iss")
 if ($LASTEXITCODE) { throw "falha ao gerar o instalador da Dubla" }
+# produção junto (2.31): a mesma montagem, só o canal do instalador muda; fica guardada até a liberação
+if ($env:CNT_TAMBEM_PRODUCAO -eq "1" -and $Canal -eq "desenvolvimento") {
+    $Stage = "inno setup (produção)"
+    $canalProd = @{ canal = "producao"; build = $BuildNum } | ConvertTo-Json -Compress
+    [IO.File]::WriteAllText((Join-Path $App "core\canal.json"), $canalProd, (New-Object Text.UTF8Encoding $false))
+    & $iscc /Q "/DAppVersion=$FullVersion" "/DBuildDir=$Build" "/O$(Join-Path $Build 'Output\producao')" (Join-Path $PSScriptRoot "legendas.iss")
+    $falhou = $LASTEXITCODE
+    [IO.File]::WriteAllText((Join-Path $App "core\canal.json"), $canalJson, (New-Object Text.UTF8Encoding $false))
+    if ($falhou) { throw "falha ao gerar o instalador de produção" }
+    Get-ChildItem (Join-Path $Build "Output\producao")
+}
 Get-ChildItem (Join-Path $Build "Output")

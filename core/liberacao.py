@@ -1,4 +1,4 @@
-"""Texto do pedido de liberação dev → main (usado pelo CI em packaging/liberacao.py)."""
+"""Texto do pedido dev → main que guarda o histórico de uma liberação (aberto pela IA; ver brain/Liberação para produção.md)."""
 
 IGNORAR = ("brain:", "Merge ")
 
