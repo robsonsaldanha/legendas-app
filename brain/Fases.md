@@ -102,6 +102,7 @@
 - [x] 2.29.0: Ao vivo por link: cola o link da live ou do vídeo, player na tela com a legenda por cima, visual completo da legenda (letra, peso, cor, contorno, sombra, tarja) com prévia
 - Liberada em produção (site e atualização automática): 2.29.0.72 em 31/10/2026 (Windows, Mac e Linux).
 - [x] 2.30.0: Ao vivo sem lacunas: detector de voz (fala com música de fundo), reconhecimento em outro fio (a captura não para) e escolha de quem reconhece (automático, placa de vídeo, processador, IA na nuvem)
+- Liberada em produção (site e atualização automática): 2.30.0.74 em 31/10/2026 (Windows, Mac e Linux; ainda pelo jeito antigo, montada de novo na main).
 - [x] 2.31.0: dev e produção da mesma montagem (mesmo número e mesmo pacote; produção guardada até a liberação) e versão na tela como dev-… / prod-…
 - [x] 2.25.0: salvamento automático no editor (a cada 1 min, configurável) guardando a versão anterior (histórico, ao lado ou numa pasta)
 - [x] 2.24.0: atualização passo a passo ao abrir (procurar, baixar com %, instalar, contagem 3-2-1 e reiniciar); ao reabrir, o que mudou ou o erro com o código
