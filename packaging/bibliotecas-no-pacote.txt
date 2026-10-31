@@ -8,3 +8,5 @@ proxy_tools==0.1.0
 bottle==0.13.4
 pyspellchecker==0.9.1
 soundcard==0.4.6
+yt-dlp==2026.10.26
+yt-dlp-ejs==0.8.0

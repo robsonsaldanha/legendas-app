@@ -57,6 +57,7 @@ _(nada no momento)_
 - [x] T-108 · Lançador antes do programa: atualização com barra/MB animados, licença e conferência dos arquivos (ER-RA-450) — 2.27
 - [x] T-109 · Liberação para o site com um clique: o CI abre o pedido dev → main; juntar = publicar em produção
 - [x] T-110 · Ao vivo: entrada “Som do computador” (qualquer live tocando no navegador) — 2.28
+- [x] T-111 · Ao vivo por link (página da live/vídeo), player na tela e legenda configurável com prévia — 2.29
 
 ### CNT Dubla (programa separado, para dubladores e estúdios)
 - [x] T-050 · P-07 · Decidido: programa separado, processa no computador do cliente, foco em dublagem humana, vozes por IA nas três formas (24/10/2026)

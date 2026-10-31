@@ -1131,3 +1131,12 @@ body.ed-foco #ed-rows tr.on td:first-child { box-shadow: inset 3px 0 0 var(--acc
 .ritmo-barra i { display: block; height: 100%; }
 .r-ativo { background: var(--accent); } .r-parado { background: var(--warn); } .r-fora { background: var(--panel-3); outline: 1px solid var(--line); }
 .r-leg { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: middle; }
+/* Ao vivo: prévia da legenda e player com a legenda por cima (2.29) */
+.av-previa { margin-top: 12px; aspect-ratio: 16 / 9; max-height: 260px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line, #3334);
+  background: linear-gradient(135deg, #2b3440, #151a20 60%, #3a2f22); }
+.av-previa iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; color-scheme: normal; }
+.av-player { position: relative; aspect-ratio: 16 / 9; width: 100%; max-height: 62vh; background: #000; border-radius: 8px; overflow: hidden; }
+.av-player #av-player, .av-player #av-player > * { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.av-player video { object-fit: contain; background: #000; }
+.av-player .av-sobre { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; background: transparent; color-scheme: normal; z-index: 2; }
+.av-sem-player { display: grid; place-items: center; color: #ccc; padding: 24px; text-align: center; }
