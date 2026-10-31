@@ -105,6 +105,7 @@
 - Liberada em produção (site e atualização automática): 2.30.0.74 em 31/10/2026 (Windows, Mac e Linux; ainda pelo jeito antigo, montada de novo na main).
 - [x] 2.31.0: dev e produção da mesma montagem (mesmo número e mesmo pacote; produção guardada até a liberação) e versão na tela como dev-… / prod-…
 - [x] 2.32.0: Ao vivo mais rápido e sem perder fala (modelo leve de verdade na “Rápida”, sem reconhecer duas vezes no processador, corte entre palavras) e status passo a passo (download do modelo em MB, carregando, ouvindo, atraso)
+- Liberada em produção (site e atualização automática): 2.32.0.75 em 31/10/2026 (Windows, Mac e Linux) — a primeira pelo fluxo novo: a mesma montagem do dev, guardada e ativada.
 - [x] 2.25.0: salvamento automático no editor (a cada 1 min, configurável) guardando a versão anterior (histórico, ao lado ou numa pasta)
 - [x] 2.24.0: atualização passo a passo ao abrir (procurar, baixar com %, instalar, contagem 3-2-1 e reiniciar); ao reabrir, o que mudou ou o erro com o código
 - [x] 2.23.0: cor de destaque dourada (a da logo) no programa, no site, no hub e nos painéis

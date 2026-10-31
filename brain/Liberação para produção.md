@@ -21,10 +21,12 @@
    A última montagem do "Instalador" tem de estar `completed`/`success` (e o "Testes" também). A versão completa é `<core.__version__>.<número da montagem>` (ex.: 2.31.0.75); confira também no servidor dev: `curl -s https://dev-legendas.cntoficial.com.br/v1/download`.
    Se houver Instalador rodando na dev, espere terminar (não envie nada ao repositório enquanto isso).
 2. **Conferir que a produção está guardada:** `gh release view v<versão> -R robsonsaldanha/legendas-app` tem de existir (pré-versão) com o instalador do Windows, o .dmg e o .AppImage.
-3. **Liberar** (dispara `.github/workflows/liberar.yml`):
+3. **Liberar** (dispara `.github/workflows/liberar.yml`) criando a marca `liberar-<versão>` no GitHub.
+   O ambiente da IA na nuvem **não consegue** enviar marcas ao GitHub (o intermediário recusa) e o computador do Róbson não tem a senha do GitHub para enviar direto; o caminho que funciona é pelo computador dele, através da cópia na VPS (ela repassa ao GitHub o que recebe):
    ```
-   git fetch origin && git tag liberar-<versão> origin/dev && git push origin liberar-<versão>
+   cd "$HOME/mnt/DESENVOLVIMENTO/CNT Legendas" && git fetch origin && git tag liberar-<versão> origin/dev && git push vps liberar-<versão>
    ```
+   (o retorno mostra `[github] * [new tag] … -> liberar-<versão>`). De um lugar com acesso direto ao GitHub, `git push origin liberar-<versão>` também serve.
    O fluxo ativa a versão no servidor de produção (`POST /v1/admin/versoes/<versão>/ativar`), torna a `v<versão>` a principal no GitHub, confere que o site mostra a versão nos três sistemas e apaga a marca.
 4. **Acompanhar:** `gh run list -R robsonsaldanha/legendas-app -L 3 --json name,status,conclusion` (o fluxo "Liberar para produção" leva ~1 min). Se falhar, ver `gh run view <id> --log-failed`.
 5. **Conferir o site:** `curl -s https://legendas.cntoficial.com.br/v1/download` mostra a versão em `windows`, `mac` e `linux`.
