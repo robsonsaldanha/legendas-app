@@ -496,3 +496,14 @@
 - A montagem do dev (`instalador.yml`, `CNT_TAMBEM_PRODUCAO=1`) gera também os instaladores de produção a partir dos mesmos arquivos (só troca o `canal.json` antes do Inno Setup / do empacotamento no Mac e no Linux), sobe para a versão `v<completa>` do GitHub como pré-versão e registra instaladores + o mesmo pacote no servidor de produção com `X-Ativa: 0` (servidor 1.15: guarda sem valer; o CI falha se o servidor responder que ativou). A `main` não monta mais.
 - Liberar: marca `liberar-<versão>` → `liberar.yml` chama `POST /v1/admin/versoes/<versão>/ativar` no servidor de produção, torna a `v<versão>` principal no GitHub e confere o site nos três sistemas. Passo a passo em [[Liberação para produção]]. O pedido dev → main continua só como histórico (o job antigo que tentava abri-lo foi removido: o repositório não deixa a automação abrir pedidos).
 - Tela: `versao_exibida()` (configurações, rodapé do menu, lançador e tela de atualização). Dubla em pausa: só desenvolvimento.
+
+## 2026-10-31 — 2.32: Ao vivo mais rápido, sem perder fala, com status
+- Relato do Róbson (na 2.30): sem saber o que estava acontecendo no começo (era o download do modelo); depois, lento; fala rápida ignorada; às vezes a legenda ia para o .srt mas não aparecia na tela.
+- Causas e correções:
+  - “Precisão: Rápida” pedia o modelo `base`, que não estava na lista, e caía no `small` sem avisar → `aovivo_motor.MODELOS` com `base` (~145 MB). No teste daqui (processador), 6 s de fala reconhecidos em ~0,7 s.
+  - No processador, cada trecho era reconhecido duas vezes (parcial + final) e com busca 3 → no processador: sem parciais, busca 1; na placa de vídeo: parciais e busca 2. “Automático” confere se há placa compatível (`ctranslate2.get_cuda_device_count`) antes de tentar.
+  - Fala corrida era cortada aos 7 s, às vezes no meio de uma palavra → corta aos 6 s no ponto mais baixo do último 1,5 s e leva o resto para a próxima (`aovivo_worker.ponto_de_corte`); silêncio que fecha a fala: 0,5 s (era 0,7).
+  - Página da legenda (modo “legenda inteira”): quando várias chegavam juntas, a seguinte apagava a anterior na hora → fila, cada uma fica pelo menos ~1 s (1,5–3 s quando não há outra esperando).
+  - Status: o processo avisa cada etapa (“Iniciando…”, “Baixando o modelo… X de ~Y MB” — contando os arquivos parciais do download —, “Carregando o reconhecimento no processador/na placa de vídeo…”, “Abrindo o link…”) e, ouvindo, a cada 2 s quanto de fala espera o reconhecimento (`ritmo`). A tela mostra uma linha com luz: preparando, ouvindo em dia, entrada em silêncio, ou “N s de fala esperando”. O aviso de computador lento sai com 12 s (era 20).
+- Medido daqui com fala real tocando em tempo real (processador, modelo leve): cada legenda saiu 1–3 s depois do fim da fala.
+- Montagem: com o servidor de produção antes da 1.15, a parte “guardar a produção” é pulada com aviso (o desenvolvimento segue normal; nada vai à produção).

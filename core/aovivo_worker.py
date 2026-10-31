@@ -33,8 +33,18 @@ from .aovivo_motor import MOTORES, DetectorVoz, Processador, criar_motor
 TAXA = 16000
 BLOCO = int(TAXA * 0.1)          # 100 ms
 PARCIAL_A_CADA = 1.0             # s de fala nova para mandar um parcial
-SILENCIO_FECHA = 0.7             # s de silêncio que fecham a fala
-FALA_MAXIMA = 7.0                # s: fecha mesmo sem pausa (legenda não pode esperar)
+SILENCIO_FECHA = 0.5             # s de silêncio que fecham a fala (0,7 juntava falas rápidas demais)
+FALA_MAXIMA = 6.0                # s: fecha mesmo sem pausa (legenda não pode esperar)…
+JANELA_CORTE = 1.5               # …no ponto mais baixo do último 1,5 s, levando o resto para a próxima (não corta palavra)
+
+
+def ponto_de_corte(blocos: list) -> int:
+    """Quantos blocos vão nesta fala quando ela passa do tempo máximo sem pausa: corta no bloco mais baixo
+    da janela final (entre palavras), e o que vem depois fica para a próxima fala."""
+    n = len(blocos)
+    janela = max(1, min(n - 1, int(round(JANELA_CORTE / 0.1))))
+    energia = [float(np.mean(b * b)) for b in blocos[n - janela:]]
+    return n - janela + int(np.argmin(energia)) + 1
 
 
 def explicar_erro(erro: str) -> str:
@@ -141,7 +151,8 @@ def principal(argv: list[str] | None = None) -> int:
     ap.add_argument("--motor", default="auto", choices=sorted(MOTORES))
     a = ap.parse_args(argv)
     try:
-        motor = criar_motor(a.motor, a.modelo, a.idioma, a.prompt)
+        emitir(tipo="etapa", texto="Iniciando o reconhecimento de fala…")
+        motor = criar_motor(a.motor, a.modelo, a.idioma, a.prompt, avisar=lambda texto: emitir(tipo="etapa", texto=texto))
     except RuntimeError as e:
         emitir(tipo="erro", mensagem=str(e))
         emitir(tipo="fim", segundos=0)
@@ -206,6 +217,7 @@ def principal(argv: list[str] | None = None) -> int:
     desde_parcial = 0.0
     t = 0.0                  # segundos desde o começo
     ult_nivel = 0.0
+    ult_ritmo = 0.0
     erro_sistema = ""
     it = blocos()
     while True:
@@ -226,6 +238,9 @@ def principal(argv: list[str] | None = None) -> int:
         if t - ult_nivel >= 0.5:
             emitir(tipo="nivel", db=round(db, 1))
             ult_nivel = t
+        if t - ult_ritmo >= 2.0:                      # quanto de fala espera o reconhecimento (status da tela)
+            emitir(tipo="ritmo", atraso=round(proc.atraso(), 1))
+            ult_ritmo = t
         if voz:
             if inicio_fala is None:
                 inicio_fala = t
@@ -236,11 +251,16 @@ def principal(argv: list[str] | None = None) -> int:
             fala.append(x)
             desde_parcial += dur
             dur_fala = t + dur - inicio_fala
-            fechar = silencio >= SILENCIO_FECHA or dur_fala >= FALA_MAXIMA
-            if fechar:
+            if silencio >= SILENCIO_FECHA:
                 if dur_fala - silencio >= 0.3:          # o reconhecimento vai para outro fio: a captura segue
                     proc.final(np.concatenate(fala), inicio_fala, t + dur - silencio)
                 fala, inicio_fala, silencio, desde_parcial = [], None, 0.0, 0.0
+            elif dur_fala >= FALA_MAXIMA:               # fala corrida: corta entre palavras e segue com o resto
+                k = ponto_de_corte(fala)
+                vai, resto = fala[:k], fala[k:]
+                dur_vai = sum(len(b) for b in vai) / TAXA
+                proc.final(np.concatenate(vai), inicio_fala, inicio_fala + dur_vai)
+                fala, inicio_fala, desde_parcial = resto, inicio_fala + dur_vai, 0.0
             elif desde_parcial >= PARCIAL_A_CADA:
                 desde_parcial = 0.0
                 proc.parcial(np.concatenate(fala), inicio_fala)

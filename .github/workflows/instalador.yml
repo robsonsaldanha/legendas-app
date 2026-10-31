@@ -246,7 +246,10 @@ jobs:
           if (-not $env:CNT_TOKEN) { throw "falta o segredo do servidor de produção (CNT_TOKEN_PROD)" }
           # servidor antigo (antes da 1.15) ignoraria o "guardada" e liberaria na hora: não registra nada
           $sv = (Invoke-RestMethod "$env:CNT_URL/v1/saude").versao
-          if ([version]$sv -lt [version]"1.15.0") { throw "o servidor de produção está na $sv; precisa da 1.15 para guardar a versão sem liberar" }
+          if ([version]$sv -lt [version]"1.15.0") {
+            "::warning title=Produção não guardada::o servidor de produção está na $sv; com a 1.15 ele guarda a versão sem liberar. Nada foi enviado à produção."
+            exit 0
+          }
           $full = "${{ steps.versao.outputs.full }}"; $tag = "v$full"
           $exe = Get-ChildItem build\Output\producao\Instalador_CNT_Legendas_*.exe | Select-Object -First 1
           if (-not $exe) { throw "instalador de produção não encontrado" }
@@ -322,8 +325,10 @@ jobs:
           VER=$(python3 -c "import core; print(core.__version__)").${{ github.run_number }}
           gh release upload desenvolvimento build/Output/CNT_Legendas_* build/Output/CNT_Dubla_* --clobber
           for f in build/Output/CNT_Legendas_* build/Output/CNT_Dubla_*; do echo "::notice title=Publicado::$(basename "$f") ($(du -h "$f" | cut -f1))"; done
-          gh release upload "v$VER" build/Output/producao/CNT_Legendas_* --clobber
-          echo "::notice title=Produção (guardada)::$(ls build/Output/producao | tr '\n' ' ')"
+          if gh release view "v$VER" >/dev/null 2>&1; then     # o job do Windows cria (se o servidor de produção estiver pronto)
+            gh release upload "v$VER" build/Output/producao/CNT_Legendas_* --clobber
+            echo "::notice title=Produção (guardada)::$(ls build/Output/producao | tr '\n' ' ')"
+          fi
       - name: Registrar no servidor de licenças (download do site e atualização por instalador)
         if: github.ref == 'refs/heads/dev'
         env:
@@ -334,8 +339,9 @@ jobs:
           VER=$(python3 -c "import core; print(core.__version__)").$CNT_BUILD
           REQ=$(git log -1 --format=%B | grep -q '\[instalador\]' && echo 1 || echo 0)
           SV=$(curl -fsS https://legendas.cntoficial.com.br/v1/saude | python3 -c "import json,sys; print(json.load(sys.stdin)['versao'])")
+          PROD=1
           python3 -c "import sys; v=[int(x) for x in sys.argv[1].split('.')]; sys.exit(0 if v >= [1, 15, 0] else 1)" "$SV" \
-            || { echo "o servidor de produção está na $SV; precisa da 1.15 para guardar a versão sem liberar"; exit 1; }
+            || { echo "::warning title=Produção não guardada::servidor de produção na $SV (precisa da 1.15); nada foi enviado à produção"; PROD=0; }
           # registrar <pasta> <servidor> <token> <versão no GitHub> <ativa: 1 ou 0>   (Linux: .AppImage; Mac: .dmg)
           registrar() {
             F=$(ls "$1"/CNT_Legendas_*.AppImage "$1"/CNT_Legendas_*.dmg 2>/dev/null | head -1)
@@ -350,7 +356,7 @@ jobs:
             echo "::notice title=Servidor::instalador ${{ matrix.sistema }} $VER em $2 ($([ "$5" = 0 ] && echo guardado || echo valendo))"
           }
           registrar build/Output https://dev-legendas.cntoficial.com.br "$CNT_TOKEN_DEV" desenvolvimento 1
-          registrar build/Output/producao https://legendas.cntoficial.com.br "$CNT_TOKEN_PROD" "v$VER" 0
+          [ "$PROD" = 1 ] && registrar build/Output/producao https://legendas.cntoficial.com.br "$CNT_TOKEN_PROD" "v$VER" 0 || true
       - name: Registrar no servidor da CNT Dubla
         if: github.ref == 'refs/heads/dev'
         env:

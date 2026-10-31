@@ -84,6 +84,7 @@ async function renderAoVivo() {
     <section class="panel" id="av-ao-vivo">
       <div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Fila <span class="muted small" id="av-relogio"></span></h2>
         <div class="av-medidor" title="Volume da entrada"><i id="av-nivel"></i></div></div>
+      <p class="av-status" id="av-status" aria-live="polite"><span class="av-luz"></span><span id="av-status-t">Parado.</span></p>
       <p class="muted small" id="av-srt"></p>
       <p class="av-parcial muted" id="av-parcial">Parado.</p>
       <div id="av-fila" class="av-fila"></div>
@@ -138,8 +139,16 @@ async function renderAoVivo() {
     const msg = $("av-msg");
     if (e.erro) { msg.hidden = false; msg.className = "note err"; msg.textContent = e.erro; }
     else if (ativo && e.aviso) { msg.hidden = false; msg.className = "note warn"; msg.textContent = e.aviso; }
-    else if (ativo && !e.pronto) { msg.hidden = false; msg.className = "note"; msg.textContent = e.etapa || "Preparando o reconhecimento de fala… (na primeira vez pode baixar o modelo)"; }
+    else if (ativo && !e.pronto) { msg.hidden = false; msg.className = "note"; msg.textContent = e.etapa || "Iniciando o reconhecimento de fala…"; }
     else msg.hidden = true;
+    // status: o que está acontecendo agora, em palavras
+    const atraso = Math.round(e.atraso_rec || 0);
+    const [cls, txt] = !ativo ? ["", e.erro ? "Parou." : "Parado."]
+      : !e.pronto ? ["prep", e.etapa || "Iniciando o reconhecimento de fala…"]
+      : (e.nivel ?? -90) < -55 ? ["ok", `Ouvindo, mas a entrada está em silêncio${e.motor_nome ? ` · ${e.motor_nome}` : ""}. Confira se a live está tocando.`]
+      : atraso >= 6 ? ["lento", `Ouvindo · ${e.motor_nome || "reconhecimento"} com ${atraso} s de fala esperando (a legenda sai atrasada)`]
+      : ["ok", `Ouvindo e reconhecendo em dia · ${e.motor_nome || ""}`.replace(/ · $/, "")];
+    $("av-status").className = `av-status ${cls}`; $("av-status-t").textContent = txt;
     $("av-relogio").textContent = ativo ? `· ${fmtHMS(e.segundos || 0)} · ${e.total || 0} legendas${e.motor_nome ? ` · ${e.motor_nome}` : ""}` : "";
     // player: monta uma vez por mídia (refazer o iframe a cada atualização recomeçaria o vídeo)
     const pl = (e.midia || {}).player || {};

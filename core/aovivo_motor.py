@@ -23,7 +23,7 @@ import numpy as np
 
 TAXA = 16000
 MOTORES = {"auto": "Automático", "gpu": "Placa de vídeo", "cpu": "Processador do computador", "nuvem": "IA na nuvem"}
-ATRASO_AVISO = 20.0          # s de fala esperando reconhecimento: avisa que o computador não está dando conta
+ATRASO_AVISO = 12.0          # s de fala esperando reconhecimento: avisa que o computador não está dando conta
 
 
 # ------------------------------------------------------------------ detector de voz
@@ -83,37 +83,90 @@ class MotorFalso:
         return "…"
 
 
-class MotorLocal:
-    parciais = True
+# modelos do Ao vivo (o "base" é o leve: a opção "Rápida"; antes caía no "small" sem avisar)
+MODELOS = {"base": "Systran/faster-whisper-base", "small": "Systran/faster-whisper-small",
+           "medium": "Systran/faster-whisper-medium"}
+TAMANHO_MB = {"base": 145, "small": 485, "medium": 1530}
 
-    def __init__(self, modelo: str, idioma: str, prompt: str, dispositivo: str = "auto"):
-        from .whisper_local import _cuda_dlls, model_dir, SIZES
+
+def _tem_placa() -> bool:
+    try:
+        import ctranslate2
+        return ctranslate2.get_cuda_device_count() > 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _baixado(pasta: Path, tamanho: str) -> bool:
+    return any(pasta.glob(f"models--Systran--faster-whisper-{tamanho}/snapshots/*/model.bin"))
+
+
+def _mb_baixados(pasta: Path, tamanho: str) -> int:
+    d = pasta / f"models--Systran--faster-whisper-{tamanho}" / "blobs"      # inclui os "*.incomplete" (baixando)
+    try:
+        return int(sum(f.stat().st_size for f in d.iterdir() if f.is_file()) / 1048576)
+    except OSError:
+        return 0
+
+
+class MotorLocal:
+    """Reconhecimento no computador. Avisa cada etapa (`avisar(texto)`): baixar o modelo (com MB), carregar.
+    No processador: busca simples e sem parciais (reconhecer duas vezes cada trecho deixava tudo atrasado)."""
+
+    def __init__(self, modelo: str, idioma: str, prompt: str, dispositivo: str = "auto", avisar=None):
+        from .whisper_local import _cuda_dlls, model_dir
+        avisar = avisar or (lambda t: None)
         _cuda_dlls()
         from faster_whisper import WhisperModel
         self.idioma = (idioma or "").split("-")[0] or None
         self.prompt = prompt or None
-        tamanho = modelo if modelo in SIZES else "small"
-        if dispositivo == "gpu":
+        tamanho = modelo if modelo in MODELOS else "small"
+        pasta = model_dir()
+        placa = _tem_placa()
+        if dispositivo == "gpu" and not placa:
+            raise RuntimeError("Não encontrei uma placa de vídeo compatível neste computador (ela precisa ser NVIDIA, com os "
+                               "controladores atualizados). Escolha “Processador do computador” ou “IA na nuvem”.")
+        usar_placa = dispositivo == "gpu" or (dispositivo == "auto" and placa)
+        if not _baixado(pasta, tamanho):
+            total = TAMANHO_MB[tamanho]
+            fim = threading.Event()
+
+            def acompanhar():
+                while not fim.wait(1.0):
+                    mb = min(_mb_baixados(pasta, tamanho), total)
+                    avisar(f"Baixando o modelo de reconhecimento (só na primeira vez): {mb} de ~{total} MB")
+            avisar(f"Baixando o modelo de reconhecimento (só na primeira vez): 0 de ~{total} MB")
+            threading.Thread(target=acompanhar, daemon=True).start()
             try:
-                self.m = WhisperModel(SIZES[tamanho], device="cuda", compute_type="float16", download_root=str(model_dir()))
+                from faster_whisper.utils import download_model
+                download_model(MODELOS[tamanho], cache_dir=str(pasta))
             except Exception as e:  # noqa: BLE001
+                raise RuntimeError("Não consegui baixar o modelo de reconhecimento. Confira a internet e tente de novo. "
+                                   f"(detalhe: {str(e)[-160:]})") from e
+            finally:
+                fim.set()
+        onde = "na placa de vídeo" if usar_placa else "no processador"
+        avisar(f"Carregando o reconhecimento {onde}…")
+        try:
+            if usar_placa:
+                self.m = WhisperModel(MODELOS[tamanho], device="cuda", compute_type="float16", download_root=str(pasta))
+            else:
+                raise RuntimeError("processador")
+        except Exception as e:  # noqa: BLE001
+            if dispositivo == "gpu":
                 raise RuntimeError("A placa de vídeo não pôde ser usada para o reconhecimento (ela precisa ser compatível "
                                    "e ter os controladores atualizados). Escolha “Processador do computador” ou “IA na nuvem”. "
                                    f"(detalhe: {str(e)[-160:]})") from e
-            self.nome = "Placa de vídeo"
-        elif dispositivo == "cpu":
-            self.m = WhisperModel(SIZES[tamanho], device="cpu", compute_type="int8", download_root=str(model_dir()))
-            self.nome = "Processador do computador"
-        else:
-            try:
-                self.m = WhisperModel(SIZES[tamanho], device="cuda", compute_type="float16", download_root=str(model_dir()))
-                self.nome = "Placa de vídeo"
-            except Exception:  # noqa: BLE001  (sem placa compatível: processador)
-                self.m = WhisperModel(SIZES[tamanho], device="cpu", compute_type="int8", download_root=str(model_dir()))
-                self.nome = "Processador do computador"
+            usar_placa = False
+            self.m = WhisperModel(MODELOS[tamanho], device="cpu", compute_type="int8", download_root=str(pasta),
+                                  cpu_threads=max(2, (os.cpu_count() or 4) - 1))
+        self.nome = "Placa de vídeo" if usar_placa else "Processador do computador"
+        self.parciais = usar_placa
+        self.busca = 2 if usar_placa else 1
+        self.tamanho = tamanho
 
     def texto(self, audio: np.ndarray, final: bool) -> str:
-        segs, _ = self.m.transcribe(audio, language=self.idioma, beam_size=1 if not final else 3, vad_filter=False,
+        segs, _ = self.m.transcribe(audio, language=self.idioma, beam_size=self.busca if final else 1, vad_filter=False,
                                     condition_on_previous_text=False, initial_prompt=self.prompt, without_timestamps=True)
         return " ".join(s.text.strip() for s in segs).strip()
 
@@ -143,12 +196,12 @@ class MotorNuvem:
             return self._limpar(self.t.transcribe(arq, self.idioma, "", self.palavras))
 
 
-def criar_motor(motor: str, modelo: str, idioma: str, prompt: str):
+def criar_motor(motor: str, modelo: str, idioma: str, prompt: str, avisar=None):
     if os.environ.get("CNT_AOVIVO_FALSO") == "1":
         return MotorFalso()
     if motor == "nuvem":
         return MotorNuvem(idioma, prompt)
-    return MotorLocal(modelo, idioma, prompt, motor if motor in ("gpu", "cpu") else "auto")
+    return MotorLocal(modelo, idioma, prompt, motor if motor in ("gpu", "cpu") else "auto", avisar=avisar)
 
 
 # ------------------------------------------------------------------ reconhecimento sem travar a captura
