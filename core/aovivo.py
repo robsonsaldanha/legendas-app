@@ -41,15 +41,20 @@ def conferir_endereco(endereco: str) -> str:
         return ("Esse é o endereço da página de um site de vídeo, não da transmissão em si: o programa não consegue "
                 "tirar o áudio de dentro da página. Use o endereço da transmissão (rtmp, srt ou um link terminado em "
                 ".m3u8, que quem transmite fornece) ou, para legendar o que está tocando no navegador, escolha como "
-                "entrada o som do computador (no Windows, “Mixagem estéreo”, quando aparece na lista).")
+                "entrada “Som do computador” e deixe a transmissão tocando no navegador.")
     return ""
 
 
+SOM_DO_COMPUTADOR = "Som do computador (o que estiver tocando: live no navegador, vídeo, chamada)"
+
+
 def listar_entradas(ffmpeg: str) -> list[dict]:
-    """Dispositivos de áudio que o ffmpeg enxerga neste computador: [{id, nome}]."""
+    """Entradas de áudio deste computador: [{id, nome}]. A primeira é o som do computador, quando dá para captar
+    (Windows: captura da saída de som pelo sistema; Linux: o "monitor" da saída padrão)."""
     out: list[dict] = []
     try:
         if sys.platform == "win32":
+            out.append({"id": "sistema:", "nome": SOM_DO_COMPUTADOR})
             r = subprocess.run([ffmpeg, "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
                                creationflags=0x08000000)
@@ -69,6 +74,7 @@ def listar_entradas(ffmpeg: str) -> list[dict]:
                 if audio and m:
                     out.append({"id": f"avfoundation:{m.group(1)}", "nome": m.group(2).strip()})
         else:
+            out.append({"id": "pulse:@DEFAULT_MONITOR@", "nome": SOM_DO_COMPUTADOR})
             try:
                 r = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True, timeout=5)
                 for linha in r.stdout.splitlines():
@@ -78,7 +84,7 @@ def listar_entradas(ffmpeg: str) -> list[dict]:
                         out.append({"id": f"pulse:{nome}", "nome": ("Som do computador: " if nome.endswith(".monitor") else "") + nome})
             except (OSError, subprocess.SubprocessError):
                 pass
-            if not out:
+            if len(out) == 1:
                 out.append({"id": "pulse:default", "nome": "Entrada padrão do sistema"})
     except (OSError, subprocess.SubprocessError) as e:
         log.warning("Não consegui listar as entradas de áudio: %s", e)

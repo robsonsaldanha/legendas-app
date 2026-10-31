@@ -243,3 +243,52 @@ def test_endereco_de_pagina_de_video():
     assert conferir_endereco("rtmp://servidor/live/chave") == ""
     m = explicar_erro("[in#0] Error opening input: Invalid data found when processing input")
     assert m.startswith("Não foi possível abrir a entrada de áudio") and "Invalid data" in m
+
+
+def test_som_do_computador(monkeypatch, capsys):
+    """"Som do computador": entrada na lista (Windows e Linux) e captura pela saída de som (soundcard falso)."""
+    import types
+    from core import aovivo, aovivo_worker
+
+    # lista: no Windows vem antes dos aparelhos do ffmpeg; no Linux é o monitor da saída padrão
+    monkeypatch.setattr(aovivo.subprocess, "run", lambda *a, **k: types.SimpleNamespace(stdout="", stderr='"Microfone (USB)" (audio)\n'))
+    monkeypatch.setattr(aovivo.sys, "platform", "win32")
+    ent = aovivo.listar_entradas("ffmpeg")
+    assert ent[0]["id"] == "sistema:" and ent[0]["nome"].startswith("Som do computador") and ent[1]["id"] == "dshow:Microfone (USB)"
+    monkeypatch.setattr(aovivo.sys, "platform", "linux")
+    assert aovivo.listar_entradas("ffmpeg")[0]["id"] == "pulse:@DEFAULT_MONITOR@"
+    assert "Som do computador" in aovivo.conferir_endereco("https://kick.com/canal")
+
+    # captura: estéreo vira mono; dois bipes viram duas falas; quando a saída some, avisa em português
+    taxa, chamadas = aovivo_worker.TAXA, {"n": 0}
+
+    class Gravador:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def record(self, numframes):
+            chamadas["n"] += 1
+            i = chamadas["n"]
+            if i > 60:
+                raise RuntimeError("AUDCLNT_E_DEVICE_INVALIDATED")
+            t = np.arange(numframes) / taxa
+            som = 0.3 * np.sin(2 * np.pi * 220 * t) if (5 <= i < 17 or 30 <= i < 42) else np.zeros(numframes)
+            return np.stack([som, som], axis=1).astype(np.float32)
+
+    falso = types.SimpleNamespace(
+        default_speaker=lambda: types.SimpleNamespace(name="Alto-falantes"),
+        get_microphone=lambda id, include_loopback=False: types.SimpleNamespace(recorder=lambda samplerate: Gravador()))
+    monkeypatch.setitem(sys.modules, "soundcard", falso)
+    monkeypatch.setenv("CNT_AOVIVO_FALSO", "1")
+    assert aovivo_worker.principal(["--fonte", "sistema:"]) == 0
+    evs = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
+    tipos = [e["tipo"] for e in evs]
+    assert tipos[0] == "pronto" and tipos[-1] == "fim"
+    assert [e["texto"] for e in evs if e["tipo"] == "final"] == ["Fala 1.", "Fala 2."]
+    erro = next(e["mensagem"] for e in evs if e["tipo"] == "erro")
+    assert erro.startswith("Não consegui ouvir o som do computador") and "DEVICE_INVALIDATED" in erro
+
+    # sem saída de som nenhuma: erro claro logo no começo
+    falso.default_speaker = lambda: None
+    assert aovivo_worker.principal(["--fonte", "sistema:"]) == 2
+    evs = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
+    assert evs[0]["tipo"] == "erro" and "saída de som" in evs[0]["mensagem"]

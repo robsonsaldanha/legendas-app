@@ -29,6 +29,7 @@ async function renderAoVivo() {
         <div class="stack">
           <label class="field"><span>Entrada de áudio</span>
             <select id="av-fonte">${opts}<option value="arquivo:" ${String(p.fonte || "").startsWith("arquivo:") ? "selected" : ""}>Um arquivo de vídeo ou áudio (ensaio)</option><option value="url:" ${String(p.fonte || "").startsWith("url:") ? "selected" : ""}>Endereço de uma transmissão</option></select></label>
+          <p class="note" id="av-dica-sistema" hidden>Abra a live (de qualquer site) no navegador e deixe tocando com som. Tudo o que tocar no computador entra na legenda: feche outros vídeos e desligue os sons de aviso enquanto legenda.</p>
           <label class="field" id="av-extra-l" hidden><span id="av-extra-t">Arquivo</span>
             <div class="row" style="gap:6px"><input type="text" id="av-extra" style="flex:1" value="${esc(String(p.fonte || "").replace(/^(arquivo|url):/, ""))}"><button class="btn" data-a="escolher" id="av-escolher">Escolher…</button></div></label>
           <div class="row" style="gap:12px;flex-wrap:wrap">
@@ -84,6 +85,7 @@ async function renderAoVivo() {
     $("av-extra-l").hidden = !(v === "arquivo:" || v === "url:");
     $("av-extra-t").textContent = v === "url:" ? "Endereço (rtmp, srt, http…)" : "Arquivo";
     $("av-escolher").hidden = v !== "arquivo:";
+    $("av-dica-sistema").hidden = !(v === "sistema:" || v === "pulse:@DEFAULT_MONITOR@");
   }
   const url = () => { $("av-url").value = `${r.pagina}&${avEstilo(ler())}`; };
   extra(); url();

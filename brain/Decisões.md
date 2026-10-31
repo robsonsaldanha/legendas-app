@@ -465,3 +465,10 @@
 - **Aprovar = o Róbson dizer na conversa que aprova; a IA junta o pedido** (passo a passo em [[Liberação para produção]]; ele não mexe em nada técnico). A montagem da main (≈ 35 min) publica `v<versão>`, registra o instalador dos três sistemas e o pacote no servidor de produção (`CNT_PROD_ATIVO` = 1): o site e a atualização automática passam a oferecer a versão. Não aprovar = deixar aberto; o pedido se atualiza a cada versão nova.
 - Não se promove o binário da dev: o canal (`core/canal.json`) vai dentro da montagem, por isso a main monta de novo.
 - Se o repositório não deixar o CI abrir pedidos, o job só avisa (não derruba a montagem) com o link para abrir à mão.
+
+## 2026-10-31 — 2.28: Ao vivo com “Som do computador”
+- Pedido do Róbson: legendar qualquer transmissão ao vivo (sites de vídeo, de jogos etc.). Tirar o áudio de dentro da página continua fora (contra os termos dos sites e quebra a cada mudança); o caminho é **captar o som que o computador toca**: ela abre a live no navegador e escolhe a entrada “Som do computador”, a primeira da lista.
+- Windows: o ffmpeg não grava a saída de som, então a captura “loopback” vem da biblioteca `soundcard` 0.4.6 (Python puro; usa o `cffi`, que já vem com a criptografia; a 0.4.5 quebra com o numpy 2). Vai no instalador (`requirements.txt`) **e** no pacote de atualização (`bibliotecas-no-pacote.txt`), então chega sem reinstalar; o processo do Ao vivo acrescenta `<versão>/lib` ao caminho (`CNT_VERSAO_DIR`). Fonte `sistema:` em `core/aovivo_worker.blocos_sistema` (estéreo → mono, 16 kHz; em silêncio a biblioteca devolve zeros). Saída de som sumiu (fone tirado): erro em português. O teste do instalador no CI confere que a biblioteca importa.
+- Linux: `pulse:@DEFAULT_MONITOR@` (o “monitor” da saída padrão), pelo próprio ffmpeg.
+- Mac: sem captura da saída de som pelo sistema (precisaria de um dispositivo de áudio virtual); por ora não aparece a opção.
+- Dica na tela: tudo o que tocar entra na legenda; fechar outros vídeos e silenciar avisos. Teste: `tests/test_aovivo.py::test_som_do_computador` (soundcard falso).

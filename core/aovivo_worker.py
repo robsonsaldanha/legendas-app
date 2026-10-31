@@ -52,6 +52,31 @@ def emitir(**ev) -> None:
     sys.stdout.flush()
 
 
+def blocos_sistema(n: int = BLOCO):
+    """Som do computador (o que toca na saída padrão), em blocos mono float32 de `n` amostras.
+
+    No Windows o ffmpeg não grava a saída de som; a captura "loopback" do sistema vem pela
+    biblioteca soundcard (Python puro). Em silêncio ela devolve zeros (não trava)."""
+    vdir = os.environ.get("CNT_VERSAO_DIR")     # biblioteca que chegou no pacote de atualização (<versão>/lib)
+    if vdir and os.path.isdir(os.path.join(vdir, "lib")) and os.path.join(vdir, "lib") not in sys.path:
+        sys.path.append(os.path.join(vdir, "lib"))
+    import soundcard as sc
+    alto = sc.default_speaker()
+    if alto is None:
+        raise RuntimeError("nenhuma saída de som padrão")
+    mic = sc.get_microphone(id=str(alto.name), include_loopback=True)
+    print("som do computador:", alto.name, file=sys.stderr, flush=True)
+    with mic.recorder(samplerate=TAXA) as r:
+        while True:
+            x = np.asarray(r.record(numframes=n), dtype=np.float32)
+            yield x.mean(axis=1) if x.ndim == 2 else x
+
+
+def explicar_erro_sistema(erro: str) -> str:
+    return ("Não consegui ouvir o som do computador. Confira se há uma saída de som ligada (alto-falante ou fone) "
+            f"e tente de novo. (detalhe: {erro[-200:]})")
+
+
 def entrada_ffmpeg(fonte: str) -> list[str]:
     """Argumentos de entrada do ffmpeg para a fonte escolhida na tela."""
     tipo, _, valor = fonte.partition(":")
@@ -111,14 +136,35 @@ def principal(argv: list[str] | None = None) -> int:
     except Exception as e:  # noqa: BLE001
         emitir(tipo="erro", mensagem=f"Não consegui carregar o reconhecimento de fala: {e}")
         return 2
-    cmd = [a.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", *entrada_ffmpeg(a.fonte), "-vn", "-ac", "1", "-ar", str(TAXA), "-f", "s16le", "-"]
-    try:
-        ff = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              creationflags=0x08000000 if sys.platform == "win32" else 0)
-    except OSError as e:
-        emitir(tipo="erro", mensagem=f"Não consegui abrir a entrada de áudio: {e}")
-        return 2
-    print("ffmpeg:", " ".join(cmd), file=sys.stderr, flush=True)
+    ff = None
+    if a.fonte.startswith("sistema:"):
+        try:
+            fonte = blocos_sistema()
+            primeiro = next(fonte)
+        except Exception as e:  # noqa: BLE001
+            emitir(tipo="erro", mensagem=explicar_erro_sistema(str(e)))
+            emitir(tipo="fim", segundos=0)
+            return 2
+
+        def blocos():
+            yield primeiro
+            yield from fonte
+    else:
+        cmd = [a.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", *entrada_ffmpeg(a.fonte), "-vn", "-ac", "1", "-ar", str(TAXA), "-f", "s16le", "-"]
+        try:
+            ff = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  creationflags=0x08000000 if sys.platform == "win32" else 0)
+        except OSError as e:
+            emitir(tipo="erro", mensagem=f"Não consegui abrir a entrada de áudio: {e}")
+            return 2
+        print("ffmpeg:", " ".join(cmd), file=sys.stderr, flush=True)
+
+        def blocos():
+            while True:
+                raw = ff.stdout.read(BLOCO * 2)
+                if not raw:
+                    return
+                yield np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
     emitir(tipo="pronto")
     piso = None              # piso de ruído (dB), se adapta
     fala: list[np.ndarray] = []
@@ -127,13 +173,20 @@ def principal(argv: list[str] | None = None) -> int:
     desde_parcial = 0.0
     t = 0.0                  # segundos desde o começo
     ult_nivel = 0.0
+    erro_sistema = ""
+    it = blocos()
     while True:
-        raw = ff.stdout.read(BLOCO * 2)
-        if not raw:
+        try:
+            x = next(it)
+        except StopIteration:
             break
+        except Exception as e:  # noqa: BLE001  (som do computador parou: saída desligada, fone tirado…)
+            erro_sistema = explicar_erro_sistema(str(e))
+            break
+        if not len(x):
+            continue
         if t == 0.0:
             print("primeiro bloco de áudio recebido", file=sys.stderr, flush=True)
-        x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
         dur = len(x) / TAXA
         db = 20 * np.log10(max(1e-6, float(np.sqrt(np.mean(x * x)))))
         piso = db if piso is None else (min(piso + 0.02, db) if db < piso + 6 else piso + 0.01)   # sobe devagar, desce rápido
@@ -168,11 +221,14 @@ def principal(argv: list[str] | None = None) -> int:
         txt = rec.texto(np.concatenate(fala), final=True)
         if txt:
             emitir(tipo="final", texto=txt, t0=round(inicio_fala, 2), t1=round(t, 2))
-    erro = (ff.stderr.read() or b"").decode("utf-8", "replace").strip() if ff.stderr else ""
-    ff.wait()
-    if ff.returncode not in (0, None) and erro:
-        emitir(tipo="erro", mensagem=explicar_erro(erro))
-    print(f"fim: {t:.1f} s lidos, ffmpeg saiu com {ff.returncode}", file=sys.stderr)
+    if ff is not None:
+        erro = (ff.stderr.read() or b"").decode("utf-8", "replace").strip() if ff.stderr else ""
+        ff.wait()
+        if ff.returncode not in (0, None) and erro:
+            emitir(tipo="erro", mensagem=explicar_erro(erro))
+        print(f"fim: {t:.1f} s lidos, ffmpeg saiu com {ff.returncode}", file=sys.stderr)
+    elif erro_sistema:
+        emitir(tipo="erro", mensagem=erro_sistema)
     emitir(tipo="fim", segundos=round(t, 1))
     return 0
 
