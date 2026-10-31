@@ -37,6 +37,11 @@ def main(wav: str, text: str) -> None:
     import httpx, keyring, numpy, openai, tkinter, torch, transformers  # noqa: F401,E401
     check("bibliotecas", True, f"torch {torch.__version__}, transformers {transformers.__version__}")
     check("tkinter", tkinter.Tcl().eval("info patchlevel").startswith("8."))
+    if sys.platform == "win32":     # Ao vivo, "Som do computador" (captura da saída de som)
+        import soundcard
+        check("som do computador (biblioteca)", hasattr(soundcard, "default_speaker"), soundcard.__file__)
+    import yt_dlp, yt_dlp_ejs  # noqa: F401,E401   (Ao vivo por link)
+    check("ao vivo por link (biblioteca)", hasattr(yt_dlp, "YoutubeDL"), yt_dlp.version.__version__)
 
     import core
     from core.config import app_root

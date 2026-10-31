@@ -233,13 +233,151 @@ def test_avaliacao_nao_tem_ao_vivo(server):
     assert r.status == 402 and "todos os planos" in d["error"]
 
 
-def test_endereco_de_pagina_de_video():
-    """Página de site de vídeo não é transmissão: avisa antes de tentar (o ffmpeg só diria 'Invalid data')."""
+def test_link_de_live(tmp_path):
+    """2.29: link de página de site de vídeo vale (o programa lê o áudio); player certo para cada site."""
+    import hashlib
+    import io
+    import zipfile
+    from core import aovivo_link as al
     from core.aovivo import conferir_endereco
     from core.aovivo_worker import explicar_erro
-    assert "página" in conferir_endereco("https://www.youtube.com/watch?v=alrmv8HOAVA")
-    assert conferir_endereco("https://youtu.be/abc") and conferir_endereco("https://m.twitch.tv/canal")
-    assert conferir_endereco("https://cdn.exemplo.com/live/index.m3u8") == ""
-    assert conferir_endereco("rtmp://servidor/live/chave") == ""
+    assert conferir_endereco("https://www.youtube.com/watch?v=alrmv8HOAVA") == ""
+    assert conferir_endereco("rtmp://servidor/live/chave") == "" and conferir_endereco("") and conferir_endereco("youtube.com/x")
+    assert al.precisa_resolver("https://kick.com/canal") and not al.precisa_resolver("https://cdn.x.com/live/index.m3u8")
+    assert not al.precisa_resolver("srt://1.2.3.4:9000")
+    yt = al.player_de("https://www.youtube.com/watch?v=alrmv8HOAVA&t=3")
+    assert yt == {"tipo": "iframe", "src": "https://www.youtube.com/embed/alrmv8HOAVA?autoplay=1&mute=1&playsinline=1"}
+    assert al.player_de("https://youtu.be/alrmv8HOAVA")["src"] == yt["src"]
+    assert "embed/abcdefghijk" in al.player_de("https://youtube.com/@canal/live", {"extractor_key": "Youtube", "id": "abcdefghijk"})["src"]
+    assert "channel=gaules&parent=127.0.0.1" in al.player_de("https://www.twitch.tv/gaules")["src"]
+    assert "video=v123" in al.player_de("https://www.twitch.tv/videos/123")["src"]
+    assert al.player_de("https://kick.com/canal-x")["src"].startswith("https://player.kick.com/canal-x?")
+    assert al.player_de("https://x.com/v.mp4")["tipo"] == "video" and al.player_de("https://outro.site/live")["tipo"] == "link"
+    assert al.explicar("ERROR: [twitch:stream] canal: The channel is not currently live").startswith("Essa live não está no ar")
+    assert al.explicar("ERROR: Private video. Sign in").startswith("Esse vídeo pede entrar")
     m = explicar_erro("[in#0] Error opening input: Invalid data found when processing input")
     assert m.startswith("Não foi possível abrir a entrada de áudio") and "Invalid data" in m
+    # ffmpeg: gravado vai em tempo real; ao vivo .m3u8 começa perto do fim; cabeçalhos do site vão junto
+    a = al.args_ffmpeg("https://h/x.m3u8?a=1", {"User-Agent": "UA", "Referer": "https://r/", "X-Outro": "n"}, True)
+    assert a[:2] == ["-headers", "User-Agent: UA\r\nReferer: https://r/\r\n"] and "-live_start_index" in a and "-re" not in a
+    g = al.args_ffmpeg("https://h/a.m4a", {}, False)
+    assert g[0] == "-re" and g[-2:] == ["-i", "https://h/a.m4a"]
+
+    # resolver com a biblioteca falsa: lista vira o primeiro item; formato com áudio separado
+    class Falsa:
+        def __init__(self, opts): Falsa.opts = opts
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def extract_info(self, url, download):
+            return {"_type": "playlist", "entries": [None, {"id": "v1", "title": "Live", "is_live": True,
+                    "requested_formats": [{"url": "https://m/a.m3u8", "http_headers": {"User-Agent": "UA"}}]}]}
+    midia, cab, info = al.resolver("https://site/live", {"deno": {"path": "/x/deno"}}, ydl_cls=Falsa)
+    assert midia == "https://m/a.m3u8" and cab == {"User-Agent": "UA"} and info["id"] == "v1"
+    assert Falsa.opts["js_runtimes"] == {"deno": {"path": "/x/deno"}} and Falsa.opts["noplaylist"]
+    c = al.cmd_baixar("py", "/t/i.json", "/b/ffmpeg", True)
+    assert c[:2] == ["py", "-c"] and c[c.index("--load-info-json") + 1] == "/t/i.json" and c[c.index("-o") + 1] == "-"
+    assert "--hls-use-mpegts" in c and "--hls-use-mpegts" not in al.cmd_baixar("py", "i", "f", False)
+
+    # interpretador de JavaScript: usa o que houver; senão baixa uma vez (conferindo a soma) para a pasta de dados
+    if (sys.platform, al._arquitetura()) not in al.DENO:
+        return
+    nome = "deno.exe" if sys.platform == "win32" else "deno"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("pasta/" + nome, b"binario")
+    soma = hashlib.sha256(buf.getvalue()).hexdigest().encode() + b"  x.zip"
+    pedidos = []
+
+    def baixar(url):
+        pedidos.append(url)
+        return soma if url.endswith(".sha256sum") else buf.getvalue()
+
+    orig = al.shutil.which
+    al.shutil.which = lambda n: None
+    try:
+        js = al.garantir_js(None, tmp_path, baixar=baixar)
+        assert (tmp_path / "ferramentas" / nome).read_bytes() == b"binario" and js["deno"]["path"].endswith(nome)
+        assert pedidos[0].startswith(al.BASE_DENO) and pedidos[1].endswith(".sha256sum")
+        assert al.garantir_js(None, tmp_path, baixar=lambda u: 1 / 0) == js       # já existe: não baixa de novo
+        with pytest.raises(RuntimeError):
+            al.garantir_js(None, tmp_path / "outro", baixar=lambda u: b"0" * 64 if u.endswith(".sha256sum") else buf.getvalue())
+        assert not (tmp_path / "outro" / "ferramentas" / nome).exists()
+    finally:
+        al.shutil.which = orig
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="sem ffmpeg no sistema")
+def test_link_de_live_no_processo(tmp_path, monkeypatch, capsys):
+    """O processo de captura abre o link, manda o player para a tela e legenda o áudio."""
+    from core import aovivo_link, aovivo_worker
+    wav = tmp_path / "live.wav"
+    _wav_com_falas(wav, falas=2)
+    monkeypatch.setattr(aovivo_link, "garantir_js", lambda *a, **k: {})
+    monkeypatch.setattr(aovivo_link, "resolver", lambda url, js=None: ("https://m/x", {}, {"extractor_key": "Youtube", "id": "abcdefghijk",
+                                                                                         "title": "Minha live", "is_live": True}))
+    monkeypatch.setattr(aovivo_link, "guardar_info", lambda info, destino, ydl_cls=None: destino)
+    # o "baixador" entrega o áudio pela saída padrão, como a biblioteca faria
+    monkeypatch.setattr(aovivo_link, "cmd_baixar", lambda py, arq, ff, vivo: [
+        sys.executable, "-c", "import sys, shutil; shutil.copyfileobj(open(sys.argv[1], 'rb'), sys.stdout.buffer)", str(wav)])
+    monkeypatch.setenv("LEGENDAS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("CNT_AOVIVO_FALSO", "1")
+    assert aovivo_worker.principal(["--fonte", "url:https://www.youtube.com/@canal/live", "--ffmpeg", shutil.which("ffmpeg")]) == 0
+    evs = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
+    midia = next(e for e in evs if e["tipo"] == "midia")
+    assert midia["titulo"] == "Minha live" and midia["ao_vivo"] and "embed/abcdefghijk" in midia["player"]["src"]
+    assert [e["texto"] for e in evs if e["tipo"] == "final"] == ["Fala 1.", "Fala 2."]
+    # link quebrado: erro em português, sem travar
+    def quebrado(url, js=None):
+        raise RuntimeError("ERROR: Unsupported URL: x")
+    monkeypatch.setattr(aovivo_link, "resolver", quebrado)
+    assert aovivo_worker.principal(["--fonte", "url:https://site/qualquer", "--ffmpeg", shutil.which("ffmpeg")]) == 2
+    evs = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
+    assert evs[-2]["tipo"] == "erro" and evs[-2]["mensagem"].startswith("Não consegui abrir esse link")
+
+
+def test_som_do_computador(monkeypatch, capsys):
+    """"Som do computador": entrada na lista (Windows e Linux) e captura pela saída de som (soundcard falso)."""
+    import types
+    from core import aovivo, aovivo_worker
+
+    # lista: no Windows vem antes dos aparelhos do ffmpeg; no Linux é o monitor da saída padrão
+    monkeypatch.setattr(aovivo.subprocess, "run", lambda *a, **k: types.SimpleNamespace(stdout="", stderr='"Microfone (USB)" (audio)\n'))
+    monkeypatch.setattr(aovivo.sys, "platform", "win32")
+    ent = aovivo.listar_entradas("ffmpeg")
+    assert ent[0]["id"] == "sistema:" and ent[0]["nome"].startswith("Som do computador") and ent[1]["id"] == "dshow:Microfone (USB)"
+    monkeypatch.setattr(aovivo.sys, "platform", "linux")
+    assert aovivo.listar_entradas("ffmpeg")[0]["id"] == "pulse:@DEFAULT_MONITOR@"
+
+    # captura: estéreo vira mono; dois bipes viram duas falas; quando a saída some, avisa em português
+    taxa, chamadas = aovivo_worker.TAXA, {"n": 0}
+
+    class Gravador:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def record(self, numframes):
+            chamadas["n"] += 1
+            i = chamadas["n"]
+            if i > 60:
+                raise RuntimeError("AUDCLNT_E_DEVICE_INVALIDATED")
+            t = np.arange(numframes) / taxa
+            som = 0.3 * np.sin(2 * np.pi * 220 * t) if (5 <= i < 17 or 30 <= i < 42) else np.zeros(numframes)
+            return np.stack([som, som], axis=1).astype(np.float32)
+
+    falso = types.SimpleNamespace(
+        default_speaker=lambda: types.SimpleNamespace(name="Alto-falantes"),
+        get_microphone=lambda id, include_loopback=False: types.SimpleNamespace(recorder=lambda samplerate: Gravador()))
+    monkeypatch.setitem(sys.modules, "soundcard", falso)
+    monkeypatch.setenv("CNT_AOVIVO_FALSO", "1")
+    assert aovivo_worker.principal(["--fonte", "sistema:"]) == 0
+    evs = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
+    tipos = [e["tipo"] for e in evs]
+    assert tipos[0] == "pronto" and tipos[-1] == "fim"
+    assert [e["texto"] for e in evs if e["tipo"] == "final"] == ["Fala 1.", "Fala 2."]
+    erro = next(e["mensagem"] for e in evs if e["tipo"] == "erro")
+    assert erro.startswith("Não consegui ouvir o som do computador") and "DEVICE_INVALIDATED" in erro
+
+    # sem saída de som nenhuma: erro claro logo no começo
+    falso.default_speaker = lambda: None
+    assert aovivo_worker.principal(["--fonte", "sistema:"]) == 2
+    evs = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
+    assert evs[0]["tipo"] == "erro" and "saída de som" in evs[0]["mensagem"]

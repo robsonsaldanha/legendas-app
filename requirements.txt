@@ -14,5 +14,12 @@ cryptography>=42
 # Janela própria (WebView2 do Windows). Em Python puro: também vai no pacote de atualização
 # (packaging/bibliotecas-no-pacote.txt — manter as versões iguais)
 pywebview==6.2.1; sys_platform == "win32"
+# Ao vivo: "Som do computador" (captura da saída de som no Windows). Python puro (usa o cffi, que já vem
+# com a criptografia); também vai no pacote de atualização (packaging/bibliotecas-no-pacote.txt)
+soundcard==0.4.6; sys_platform == "win32"
+# Ao vivo por link: lê o áudio da página da live ou do vídeo (biblioteca aberta, Python puro; o componente
+# de JavaScript que alguns sites exigem é baixado pelo programa na primeira vez). Também no pacote de atualização.
+yt-dlp==2026.10.26
+yt-dlp-ejs==0.8.0
 # Corretor ortográfico do editor (Python puro, dicionários pt/es). Também vai no pacote de atualização.
 pyspellchecker==0.9.1

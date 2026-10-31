@@ -1671,6 +1671,17 @@ class Handler(BaseHTTPRequestHandler):
         depuracao.registrar("aovivo", "parou")
         return self.app.aovivo.parar()
 
+    @route("POST", r"/api/abrir-link")
+    def api_abrir_link(self):
+        """Abre um link da internet no navegador padrão (ex.: a live do Ao vivo)."""
+        import webbrowser
+        from urllib.parse import urlparse
+        url = str(self._body().get("url") or "").strip()
+        if urlparse(url).scheme not in ("http", "https"):
+            raise ApiError("Link inválido.")
+        webbrowser.open(url)
+        return {"ok": True}
+
     @route("GET", r"/api/aovivo/estado")
     def api_aovivo_estado(self):
         return self.app.aovivo.estado()

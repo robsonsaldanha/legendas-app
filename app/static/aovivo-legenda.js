@@ -1,5 +1,8 @@
 /* Página de legenda ao vivo (fonte de navegador / janela para capturar).
-   Opções no endereço: faixa=traducao, modo=bloco|rolando, fundo=00ff00|transparente, cor=ffffff, tam=44, linhas=3, pos=baixo|cima, caixa=1 */
+   Opções no endereço: faixa=traducao, modo=bloco|rolando, fundo=00ff00|transparente, cor=ffffff, tam=44, linhas=3,
+   pos=baixo|cima, fonte=padrao|larga|estreita|serifa|forte|maquina, peso=400|600|800, contorno=0..10 (px),
+   ccor=000000, sombra=0|1, caixa=1 (tarja), tcor=000000, topac=0..100, demo=1 (texto de exemplo, sem ligar),
+   escala=0.3 (tamanho proporcional numa área menor que 1920 px, como a prévia da tela) */
 "use strict";
 (() => {
   const q = new URLSearchParams(location.search);
@@ -10,8 +13,28 @@
   if (q.get("pos") === "cima") document.body.classList.add("cima");
   if (q.get("caixa") === "1") document.body.classList.add("caixa");
   const area = document.getElementById("area");
+  const num = (k, d, a, b) => Math.max(a, Math.min(b, Number.isFinite(parseFloat(q.get(k))) ? parseFloat(q.get(k)) : d));
+  const FONTES = { padrao: '"Inter", "Segoe UI", Arial, sans-serif', larga: 'Verdana, "DejaVu Sans", sans-serif',
+    estreita: '"Arial Narrow", "Roboto Condensed", Tahoma, sans-serif', serifa: 'Georgia, "Times New Roman", serif',
+    forte: 'Impact, "Arial Black", sans-serif', maquina: '"Courier New", "Liberation Mono", monospace' };
   area.style.color = hex(q.get("cor"), "#ffffff");
-  area.style.fontSize = Math.max(14, Math.min(160, parseInt(q.get("tam") || "44", 10) || 44)) + "px";
+  const escala = num("escala", 1, 0.05, 4);          // prévia/player da tela: proporção de um vídeo de 1920 px de largura
+  area.style.fontSize = num("tam", 44, 14, 160) * escala + "px";
+  area.style.fontFamily = FONTES[q.get("fonte")] || FONTES.padrao;
+  area.style.fontWeight = String(num("peso", 600, 300, 900));
+  // contorno: um anel de sombras (funciona em qualquer fonte); sombra suave opcional embaixo
+  const w = num("contorno", 2, 0, 10) * Math.max(escala, 0.35), cc = hex(q.get("ccor"), "#000000"), sombras = [];
+  for (let i = 0; w > 0 && i < 16; i++) {
+    const a = (i / 16) * 2 * Math.PI;
+    sombras.push(`${(Math.cos(a) * w).toFixed(2)}px ${(Math.sin(a) * w).toFixed(2)}px 0 ${cc}`);
+  }
+  if (q.get("sombra") !== "0") sombras.push("0 3px 8px rgba(0,0,0,.75)");
+  const css = document.createElement("style");
+  const tc = hex(q.get("tcor"), "#000000").slice(1), op = num("topac", 78, 0, 100) / 100;
+  const rgb = tc.length === 3 ? tc.split("").map((c) => parseInt(c + c, 16)) : [0, 2, 4].map((i) => parseInt(tc.slice(i, i + 2), 16));
+  css.textContent = `.leg { text-shadow: ${sombras.join(", ") || "none"} }
+    body.caixa .leg { background: rgba(${rgb.join(",")},${op}); text-shadow: ${w > 0 ? sombras.slice(0, 16).join(", ") : "none"} }`;
+  document.head.appendChild(css);
   const faixa = q.get("faixa") === "traducao" ? "traducao" : "";   // segunda faixa: a tradução ao vivo
   const maxLinhas = Math.max(1, Math.min(8, parseInt(q.get("linhas") || "3", 10) || 3));
   let timer = null;
@@ -46,5 +69,8 @@
       else if (ev.tipo === "limpar") { clearTimeout(timer); area.innerHTML = ""; }
     };
   }
-  ligar();
+  if (q.get("demo") === "1") {
+    mostrar(q.get("texto") || "Assim fica a legenda ao vivo\ncom duas linhas na tela.");
+    clearTimeout(timer);
+  } else ligar();
 })();

@@ -25,31 +25,22 @@ log = logging.getLogger("legendas.aovivo")
 
 # ------------------------------------------------------------------ entradas de áudio
 
-# Sites de vídeo: o endereço é de uma página (com o player), não do áudio da transmissão.
-PAGINAS_DE_VIDEO = ("youtube.com", "youtu.be", "twitch.tv", "facebook.com", "fb.watch", "instagram.com", "vimeo.com",
-                    "tiktok.com", "kick.com", "dailymotion.com", "x.com", "twitter.com")
-
-
 def conferir_endereco(endereco: str) -> str:
-    """"" = dá para tentar; senão, a explicação para ela (endereço de página de vídeo, não de transmissão)."""
-    from urllib.parse import urlparse
-    u = urlparse(endereco.strip())
-    if u.scheme.lower() not in ("http", "https"):
-        return ""                                   # rtmp, srt, rtsp, udp…: o ffmpeg abre direto
-    host = (u.hostname or "").lower()
-    if any(host == d or host.endswith("." + d) for d in PAGINAS_DE_VIDEO):
-        return ("Esse é o endereço da página de um site de vídeo, não da transmissão em si: o programa não consegue "
-                "tirar o áudio de dentro da página. Use o endereço da transmissão (rtmp, srt ou um link terminado em "
-                ".m3u8, que quem transmite fornece) ou, para legendar o que está tocando no navegador, escolha como "
-                "entrada o som do computador (no Windows, “Mixagem estéreo”, quando aparece na lista).")
-    return ""
+    """"" = dá para tentar (página de site de vídeo também: 2.29 lê pelo link); senão, a explicação."""
+    from .aovivo_link import conferir
+    return conferir(endereco)
+
+
+SOM_DO_COMPUTADOR = "Som do computador (o que estiver tocando: live no navegador, vídeo, chamada)"
 
 
 def listar_entradas(ffmpeg: str) -> list[dict]:
-    """Dispositivos de áudio que o ffmpeg enxerga neste computador: [{id, nome}]."""
+    """Entradas de áudio deste computador: [{id, nome}]. A primeira é o som do computador, quando dá para captar
+    (Windows: captura da saída de som pelo sistema; Linux: o "monitor" da saída padrão)."""
     out: list[dict] = []
     try:
         if sys.platform == "win32":
+            out.append({"id": "sistema:", "nome": SOM_DO_COMPUTADOR})
             r = subprocess.run([ffmpeg, "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
                                creationflags=0x08000000)
@@ -69,6 +60,7 @@ def listar_entradas(ffmpeg: str) -> list[dict]:
                 if audio and m:
                     out.append({"id": f"avfoundation:{m.group(1)}", "nome": m.group(2).strip()})
         else:
+            out.append({"id": "pulse:@DEFAULT_MONITOR@", "nome": SOM_DO_COMPUTADOR})
             try:
                 r = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True, timeout=5)
                 for linha in r.stdout.splitlines():
@@ -78,7 +70,7 @@ def listar_entradas(ffmpeg: str) -> list[dict]:
                         out.append({"id": f"pulse:{nome}", "nome": ("Som do computador: " if nome.endswith(".monitor") else "") + nome})
             except (OSError, subprocess.SubprocessError):
                 pass
-            if not out:
+            if len(out) == 1:
                 out.append({"id": "pulse:default", "nome": "Entrada padrão do sistema"})
     except (OSError, subprocess.SubprocessError) as e:
         log.warning("Não consegui listar as entradas de áudio: %s", e)
@@ -167,6 +159,8 @@ class Sessao:
     srt: Path | None = None
     log: Path | None = None
     parando: bool = False
+    etapa: str = ""                                  # "Abrindo o link…" (antes de começar a ouvir)
+    midia: dict = field(default_factory=dict)       # link: título, se é ao vivo e o player da tela
     traduzir_para: str = ""                          # tradução ao vivo (segunda faixa), ex.: "es-419"
     glossario: list = field(default_factory=list)    # [(termo, tradução)] para a tradução ao vivo
     srt_trad: Path | None = None
@@ -293,6 +287,12 @@ class AoVivo:
                 self._avisar({"tipo": "parcial", "texto": s.parcial})
             elif tipo == "final":
                 s.receber_final(ev.get("texto", ""), float(ev.get("t0", 0)), float(ev.get("t1", 0)), time.time())
+            elif tipo == "etapa":
+                s.etapa = str(ev.get("texto") or "")
+            elif tipo == "midia":
+                s.midia = {"titulo": str(ev.get("titulo") or ""), "ao_vivo": bool(ev.get("ao_vivo")), "player": ev.get("player") or {}}
+                s.etapa = ""
+                self._avisar({"tipo": "midia", **s.midia})
             elif tipo == "erro":
                 s.erro = ev.get("mensagem", "")
                 log.warning("Ao vivo: %s", s.erro)
@@ -453,6 +453,7 @@ class AoVivo:
             return {"ativo": s.ativo, "pronto": s.pronto, "fonte": s.fonte, "modelo": s.modelo, "atraso": s.atraso,
                     "parcial": s.parcial, "nivel": s.nivel, "erro": s.erro, "fila": fila, "publicadas": pub,
                     "segundos": round(agora - s.inicio, 1) if s.inicio else 0, "srt": str(s.srt or ""),
+                    "etapa": s.etapa, "midia": s.midia,
                     "total": sum(1 for l in s.linhas if l.estado == "publicada"),
                     "traduzir_para": s.traduzir_para, "srt_trad": str(s.srt_trad or ""),
                     "traducoes": {str(l["id"]): s.traducoes[l["id"]] for l in pub if l["id"] in s.traducoes}}

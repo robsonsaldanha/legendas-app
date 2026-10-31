@@ -52,6 +52,57 @@ def emitir(**ev) -> None:
     sys.stdout.flush()
 
 
+def blocos_sistema(n: int = BLOCO):
+    """Som do computador (o que toca na saída padrão), em blocos mono float32 de `n` amostras.
+
+    No Windows o ffmpeg não grava a saída de som; a captura "loopback" do sistema vem pela
+    biblioteca soundcard (Python puro). Em silêncio ela devolve zeros (não trava)."""
+    vdir = os.environ.get("CNT_VERSAO_DIR")     # biblioteca que chegou no pacote de atualização (<versão>/lib)
+    if vdir and os.path.isdir(os.path.join(vdir, "lib")) and os.path.join(vdir, "lib") not in sys.path:
+        sys.path.append(os.path.join(vdir, "lib"))
+    import soundcard as sc
+    alto = sc.default_speaker()
+    if alto is None:
+        raise RuntimeError("nenhuma saída de som padrão")
+    mic = sc.get_microphone(id=str(alto.name), include_loopback=True)
+    print("som do computador:", alto.name, file=sys.stderr, flush=True)
+    with mic.recorder(samplerate=TAXA) as r:
+        while True:
+            x = np.asarray(r.record(numframes=n), dtype=np.float32)
+            yield x.mean(axis=1) if x.ndim == 2 else x
+
+
+def explicar_erro_sistema(erro: str) -> str:
+    return ("Não consegui ouvir o som do computador. Confira se há uma saída de som ligada (alto-falante ou fone) "
+            f"e tente de novo. (detalhe: {erro[-200:]})")
+
+
+def abrir_link(endereco: str, ffmpeg: str) -> tuple[list[str], list[str] | None]:
+    """Link colado na tela → (entrada do ffmpeg, processo que baixa ou None). Página de site de vídeo: a
+    biblioteca acha a mídia (e o player vai para a tela) e um processo dela baixa e entrega ao ffmpeg pela
+    saída padrão; endereço direto (rtmp, .m3u8, .mp4…): o ffmpeg abre sozinho."""
+    from pathlib import Path
+    from . import aovivo_link as al
+    if not al.precisa_resolver(endereco):
+        emitir(tipo="midia", titulo="", ao_vivo=True, player=al.player_de(endereco))
+        return ["-i", endereco], None
+    emitir(tipo="etapa", texto="Abrindo o link…")
+    from .config import data_dir
+    bin_dir = Path(ffmpeg).parent if os.path.sep in ffmpeg or "/" in ffmpeg else None
+    try:
+        js = al.garantir_js(bin_dir, data_dir(), avisar=lambda t: emitir(tipo="etapa", texto=t))
+    except Exception as e:  # noqa: BLE001  (sem o componente alguns sites ainda abrem)
+        print("interpretador de JavaScript indisponível:", e, file=sys.stderr, flush=True)
+        js = al.achar_js(bin_dir, data_dir())
+    emitir(tipo="etapa", texto="Abrindo o link…")
+    midia, cab, info = al.resolver(endereco, js)
+    ao_vivo = bool(info.get("is_live")) or info.get("live_status") == "is_live"
+    print("link:", info.get("extractor_key"), info.get("id"), "ao vivo" if ao_vivo else "gravado", file=sys.stderr, flush=True)
+    emitir(tipo="midia", titulo=str(info.get("title") or "")[:200], ao_vivo=ao_vivo, player=al.player_de(endereco, info))
+    arq = al.guardar_info(info, data_dir() / "aovivo" / f"link-{os.getpid()}.json")
+    return (["-re"] if not ao_vivo else []) + ["-i", "pipe:0"], al.cmd_baixar(sys.executable, str(arq), ffmpeg, ao_vivo)
+
+
 def entrada_ffmpeg(fonte: str) -> list[str]:
     """Argumentos de entrada do ffmpeg para a fonte escolhida na tela."""
     tipo, _, valor = fonte.partition(":")
@@ -111,14 +162,51 @@ def principal(argv: list[str] | None = None) -> int:
     except Exception as e:  # noqa: BLE001
         emitir(tipo="erro", mensagem=f"Não consegui carregar o reconhecimento de fala: {e}")
         return 2
-    cmd = [a.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", *entrada_ffmpeg(a.fonte), "-vn", "-ac", "1", "-ar", str(TAXA), "-f", "s16le", "-"]
-    try:
-        ff = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              creationflags=0x08000000 if sys.platform == "win32" else 0)
-    except OSError as e:
-        emitir(tipo="erro", mensagem=f"Não consegui abrir a entrada de áudio: {e}")
-        return 2
-    print("ffmpeg:", " ".join(cmd), file=sys.stderr, flush=True)
+    ff = baixador = None
+    if a.fonte.startswith("sistema:"):
+        try:
+            fonte = blocos_sistema()
+            primeiro = next(fonte)
+        except Exception as e:  # noqa: BLE001
+            emitir(tipo="erro", mensagem=explicar_erro_sistema(str(e)))
+            emitir(tipo="fim", segundos=0)
+            return 2
+
+        def blocos():
+            yield primeiro
+            yield from fonte
+    else:
+        entrada, baixar = ([], None) if a.fonte.startswith("url:") else (entrada_ffmpeg(a.fonte), None)
+        if a.fonte.startswith("url:"):
+            try:
+                entrada, baixar = abrir_link(a.fonte[4:].strip(), a.ffmpeg)
+            except Exception as e:  # noqa: BLE001
+                from .aovivo_link import explicar
+                emitir(tipo="erro", mensagem=explicar(str(e)))
+                emitir(tipo="fim", segundos=0)
+                return 2
+        cmd = [a.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", *entrada, "-vn", "-ac", "1", "-ar", str(TAXA), "-f", "s16le", "-"]
+        semjanela = 0x08000000 if sys.platform == "win32" else 0
+        try:
+            if baixar:
+                baixador = subprocess.Popen(baixar, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                            creationflags=semjanela)
+                print("baixando pela biblioteca:", " ".join(baixar[3:]), file=sys.stderr, flush=True)
+            ff = subprocess.Popen(cmd, stdin=baixador.stdout if baixar else subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, creationflags=semjanela)
+            if baixar:
+                baixador.stdout.close()                  # só o ffmpeg lê; se ele sair, o baixador recebe o aviso
+        except OSError as e:
+            emitir(tipo="erro", mensagem=f"Não consegui abrir a entrada de áudio: {e}")
+            return 2
+        print("ffmpeg:", " ".join(cmd), file=sys.stderr, flush=True)
+
+        def blocos():
+            while True:
+                raw = ff.stdout.read(BLOCO * 2)
+                if not raw:
+                    return
+                yield np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
     emitir(tipo="pronto")
     piso = None              # piso de ruído (dB), se adapta
     fala: list[np.ndarray] = []
@@ -127,13 +215,20 @@ def principal(argv: list[str] | None = None) -> int:
     desde_parcial = 0.0
     t = 0.0                  # segundos desde o começo
     ult_nivel = 0.0
+    erro_sistema = ""
+    it = blocos()
     while True:
-        raw = ff.stdout.read(BLOCO * 2)
-        if not raw:
+        try:
+            x = next(it)
+        except StopIteration:
             break
+        except Exception as e:  # noqa: BLE001  (som do computador parou: saída desligada, fone tirado…)
+            erro_sistema = explicar_erro_sistema(str(e))
+            break
+        if not len(x):
+            continue
         if t == 0.0:
             print("primeiro bloco de áudio recebido", file=sys.stderr, flush=True)
-        x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
         dur = len(x) / TAXA
         db = 20 * np.log10(max(1e-6, float(np.sqrt(np.mean(x * x)))))
         piso = db if piso is None else (min(piso + 0.02, db) if db < piso + 6 else piso + 0.01)   # sobe devagar, desce rápido
@@ -168,11 +263,29 @@ def principal(argv: list[str] | None = None) -> int:
         txt = rec.texto(np.concatenate(fala), final=True)
         if txt:
             emitir(tipo="final", texto=txt, t0=round(inicio_fala, 2), t1=round(t, 2))
-    erro = (ff.stderr.read() or b"").decode("utf-8", "replace").strip() if ff.stderr else ""
-    ff.wait()
-    if ff.returncode not in (0, None) and erro:
-        emitir(tipo="erro", mensagem=explicar_erro(erro))
-    print(f"fim: {t:.1f} s lidos, ffmpeg saiu com {ff.returncode}", file=sys.stderr)
+    if ff is not None:
+        erro = (ff.stderr.read() or b"").decode("utf-8", "replace").strip() if ff.stderr else ""
+        ff.wait()
+        erro_baixar = ""
+        if baixador is not None:
+            try:
+                baixador.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                baixador.kill()
+            erro_baixar = (baixador.stderr.read() or b"").decode("utf-8", "replace").strip()
+            if erro_baixar:
+                print("baixador:", erro_baixar[-2000:], file=sys.stderr, flush=True)
+        if baixador is not None and baixador.returncode not in (0, None) and erro_baixar and t < 1:
+            from .aovivo_link import explicar
+            emitir(tipo="erro", mensagem=explicar(erro_baixar))
+        elif baixador is not None and baixador.returncode not in (0, None) and erro_baixar:
+            emitir(tipo="erro", mensagem="A transmissão parou de chegar. Confira se a live continua no ar e comece de novo. "
+                                          f"(detalhe: {erro_baixar[-200:]})")
+        elif ff.returncode not in (0, None) and erro:
+            emitir(tipo="erro", mensagem=explicar_erro(erro))
+        print(f"fim: {t:.1f} s lidos, ffmpeg saiu com {ff.returncode}", file=sys.stderr)
+    elif erro_sistema:
+        emitir(tipo="erro", mensagem=erro_sistema)
     emitir(tipo="fim", segundos=round(t, 1))
     return 0
 
