@@ -111,7 +111,7 @@ function cliqueDica(e) {
 
 /* --------------------------------------------------------------- versões */
 
-const ORIGEM_VERSAO = { salvar: "Salvo", entrega: "Entregue" };
+const ORIGEM_VERSAO = { salvar: "Salvo", entrega: "Entregue", automatico: "Salvo automaticamente", anterior: "Antes de salvar (versão anterior)" };
 
 async function abrirVersoes() {
   let r;

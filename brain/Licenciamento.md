@@ -79,7 +79,7 @@ Coleta (hash do computador, MAC em hash, IPs, nome do computador) só para contr
 
 ### Canais
 - `dev`: cada envio ao ramo `dev` que passar nos testes gera um pacote e publica no servidor de desenvolvimento.
-- `producao`: só quando o Róbson aprovar (PR `dev` → `main`). O cliente recebe só `producao`.
+- `producao`: só quando o Róbson aprovar (PR `dev` → `main`). O cliente recebe só `producao`. Desde 30/10 o CI deixa o pedido pronto a cada versão da dev que passar em tudo; aprovar = juntar o pedido (ver Decisões, "Liberação para o site com um clique").
 
 ### Pacote
 - **Patch de código** (`Atualizacao_CNT_Legendas_<versão>.zip`): pastas `app/`, `core/` e `lib/` (bibliotecas em Python puro de `packaging/bibliotecas-no-pacote.txt`) (com `core/canal.json` = `{canal, build}`). O servidor devolve um manifesto assinado com Ed25519 (url, sha256, tamanho); o programa confere assinatura e SHA-256. Pequeno.
@@ -89,10 +89,11 @@ Coleta (hash do computador, MAC em hash, IPs, nome do computador) só para contr
 
 ### No programa
 1. Ao abrir: `GET /v1/atualizacao?canal=producao&versao=2.10.0` → manifesto assinado `{versao, tipo, url, sha256, tamanho, notas}`.
-2. Ao abrir, a tela de atualização (não deixa trabalhar) mostra cada passo, cada um por pelo menos ~1 s: **Procurando atualizações → Baixando (barra com %) → Instalando → "Atualização instalada" com contagem 3, 2, 1 → "Reiniciando o aplicativo…" (1 s) → fecha e reabre** (2.24). O programa só fecha depois que a tela confirma a contagem (`POST /api/atualizacao/reiniciar`; sem tela, reinicia sozinho em 60 s). Erro no download ou na instalação: a tela mostra a mensagem e o **código** (ER-RS-1xx/6xx, ER-RA-440) e o botão "Continuar na versão atual".
+2. Ao abrir, primeiro abre o **lançador** (2.27: janela pequena, antes do programa; ver Decisões). Nele, a tela de atualização (não deixa trabalhar) mostra cada passo, cada um por pelo menos ~1 s: **Procurando atualizações → Baixando (barra com %) → Instalando → "Atualização instalada" com contagem 3, 2, 1 → "Reiniciando o aplicativo…" (1 s) → fecha e reabre** (2.24). O programa só fecha depois que a tela confirma a contagem (`POST /api/atualizacao/reiniciar`; sem tela, reinicia sozinho em 60 s). Erro no download ou na instalação: a tela mostra a mensagem e o **código** (ER-RS-1xx/6xx, ER-RA-440) e o botão "Continuar na versão atual".
    - Patch: extrai em `%ProgramData%\CNT Legendas\versoes\<versão>\`; a inicialização (`cntboot`) carrega a versão válida mais nova. A pasta do programa (Arquivos de Programas) não é alterada; o Windows não pede permissão.
    - Instalador: baixa e roda em modo silencioso com `/ABRIR` (o Windows pede permissão; o instalador fecha o programa e o reabre no fim). Se ela disser "Não" no aviso, segue na versão atual e tenta de novo na próxima abertura.
 3. Sem internet ou servidor fora do ar: abre a versão que tem.
+   - Depois da atualização, o lançador confere a licença no servidor e os arquivos do programa (`core/arquivos.json`, ER-RA-450) e só então abre a janela do programa.
 4. Se a versão nova não abrir (erro na partida), volta sozinho para a anterior.
 5. **Depois de reabrir (2.24):** antes de fechar, o programa anota "de → para" em `atualizacao-resultado.json` (pasta de dados). Na abertura seguinte: versão igual ou maior que a anotada = **"Atualização concluída"** com a lista do que mudou (vem das notas da versão — a mensagem do commit, por isso ela é escrita para quem usa o programa); menor = a versão nova não abriu → **"Erro na atualização"** com o código **ER-RA-441**. Caixa "Não mostrar esta tela nas próximas atualizações" (Configurações › Novidades da versão liga de novo); o aviso de erro aparece sempre.
 

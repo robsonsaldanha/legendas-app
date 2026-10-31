@@ -18,6 +18,7 @@ FILETYPES = {
     "text": [("Texto", "*.txt *.docx")],
     "script": [("Roteiro ou texto sem tempo", "*.txt *.docx *.srt")],
     "csv": [("Planilha CSV", "*.csv")],
+    "imagem": [("Imagem (logo)", "*.png *.jpg *.jpeg")],
     "profile": [("Perfil JSON", "*.json")],
     "perfil_usuario": [("Perfil do CNT Legendas", "*.cnt-perfil.json *.json")],
     "any": [("Vídeo, áudio, legenda ou texto",

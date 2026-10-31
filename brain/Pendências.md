@@ -188,6 +188,19 @@ Pedido do Róbson em 26/10/2026, depois de entender o fluxo das empresas de loca
 
 ---
 
+## P-23 — Ideias do editor aprovadas pelo Róbson (27/10/2026) · feito na 2.26
+Das 16 ideias propostas, ele aprovou estas (as outras ficaram de fora: revisão por voz, falsos amigos, consistência de tratamento, resumo do dia, modo véspera, portal do cliente, atalhos adaptáveis, pausa inteligente):
+1. **Modo foco** — botão de liga/desliga no editor; o layout continua o mesmo, as outras legendas ficam apagadas (opacas) e a atual em destaque.
+2. **Anotações por legenda** — no menu do botão direito, "Anotação…": texto livre que **não vai para o .srt**, fica no banco do programa (por arquivo e por tempo da legenda). Legenda com anotação mostra um bloquinho de notas numa **coluna própria** da lista (não empurra o texto).
+3. **Tela de cinema** — tela só para assistir e revisar: vídeo grande com a legenda, espaço pausa/continua, e dá para escrever uma anotação na legenda daquele momento (as mesmas anotações do item 2).
+4. **Glossário do projeto aprendido** — quando ela corrige a mesma palavra do mesmo jeito 3 vezes no projeto, o programa **pergunta** se quer pôr no glossário do projeto (só do projeto). E **autocompletar** no texto da legenda, como nos editores de código: sugere termos do glossário (projeto, cliente, geral), nomes e palavras já usadas na legenda; Tab ou Enter aceita, Esc fecha, setas escolhem.
+5. **Comparação na entrega** — ao entregar, abre a tela de comparação: com a entrega anterior (se houver) ou, se é a primeira, com o arquivo original. Destaca o que mudou (texto e tempo), legendas novas e apagadas, e gera o **relatório do que foi feito** (resumo + lista).
+6. **Nota de qualidade** — de 0 a 100 antes de entregar, com o porquê (regras do perfil do cliente: velocidade de leitura, linhas, duração, intervalos, ortografia, glossário).
+7. **Relatório para o cliente** — PDF com o nome e a logo dela (Configurações), mostrando o que foi verificado e a nota; opcional na entrega.
+8. **Ritmo e previsão** — a partir do **3º trabalho feito no programa** (os 2 primeiros servem de base): mede minutos de vídeo, legendas, palavras e caracteres contra o **tempo ativo** no programa, o **tempo aberto parado** e o **tempo fora** (entre começar e entregar). Relatórios disso e previsão de quanto falta / quando termina cada episódio.
+
+---
+
 ## Pendências que já existiam
 
 ### P-10 — Validar com o uso real · contínua
@@ -207,3 +220,57 @@ Hoje apagar cliente/glossário no Workspace da empresa não chega aos colegas (d
 
 ### P-15 — Proteção do código de licença · futuro
 Compilar os módulos de licença, repositório privado e máquina própria para os builds.
+
+### P-17 — Fluxo e Navegação: consistência e contexto · rascunho
+Melhorar a coerência visual e a navegação contextual do programa (desktop).
+- **Unificar Design System:** migrar telas legadas (`renderNew()`, `renderResult()` e afins) das classes `.panel`/`.btn`/`.grid-2` para o padrão novo `.ds-page`/`.ds-btn`/`.ds-form`, eliminando a duplicidade de estilos.
+- **Home como painel real:** ajustar breadcrumb e ênfase da rota `#/inicio` para funcionar como dashboard principal (projetos recentes em destaque; abertura avulsa como ação secundária), removendo a contradição atual com o texto "use Projetos".
+- **Navegação contextual:** em telas de projeto/episódio (`#/obra/*`), oferecer atalho direto na barra lateral ou breadcrumb com dropdown para voltar ao projeto pai ou trocar de episódio sem depender do botão Voltar do navegador.
+- **Escopo:** apenas desktop (o sistema não é mobile; responsividade móvel vale só para o site público).
+
+**Pronto quando:** todas as telas internas usarem o DS novo, home reformulada e aprovada pelo Róbson, e navegação entre obra/episódio estiver fluida sem recarregar página inteira.
+
+### P-18 — Formulário "Novo Trabalho": validação e clareza · rascunho
+Tornar o fluxo de criação de trabalho mais previsível e menos propenso a erros tardios.
+- **Validação em tempo real:** feedback visual imediato nos campos (borda, mensagem inline) e desabilitação proativa do botão "Iniciar" enquanto houver pendência; nada de erro só ao submeter.
+- **Resumo lateral ativo:** transformar o painel `#summary` em checklist que alerta combinações incomuns (ex.: traduzir sem perfil, idioma origem = destino) antes do envio.
+- **Zonas de arrastar distintas:** separar visualmente as áreas de legenda, vídeo e texto, com labels claros e validação cromática ao arrastar (verde = compatível, vermelho = incompatível).
+- **Migrar para o DS novo** (ligado a P-17): usar componentes `.ds-*` no formulário inteiro.
+
+**Pronto quando:** usuário consegue identificar e corrigir problemas de preenchimento antes de clicar em "Iniciar", sem mensagens de erro genéricas pós-submissão.
+
+### P-19 — Performance percebida: skeletons e transições · rascunho
+Reduzir a sensação de lentidão e de "piscar" entre telas do programa.
+- **Skeletons imediatos:** renderizar esqueleto da tela assim que a rota mudar; popular dados assincronamente e mostrar spinner apenas nas seções dependentes (evitar tela branca em `renderNew()`/`renderProfilesPage()`).
+- **Transições suaves:** adicionar animações CSS mínimas (`opacity`, `transform`) entre telas para evitar re-render brusco de todo o `#main`.
+- **Escopo:** apenas desktop; não otimizar para mobile.
+
+**Pronto quando:** troca de rota nunca mostra tela branca por mais de ~100 ms e transição é perceptivelmente mais suave em máquinas de referência.
+
+### P-20 — Status de salvamento visível e confiável · rascunho
+Tornar o estado de salvamento do editor imediatamente perceptível e confiável, evitando perda de trabalho silenciosa.
+- **Indicador próximo ao nome:** mover o status de salvamento para a linha do título (`#ed-name`), com ícone de estado (✓ salvo, ↻ salvando, ⚠️ erro/não salvo) e texto curto; a barra inferior continua como detalhe secundário.
+- **Feedback de erro claro:** quando o salvamento automático falhar, mostrar banner discreto no topo do editor (não só toast) com botão "Tentar agora" e motivo resumido; manter até o usuário agir ou o próximo sucesso.
+- **Estado "sem arquivo":** destacar visualmente que alterações não serão salvas automaticamente enquanto não houver um caminho definido, com ação rápida "Salvar como…" ao lado do aviso.
+- **Escopo:** apenas desktop; não alterar fluxo de salvamento, só a comunicação visual.
+
+**Pronto quando:** usuário identifica em < 1 s se o arquivo está salvo, salvando ou com problema, sem precisar olhar para a barra inferior; erros de salvamento têm ação clara e visível.
+
+### P-21 — Lista de legendas com densidade variável · rascunho
+Permitir que a lista de cues se adapte ao conteúdo e à preferência do usuário, ganhando área útil para textos longos e compactando linhas curtas.
+- **Ajuste global de densidade:** controle na toolbar da lista (ou nas configurações do editor) com 3 níveis: compacta, padrão e espaçada; persistir preferência por usuário.
+- **Truncamento inteligente:** linhas acima de N caracteres mostram versão truncada com reticências; expansão automática ao focar/selecionar a linha ou ao passar o mouse (configurável).
+- **Altura dinâmica por cue:** permitir que cada linha ocupe entre 1 e 3 linhas visuais conforme o texto, respeitando o nível de densidade escolhido; recalcular scroll ao editar.
+- **Escopo:** apenas desktop; não alterar estrutura de dados nem ordem das legendas.
+
+**Pronto quando:** usuário consegue alternar densidade sem recarregar, textos longos ficam legíveis sem ocupar toda a tela e a navegação por teclado permanece fluida.
+
+### P-22 — Diagnóstico e correção da medição de latência · rascunho
+O sistema reporta "Conexão Lenta (~14s)" enquanto o ping ICMP do Windows mostra ~14ms; é preciso entender e corrigir a medição para evitar falsos positivos de lentidão.
+- **Causa identificada:** o sistema mede uma requisição HTTP completa (`httpx.get` em `/v1/saude`) e não um ping ICMP; o tempo inclui handshake TCP/TLS + processamento do servidor, além de possível desrespeito ao timeout ou acúmulo de tentativas.
+- **Investigar no servidor:** confirmar se `/v1/saude` está demorando ~14s para responder (banco, gargalo na aplicação Python, fila); testar com `curl -w "%{time_total}\n"` a partir do cliente e de dentro do servidor.
+- **Revisar a medição no cliente (`core/conexao.py`):** garantir que o timeout de 6s é respeitado em todas as condições; verificar se o valor exibido é média/acumulado de retries; isolar o tempo de rede do tempo de resposta da aplicação.
+- **Comunicar melhor o resultado:** separar visualmente "latência de rede" de "tempo de resposta do serviço", evitando que o usuário confunda problema de rede com problema do servidor.
+- **Escopo:** apenas diagnóstico e ajuste da medição; não alterar o endpoint `/v1/saude` nem a infraestrutura do servidor nesta pendência.
+
+**Pronto quando:** o valor exibido no programa refletir fielmente o que está lento (rede ou servidor), sem reportar ~14s quando a rede está a 14ms, e houver evidência (log ou teste) da causa raiz corrigida ou documentada.

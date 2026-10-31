@@ -112,6 +112,9 @@ Remove-Item (Join-Path $App "core\canal.json") -ErrorAction SilentlyContinue
 $canalJson = @{ canal = $Canal; build = $BuildNum } | ConvertTo-Json -Compress
 [IO.File]::WriteAllText((Join-Path $App "core\canal.json"), $canalJson, (New-Object Text.UTF8Encoding $false))
 & python -m compileall -q -f (Join-Path $App "core") (Join-Path $App "app") (Join-Path $App "dubla") | Out-Null
+# conferência dos arquivos (o lançador avisa se a cópia estiver alterada ou faltando arquivo)
+& python (Join-Path $PSScriptRoot "manifesto.py") $App
+if ($LASTEXITCODE) { throw "falha ao gerar o manifesto dos arquivos" }
 
 # pacote de atualização (patch): app\ e core\, para o programa já instalado baixar e aplicar
 New-Item -ItemType Directory -Force -Path (Join-Path $Build "Output") | Out-Null

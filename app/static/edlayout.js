@@ -199,6 +199,8 @@ function edContextMenu(e) {
     <button role="menuitem" data-c="merge">Juntar com a próxima</button>
     <button role="menuitem" data-c="copy">Copiar o texto</button>
     <hr>
+    <button role="menuitem" data-c="nota">${notaDe(c) ? "Ver ou editar a anotação…" : "Anotação…"} <span class="muted small">não vai para o arquivo</span></button>
+    <hr>
     <button role="menuitem" data-c="delete" class="danger">Apagar</button>`;
   document.body.appendChild(m);
   const W = window.innerWidth, H = window.innerHeight, w = m.offsetWidth, h = m.offsetHeight;
@@ -210,6 +212,7 @@ function edContextMenu(e) {
     if (a === "top") setCuePos(i, top ? 2 : 8);
     else if (a === "align") openAlign(i);
     else if (a === "italic") toggleItalic(i);
+    else if (a === "nota") abrirNota(i);
     else if (a === "copy") copyText(ED.cues[i].text.replace(AN_RE, "")).then((ok) => toast(ok ? "Texto copiado." : "Não consegui copiar."));
     else act(a);
   });

@@ -702,10 +702,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(302)
             self.send_header("Set-Cookie", f"{self.app.cookie_name}={self.app.token}; Path=/; "
                                            "HttpOnly; SameSite=Strict")
-            self.send_header("Location", "/")
+            self.send_header("Location", "/lancador" if self.query.get("ir") == "lancador" else "/")
             self.send_header("Content-Length", "0")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
+            return
+        if path == "/lancador":
+            if not self._cookie_ok():
+                self._locked_page()
+                return
+            html = (STATIC / "lancador.html").read_text(encoding="utf-8")
+            html = html.replace("{{TOKEN}}", self.app.token).replace("{{VERSION}}", versao_completa())
+            self._send(200, html.encode("utf-8"), "text/html; charset=utf-8", {
+                "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+                                           "script-src 'self'; connect-src 'self'; frame-ancestors 'none'"})
             return
         if path in ("/aovivo/legenda", "/aovivo/fluxo"):
             if not secrets.compare_digest(self.query.get("k", ""), self.app.aovivo_chave()):
@@ -982,10 +992,21 @@ class Handler(BaseHTTPRequestHandler):
                    "parallel_requests": int, "align": str, "keep_job_days": int,
                    "translator_name": str, "use_gpu": str, "whisper_model": str,
                    "transcribe_engine": str, "transcribe_multilang": bool, "bandeja": bool,
-                   "formato_entrega": str, "mostrar_novidades": bool}
+                   "formato_entrega": str, "mostrar_novidades": bool, "autosalvar": bool,
+                   "autosalvar_min": int, "autosalvar_backup": str, "autosalvar_pasta": str, "autosalvar_manter": int,
+                   "relatorio_nome": str, "relatorio_logo": str}
         for k, typ in allowed.items():
             if k in data:
                 setattr(s, k, typ(data[k]))
+        s.autosalvar_min = min(60, max(1, int(s.autosalvar_min or 1)))
+        s.autosalvar_manter = min(500, max(1, int(s.autosalvar_manter or 20)))
+        if s.autosalvar_backup not in ("historico", "ao_lado", "pasta"):
+            s.autosalvar_backup = "historico"
+        if s.relatorio_logo and (not Path(s.relatorio_logo).is_file()
+                                 or Path(s.relatorio_logo).suffix.lower() not in (".png", ".jpg", ".jpeg")):
+            raise ApiError("A logo precisa ser um arquivo .png ou .jpg que exista no computador.")
+        if s.autosalvar_backup == "pasta" and not s.autosalvar_pasta:
+            raise ApiError("Escolha a pasta onde guardar as cópias anteriores.")
         if "editor" in data:
             ed = data["editor"]
             if not isinstance(ed, dict) or len(json.dumps(ed)) > 8000:
@@ -1347,6 +1368,19 @@ class Handler(BaseHTTPRequestHandler):
         depuracao.registrar("editor.abrir", "aberto", sessao=r.get("sid"), legendas=len(r.get("cues") or []), idioma=r.get("language"))
         return r
 
+    @route("GET", r"/api/ritmo")
+    def api_ritmo(self):
+        need("relatorios")
+        return self.app.projects.ritmo()
+
+    @route("GET", r"/api/itens/(\d+)/previsao")
+    def api_item_previsao(self, iid):
+        """Previsão no rodapé do editor: sem licença com relatórios, só não mostra (não abre aviso de licença)."""
+        from core import licenca
+        if not licenca.atual().tem("relatorios"):
+            return {"pronto": False, "previsao": None, "sem_licenca": True}
+        return self.app.projects.previsao(int(iid))
+
     @route("GET", r"/api/report")
     def api_report(self):
         need("relatorios")
@@ -1354,9 +1388,47 @@ class Handler(BaseHTTPRequestHandler):
         return self.app.projects.general_report(q.get("from", ""), q.get("to", ""), q.get("client") or None,
                                                 q.get("status", ""))
 
+    @route("POST", r"/api/editor/(\w+)/entrega/previa")
+    def api_editor_previa_entrega(self, sid):
+        return self.app.editor.previa_entrega(sid, self._body().get("cues", []))
+
+    @route("POST", r"/api/editor/(\w+)/correcao")
+    def api_editor_correcao(self, sid):
+        b = self._body()
+        return self.app.editor.correcao(sid, b.get("de"), b.get("para"))
+
+    @route("POST", r"/api/editor/(\w+)/correcao/decidir")
+    def api_editor_correcao_decidir(self, sid):
+        b = self._body()
+        r = self.app.editor.correcao_decidir(sid, str(b.get("de") or ""), str(b.get("para") or ""), bool(b.get("adicionar")))
+        if b.get("adicionar"):
+            self.app.sincronia.avisar_mudanca()
+        return r
+
+    @route("GET", r"/api/editor/(\w+)/sugestoes")
+    def api_editor_sugestoes(self, sid):
+        return self.app.editor.sugestoes(sid)
+
+    @route("GET", r"/api/editor/(\w+)/notas")
+    def api_editor_notas(self, sid):
+        return self.app.editor.notas(sid)
+
+    @route("POST", r"/api/editor/(\w+)/notas")
+    def api_editor_nota_nova(self, sid):
+        return self.app.editor.nota_salvar(sid, self._body())
+
+    @route("PUT", r"/api/editor/(\w+)/notas/(\d+)")
+    def api_editor_nota(self, sid, nid):
+        return self.app.editor.nota_salvar(sid, self._body(), int(nid))
+
+    @route("DELETE", r"/api/editor/(\w+)/notas/(\d+)")
+    def api_editor_nota_apagar(self, sid, nid):
+        return self.app.editor.nota_apagar(sid, int(nid))
+
     @route("POST", r"/api/editor/(\w+)/beat")
     def api_editor_beat(self, sid):
-        return self.app.editor.beat(sid, float(self._body().get("seconds") or 0))
+        b = self._body()
+        return self.app.editor.beat(sid, float(b.get("seconds") or 0), b.get("ativo", True) is not False)
 
     @route("DELETE", r"/api/recent/(\d+)")
     def api_recent_delete(self, rid):
@@ -1560,6 +1632,12 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError("Escolha a entrada de áudio.")
         if fonte.startswith("arquivo:") and not Path(fonte[8:]).is_file():
             raise ApiError("Arquivo não encontrado. Ele pode ter sido movido ou apagado.", 404)
+        if fonte.startswith("url:"):
+            from core.aovivo import conferir_endereco
+            if not fonte[4:].strip():
+                raise ApiError("Cole o endereço da transmissão.")
+            if aviso := conferir_endereco(fonte[4:]):
+                raise ApiError(aviso)
         try:
             perfil = get_profile(b["perfil"]) if b.get("perfil") else default_profile_for(str(b.get("idioma") or "pt"))
         except (KeyError, ValueError, OSError):
@@ -1704,7 +1782,7 @@ class Handler(BaseHTTPRequestHandler):
     @route("POST", r"/api/editor/(\w+)/save")
     def api_editor_save(self, sid):
         b = self._body()
-        return self.app.editor.save(sid, b.get("cues", []), b.get("path") or None)
+        return self.app.editor.save(sid, b.get("cues", []), b.get("path") or None, auto=bool(b.get("auto")))
 
     @route("POST", r"/api/editor/(\w+)/qc")
     def api_editor_qc(self, sid):
@@ -1776,6 +1854,25 @@ class Handler(BaseHTTPRequestHandler):
         """A tela mostrou a contagem 3, 2, 1: pode fechar e reabrir."""
         self.app.updater.confirmar_reinicio()
         return self.app.updater.to_dict()
+
+    @route("POST", r"/api/lancador/validar")
+    def api_lancador_validar(self):
+        """Lançador: confere a licença no servidor (sem internet, fica a guardada) e os arquivos do programa."""
+        from core import integridade, licenca
+        licenca.esperar_conferencia(6.0)      # a conferência já começou ao abrir; sem resposta em 6 s, fica a guardada
+        integ = integridade.conferir()
+        if integ["situacao"] == "alterada":
+            log.warning("Arquivos do programa diferentes do esperado: %s %s", integ["alterados"], integ["faltando"])
+        return {"licenca": self.app.license_state(), "integridade": {**integ, "codigo": "ER-RA-450" if integ["situacao"] == "alterada" else ""}}
+
+    @route("POST", r"/api/lancador/pronto")
+    def api_lancador_pronto(self):
+        """Lançador terminou: abre a janela do programa (ou, no navegador, a página segue para o início)."""
+        self.app.fim_da_tela_de_atualizacao()
+        if self.app.janela is not None:
+            threading.Thread(target=self.app.janela.abrir_principal, daemon=True, name="abrir-janela").start()
+            return {"janela": True}
+        return {"janela": False}
 
     @route("POST", r"/api/atualizacao/continuar")
     def api_update_continue(self):

@@ -90,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     from .server import App, make_server
 
     setup_logging()
+    from core.rede import preferir_ipv4
+    preferir_ipv4()                  # IPv6 quebrado na rede não pode atrasar cada conexão (2.27.1)
     app = App()
     days = Settings.load().keep_job_days
     try:
@@ -119,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     if (args.teste_janela or not args.no_browser) and J.disponivel():
         return _rodar_na_janela(app, srv, url, args.teste_janela)
     if not args.no_browser:
-        webbrowser.open(url)
+        webbrowser.open(url + "&ir=lancador")    # navegador (Mac/Linux): o lançador abre na mesma aba
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -146,6 +148,7 @@ def _rodar_na_janela(app, srv, url: str, teste: str = "") -> int:
     from . import janela as J
 
     jan = J.Janela(app, url, J.icone_do_programa())
+    jan.lancador = not teste                 # CI (teste da janela) abre direto o programa
 
     parou = threading.Event()
 

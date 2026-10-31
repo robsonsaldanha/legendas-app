@@ -351,7 +351,7 @@ async function openVerify() {
 
 /* ------------------------------------------------------------ entregar */
 
-async function openDeliver() {
+async function openDeliver(previa = {}) {
   if (!ED.cues.length) { toast("Não há legendas para entregar.", true); return; }
   let info;
   try { info = await api("GET", `/api/editor/${ED.sid}/deliver`); } catch (e) { toast(e.message, true); return; }
@@ -373,6 +373,10 @@ async function openDeliver() {
     </div>
     <p class="muted small" ${hasSig ? "hidden" : ""}>A assinatura entra depois da última legenda (antes dos créditos). Se os créditos começarem antes, ajuste o tempo dela depois.</p>
     <label class="row small" style="gap:6px"><input type="checkbox" id="dl-rep"> Salvar também o relatório de verificação (.qc.txt)</label>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="dl-alt" ${previa.temBase ? (getPref("cnt.dl.alt", "1") === "1" ? "checked" : "") : "disabled"}>
+      Salvar o relatório das alterações (.alteracoes.txt) ${previa.temBase ? "" : '<span class="muted">(primeira entrega)</span>'}</label>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="dl-pdf" ${getPref("cnt.dl.pdf", "0") === "1" ? "checked" : ""}>
+      Relatório em PDF para o cliente${previa.nota ? ` <span class="muted">(nota ${previa.nota.valor}/100)</span>` : ""} ${helpBtn("relatorio-cliente")}</label>
     ${n ? `<p class="note warn">${n} legenda(s) com apontamentos. <button class="btn link small" data-x="verify">Ver antes de entregar</button></p>` : `<p class="note ok">Nenhum problema encontrado.</p>`}`,
     `<button class="btn" data-x="close">Cancelar</button><button class="btn primary" data-x="go">Entregar</button>`, { wide: true });
   m.$("#dl-fmt").addEventListener("change", (e) => {   // troca só desta vez: acompanha a extensão do nome
@@ -394,7 +398,9 @@ async function openDeliver() {
     const who2 = m.$("#dl-who").value.trim();
     const body = { cues: sortedCues(), name: m.$("#dl-name").value.trim(), folder: m.$("#dl-folder").value.trim(),
       signature: m.$("#dl-sig").checked && who2 ? `${info.signature_label}: ${who2}` : "", report: m.$("#dl-rep").checked,
-      formato: m.$("#dl-fmt").value };
+      formato: m.$("#dl-fmt").value, relatorio_alteracoes: m.$("#dl-alt").checked, relatorio_cliente: m.$("#dl-pdf").checked };
+    if (previa.temBase) setPref("cnt.dl.alt", body.relatorio_alteracoes ? "1" : "0");
+    setPref("cnt.dl.pdf", body.relatorio_cliente ? "1" : "0");
     try {
       if (who2 && who2 !== who) {
         S.state.settings = await api("PUT", "/api/settings", { translator_name: who2 }).catch(() => S.state.settings);
@@ -415,7 +421,8 @@ async function openDeliver() {
       }
       if (sameFile) { ED.dirty = r.signature_added ? ED.dirty : false; ED.savedAt = new Date().toLocaleTimeString("pt-BR").slice(0, 8); drawStatus(); }
       const extra = r.errors ? ` Atenção: ${r.errors} erro(s) de regra.` : r.warnings ? ` ${r.warnings} aviso(s) para conferir.` : "";
-      toast(`Entregue: ${r.name} (${r.count} legendas).${extra}`);
+      const rels = [r.alteracoes && "relatório das alterações", r.pdf && "relatório em PDF"].filter(Boolean);
+      toast(`Entregue: ${r.name} (${r.count} legendas).${extra}${rels.length ? ` Também: ${rels.join(" e ")}.` : ""}`);
       api("POST", "/api/open", { path: r.path, select: true }).catch(() => {});
     } catch (err) { toast(err.message, true); }
   });

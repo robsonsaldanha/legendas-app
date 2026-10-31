@@ -293,7 +293,7 @@ class Licenca:
     # -------------------------------------------------- servidor
     def _post(self, path: str, body: dict) -> dict:
         import httpx
-        http = self._http or httpx.Client(timeout=15, headers={"User-Agent": _agente()})
+        http = self._http or httpx.Client(timeout=httpx.Timeout(15, connect=5), headers={"User-Agent": _agente()})
         from .erros import de_http, de_rede
         try:
             r = http.post(servidor() + path, json=body)
@@ -385,9 +385,20 @@ def conferir_em_segundo_plano(on_done=None) -> threading.Thread:
             log.warning("Licença: %s", ex)
         if on_done:
             on_done()
+    global _fio_conferir
     t = threading.Thread(target=run, daemon=True, name="licenca")
     t.start()
+    _fio_conferir = t
     return t
+
+
+_fio_conferir: threading.Thread | None = None
+
+
+def esperar_conferencia(limite: float = 6.0) -> None:
+    """Lançador: espera a conferência que começou ao abrir (até `limite` s). Se nenhuma começou, faz uma agora."""
+    t = _fio_conferir or conferir_em_segundo_plano()
+    t.join(limite)
 
 
 def mensagem_bloqueio(recurso: str) -> str:

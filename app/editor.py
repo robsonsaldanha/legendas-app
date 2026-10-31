@@ -22,6 +22,7 @@ import time
 import uuid
 from core.languages import LANG_SUFFIX
 from dataclasses import dataclass, field
+from glob import escape as glob_escape
 from pathlib import Path
 
 import numpy as np
@@ -379,8 +380,12 @@ class EditorManager:
         if self.db is not None and hasattr(self.db, "mark_generated"):
             self.db.mark_generated(path)
 
-    def save(self, sid: str, raw: list[dict], path: str | None = None) -> dict:
+    def save(self, sid: str, raw: list[dict], path: str | None = None, auto: bool = False) -> dict:
+        """Salva no arquivo. `auto` = salvamento automático (2.25): igual ao Salvar, mas não escolhe arquivo
+        novo; antes de sobrescrever, guarda a versão anterior conforme as Configurações."""
         s = self._get(sid)
+        if auto and (path or s.srt is None):
+            raise EditorError("Salve uma vez para ligar o salvamento automático.", 409)
         target = Path(path) if path else s.srt
         if target is None:
             raise EditorError("Escolha onde salvar a legenda.", 409)
@@ -405,10 +410,15 @@ class EditorManager:
             stamp = time.strftime("%Y%m%d-%H%M%S")
             shutil.copy2(target, bdir / f"{target.stem}.{stamp}.srt")
             s.backed_up = True
-        self._gravar(cues, target, "srt", s.language, "editor.salvar")
+        if target.exists():
+            self._copia_anterior(target)
+        self._gravar(cues, target, "srt", s.language, "editor.autosalvar" if auto else "editor.salvar")
         self._mark(target)
+        chave_antes = self.chave_notas(s) if self.db is not None else ""
         s.srt = target
-        self._guardar_versao(target, cues, "salvar", raw, s)
+        if self.db is not None and not s.item_id:
+            self.db.notas_mover(chave_antes, self.chave_notas(s))
+        self._guardar_versao(target, cues, "automatico" if auto else "salvar", raw, s)
         self._record(s, cues, "salvar", target, raw)
         return {"path": str(target), "name": target.name, "count": len(cues),
                 "saved_at": time.strftime("%H:%M:%S"), "redirected": redirected,
@@ -637,6 +647,30 @@ class EditorManager:
         depuracao.registrar(tipo, "gravou e conferiu", destino=depois, legendas_conferidas=conferidas,
                             ms=int((_t.perf_counter() - t0) * 1000))
 
+    def _copia_anterior(self, target: Path) -> None:
+        """Antes de sobrescrever: guarda o que estava no arquivo (2.25). Nunca impede salvar."""
+        st = Settings.load()
+        try:
+            anteriores = read_srt(target)
+        except Exception:  # noqa: BLE001  (arquivo ilegível: guarda os bytes como estão)
+            anteriores = None
+        try:
+            if anteriores is not None:          # sempre no histórico (botão 🕘); repetido não duplica
+                versoes.guardar(editor_dir() / "versoes", target, anteriores, "anterior")
+            modo = st.autosalvar_backup
+            if modo == "ao_lado":
+                shutil.copy2(target, target.with_name(f"{target.stem}.anterior.srt"))
+            elif modo == "pasta" and st.autosalvar_pasta:
+                destino = Path(st.autosalvar_pasta)
+                destino.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, destino / f"{target.stem} {time.strftime('%Y-%m-%d %H-%M-%S')}.srt")
+                manter = max(1, int(st.autosalvar_manter or 20))
+                copias = sorted(destino.glob(f"{glob_escape(target.stem)} ????-??-?? ??-??-??.srt"))
+                for velha in copias[:-manter]:
+                    velha.unlink(missing_ok=True)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Não consegui guardar a cópia anterior de %s: %s", target, e)
+
     def _guardar_versao(self, arquivo: Path, cues: list[Cue], origem: str, raw: list[dict] | None, s: Session) -> None:
         """Histórico de versões e memória de tradução. Nunca impede salvar."""
         try:
@@ -728,10 +762,84 @@ class EditorManager:
         except LegendasError:
             return ""
 
-    def beat(self, sid: str, seconds: float) -> dict:
+    # ------------------------------------------------------------ anotações (2.26)
+
+    def chave_notas(self, s: "Session") -> str:
+        """Episódio de projeto: as notas são do episódio. Arquivo solto: do arquivo (a origem, se houver)."""
+        if s.item_id:
+            return f"item:{s.item_id}"
+        alvo = s.srt or s.origin or s.video
+        return self.db._norm(alvo) if (self.db is not None and alvo) else str(alvo or "")
+
+    def notas(self, sid: str) -> dict:
+        s = self._get(sid)
+        return {"notas": self.db.notas(self.chave_notas(s)) if self.db is not None else []}
+
+    def nota_salvar(self, sid: str, b: dict, nid: int | None = None) -> dict:
+        s = self._get(sid)
+        if self.db is None:
+            raise EditorError("Anotações indisponíveis.")
+        try:
+            return self.db.nota_salvar(self.chave_notas(s), float(b.get("inicio") or 0), float(b.get("fim") or 0),
+                                       str(b.get("texto") or ""), nid)
+        except ValueError as e:
+            raise EditorError(str(e)) from e
+
+    def nota_apagar(self, sid: str, nid: int) -> dict:
+        s = self._get(sid)
+        if self.db is not None:
+            self.db.nota_apagar(self.chave_notas(s), nid)
+        return {"ok": True}
+
+    # ------------------------------------------------------------ glossário aprendido e autocompletar (2.26)
+
+    VEZES_PARA_PERGUNTAR = 3
+
+    def correcao(self, sid: str, de: str, para: str) -> dict:
+        """Ela trocou a palavra `de` por `para` no texto. No projeto, conta; na 3ª vez, pede para perguntar."""
+        s = self._get(sid)
+        de, para = str(de or "").strip()[:80], str(para or "").strip()[:80]
+        oid = self._obra_of(s)
+        if not oid or self.db is None or not de or not para or de.lower() == para.lower():
+            return {"perguntar": False}
+        r = self.db.correcao_contar(oid, de, para)
+        ja = {e["term"].strip().lower() for e in self.db.glossario(oid)}
+        perguntar = r["vezes"] >= self.VEZES_PARA_PERGUNTAR and not r["decidido"] and de.lower() not in ja
+        return {"perguntar": perguntar, "vezes": r["vezes"], "de": de, "para": para, "obra_id": oid}
+
+    def correcao_decidir(self, sid: str, de: str, para: str, adicionar: bool) -> dict:
+        s = self._get(sid)
+        oid = self._obra_of(s)
+        if not oid or self.db is None:
+            raise EditorError("Esta legenda não é de um projeto: o glossário aprendido vale só para projetos.")
+        self.db.correcao_decidir(oid, de, para, "sim" if adicionar else "nao")
+        if adicionar:
+            atual = self.db.glossario(oid)
+            if de.strip().lower() not in {e["term"].strip().lower() for e in atual}:
+                atual.append({"term": de, "translation": para,
+                              "note": f"Aprendido no editor: usar “{para}” no lugar de “{de}”."})
+                self.db.set_glossario(oid, atual)
+        return {"ok": True, "glossario": self.db.glossario(oid)}
+
+    def sugestoes(self, sid: str) -> dict:
+        """Termos para o autocompletar: glossário (projeto, cliente e geral) e nomes próprios da legenda."""
+        s = self._get(sid)
+        termos: list[dict] = []
+        if self.db is not None:
+            entries, _ = self.db.glossario_efetivo(s.client_id, self._obra_of(s))
+            vistos = set()
+            for e in entries:
+                for t in (e.translation, e.term):
+                    t = (t or "").strip()
+                    if t and len(t) >= 3 and t.lower() not in vistos:
+                        vistos.add(t.lower())
+                        termos.append({"texto": t, "fonte": "glossario", "nota": e.note or (e.term if t == e.translation else "")})
+        return {"termos": termos[:2000]}
+
+    def beat(self, sid: str, seconds: float, ativo: bool = True) -> dict:
         s = self._get(sid)
         if s.item_id and self.projects is not None:
-            self.projects.add_time(s.item_id, seconds)
+            self.projects.add_time(s.item_id, seconds, ativo)
         return {"ok": True}
 
     # ------------------------------------------------------------ cliente
@@ -1134,6 +1242,56 @@ class EditorManager:
                 "profile": prof.name, "naming": prof.naming, "formato": fmt, "formato_origem": origem,
                 "formatos": [{"id": k, "nome": v["nome"]} for k, v in formatos.FORMATOS.items()]}
 
+    def _base_da_entrega(self, s: "Session") -> tuple[dict, list[Cue] | None]:
+        """Com o que comparar: a última entrega; se nunca entregou, o arquivo original."""
+        base = editor_dir() / "versoes"
+        if s.srt is not None:
+            for v in versoes.listar(base, s.srt):
+                if v["origem"] == "entrega":
+                    return {"tipo": "entrega", "quando": v["quando"], "nome": s.srt.name}, versoes.ler(base, s.srt, v["id"])
+        if s.origin is not None and Path(s.origin).exists():
+            try:
+                return {"tipo": "original", "quando": "", "nome": Path(s.origin).name}, read_srt(s.origin)
+            except Exception:  # noqa: BLE001
+                pass
+        if s.srt is not None:
+            hist = versoes.listar(base, s.srt)
+            if hist:
+                v = hist[-1]           # a mais antiga guardada: como o arquivo estava no começo
+                return {"tipo": "original", "quando": v["quando"], "nome": s.srt.name}, versoes.ler(base, s.srt, v["id"])
+            if Path(s.srt).exists():   # nunca salvou: o arquivo como está no disco é o original
+                try:
+                    return {"tipo": "original", "quando": "", "nome": Path(s.srt).name}, read_srt(s.srt)
+                except Exception:  # noqa: BLE001
+                    pass
+        return {"tipo": "nenhuma", "quando": "", "nome": ""}, None
+
+    def _nota(self, s: "Session", cues: list[Cue]) -> dict:
+        from core import qualidade
+        prof = self._profile_obj(s)
+        issues = check_rules(cues, prof, s.info.get("fps"), language=s.language)
+        ignorar = set(Settings.load().dicionario or [])
+        if self.db is not None:
+            try:
+                from core.ortografia import termos_do_glossario
+                entries, _ = self.db.glossario_efetivo(s.client_id, self._obra_of(s))
+                ignorar |= termos_do_glossario(entries)
+            except Exception:  # noqa: BLE001
+                pass
+        desconhecidas = qualidade.palavras_desconhecidas(cues, s.language or prof.language, ignorar)
+        return qualidade.nota(cues, issues, prof, desconhecidas)
+
+    def previa_entrega(self, sid: str, raw: list[dict]) -> dict:
+        """Antes de entregar (2.26): nota de qualidade e comparação com a entrega anterior ou o original."""
+        from core import entrega_relatorio
+        s = self._get(sid)
+        cues = sorted(self._cues(raw), key=lambda c: c.start)
+        base, base_cues = self._base_da_entrega(s)
+        comp = entrega_relatorio.comparar(base_cues, cues, base["tipo"])
+        return {"base": base, "modo": comp["modo"], "resumo": comp["resumo"], "diferencas": comp["diferencas"][:800],
+                "total_diferencas": len(comp["diferencas"]), "texto_resumo": entrega_relatorio.texto_resumo(base, comp),
+                "nota": self._nota(s, cues)}
+
     def deliver(self, sid: str, raw: list[dict], opts: dict) -> dict:
         s = self._get(sid)
         prof = self._profile_obj(s)
@@ -1164,6 +1322,7 @@ class EditorManager:
             bdir = data_dir() / "editor" / "copias"
             bdir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(target, bdir / f"{target.stem}.{time.strftime('%Y%m%d-%H%M%S')}{target.suffix}")
+        base_antes = self._base_da_entrega(s)      # antes de guardar esta entrega no histórico
         self._gravar(cues, target, fmt, s.language or prof.language, "editor.entregar")
         self._mark(target)
         self._guardar_versao(s.srt or target, cues, "entrega", raw, s)
@@ -1174,9 +1333,37 @@ class EditorManager:
         if opts.get("report"):
             report = target.with_name(target.stem + ".qc.txt")
             write_report(issues, cues, prof, report, title=target.name)
+        alteracoes = pdf = None
+        if opts.get("relatorio_alteracoes") or opts.get("relatorio_cliente"):
+            from core import entrega_relatorio
+            base, base_cues = base_antes
+            comp = entrega_relatorio.comparar(base_cues, cues, base["tipo"])
+            if opts.get("relatorio_alteracoes"):
+                alteracoes = entrega_relatorio.relatorio_alteracoes(target.with_name(target.stem + ".alteracoes.txt"),
+                                                                    target.name, base, comp)
+            if opts.get("relatorio_cliente"):
+                st = Settings.load()
+                logo = st.relatorio_logo if st.relatorio_logo and Path(st.relatorio_logo).exists() else ""
+                dur = s.info.get("duration") or 0
+                pdf = entrega_relatorio.relatorio_cliente_pdf(target.with_name(target.stem + ".relatorio.pdf"), {
+                    "nome": st.relatorio_nome or st.translator_name, "logo": logo, "arquivo": target.name,
+                    "projeto": self._nome_projeto(s), "legendas": len(cues), "perfil": prof.name,
+                    "duracao_video": f"{int(dur // 3600):02d}:{int(dur % 3600 // 60):02d}:{int(dur % 60):02d}" if dur else "",
+                    "nota": self._nota(s, cues), "base": base, "comp": comp})
         return {"path": str(target), "name": target.name, "formato": fmt, "count": len(cues), "errors": errs,
                 "warnings": len(issues) - errs, "report": str(report) if report else "",
+                "alteracoes": str(alteracoes) if alteracoes else "", "pdf": str(pdf) if pdf else "",
                 "signature_added": bool(sig) and len(cues) > len(raw)}
+
+    def _nome_projeto(self, s: "Session") -> str:
+        if s.item_id and self.projects is not None:
+            try:
+                it = self.projects._item(s.item_id)
+                o = self.projects._obra(it["obra_id"])
+                return f"{o['name']} — {self.projects._label(dict(it))}"
+            except Exception:  # noqa: BLE001
+                return ""
+        return ""
 
     def close(self, sid: str) -> None:
         self.sessions.pop(sid, None)

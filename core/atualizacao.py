@@ -112,7 +112,7 @@ class Atualizador:
         import httpx
 
         def get(url, **kw):
-            return httpx.get(url, timeout=kw.pop("timeout", 15), follow_redirects=True, headers={"User-Agent": _agente()}, **kw)
+            return httpx.get(url, timeout=kw.pop("timeout", httpx.Timeout(15, connect=5)), follow_redirects=True, headers={"User-Agent": _agente()}, **kw)
         return get
 
     def verificar(self) -> dict:
@@ -151,12 +151,12 @@ class Atualizador:
         h = hashlib.sha256()
         total = int(m.get("tamanho") or 0)
         got = 0
-        with httpx.stream("GET", m["url"], timeout=60, follow_redirects=True, headers={"User-Agent": _agente()}) as r:
+        with httpx.stream("GET", m["url"], timeout=httpx.Timeout(60, connect=8), follow_redirects=True, headers={"User-Agent": _agente()}) as r:
             if r.status_code != 200:
                 from .erros import de_http
                 raise AtualizacaoError(f"O download da atualização falhou ({r.status_code}).", de_http(r.status_code))
             with open(destino, "wb") as f:
-                for chunk in r.iter_bytes(1 << 20):
+                for chunk in r.iter_bytes(1 << 18):
                     f.write(chunk)
                     h.update(chunk)
                     got += len(chunk)
@@ -273,6 +273,8 @@ NOVIDADES_LOCAIS = {
                "Depois de atualizar, esta tela mostra o que mudou (dá para desligar)",
                "Se a atualização der errado, aparece o aviso com o código do erro",
                "Destaque dourado, a cor da logo da CNT"],
+    "2.25.0": ["O editor salva sozinho a cada minuto (o tempo dá para mudar em Configurações › Salvamento automático)",
+               "Antes de cada salvamento, a versão anterior fica guardada: no histórico (botão 🕘) e, se quiser, ao lado da legenda ou numa pasta sua"],
 }
 
 

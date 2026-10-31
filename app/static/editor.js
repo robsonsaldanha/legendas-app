@@ -89,7 +89,7 @@ function restore(stackFrom, stackTo) {
   drawAll();
 }
 function changed(snap = true, which = null) {
-  ED.dirty = true;
+  ED.dirty = true; ED.rev = (ED.rev || 0) + 1;
   if (which == null) recheckAll();
   else {
     for (const i of [which - 1, which, which + 1]) {
@@ -114,7 +114,7 @@ async function save(asNew = false) {
       path = paths[0];
     }
     const r = await api("POST", `/api/editor/${ED.sid}/save`, { cues: sortedCues(), path });
-    ED.srt = r.path; ED.name = r.name; ED.dirty = false; ED.savedAt = r.saved_at;
+    ED.srt = r.path; ED.name = r.name; ED.dirty = false; ED.savedAt = r.saved_at; ED.lastSaveAt = Date.now(); ED.autoMsg = ""; ED.autoAt = 0;
     document.getElementById("ed-name").textContent = r.name;
     drawStatus();
     if (r.redirected) {
@@ -124,6 +124,43 @@ async function save(asNew = false) {
     return true;
   } catch (e) { toast(e.message, true); return false; }
 }
+/* Salvamento automático (2.25): com alterações, a cada N minutos (Configurações › Salvamento automático)
+   salva no próprio arquivo; antes, o programa guarda a versão anterior. Não abre janelas: o resultado
+   aparece na barra de baixo. "Salvar como" e legenda ainda sem arquivo continuam no Salvar normal. */
+let autoSalvando = false;
+async function autoSalvarTick() {
+  const st = S.state?.settings || {};
+  if (!ED.sid || !ED.dirty || autoSalvando || st.autosalvar === false) return;
+  if (!location.hash.startsWith("#/editor/") || document.querySelector(".modal-bg")) return;   // não salva com janela aberta
+  const min = Math.min(60, Math.max(1, +st.autosalvar_min || 1));
+  if (Date.now() - (ED.lastSaveAt || 0) < min * 60000) return;
+  if (!ED.srt) {
+    if (ED.autoMsg !== "semarquivo") { ED.autoMsg = "semarquivo"; drawStatus(); }
+    return;
+  }
+  autoSalvando = true;
+  const quando = ED.rev;
+  try {
+    const r = await api("POST", `/api/editor/${ED.sid}/save`, { cues: sortedCues(), auto: true });
+    ED.srt = r.path; ED.name = r.name; ED.savedAt = r.saved_at; ED.lastSaveAt = Date.now(); ED.autoMsg = "ok"; ED.autoAt = Date.now();
+    if (ED.rev === quando) ED.dirty = false;              // mexeu enquanto salvava: continua "não salvo"
+    const nm = document.getElementById("ed-name"); if (nm) nm.textContent = r.name;
+    if (r.redirected) toast(`Salvamento automático: as alterações vão para “${r.name}”. A legenda de origem não é alterada.`);
+  } catch (e) {
+    ED.lastSaveAt = Date.now();                             // tenta de novo no próximo intervalo
+    ED.autoMsg = "erro:" + e.message;
+  } finally { autoSalvando = false; drawStatus(); }
+}
+setInterval(autoSalvarTick, 5000);
+
+function textoSalvo() {
+  if (ED.autoMsg === "semarquivo" && ED.dirty) return ["warn", "Alterações não salvas · salve uma vez para ligar o salvamento automático"];
+  if (ED.autoMsg.startsWith("erro:") && ED.dirty) return ["warn", `Salvamento automático não conseguiu salvar: ${ED.autoMsg.slice(5)}`];
+  if (ED.dirty) return ["warn", "Alterações não salvas"];
+  if (ED.autoMsg === "ok" && ED.savedAt) return ["muted", `Salvo automaticamente às ${ED.savedAt}`];
+  return ["muted", ED.savedAt ? `Salvo às ${ED.savedAt}` : "Sem alterações"];
+}
+
 function sortedCues() {
   const selCue = ED.cues[ED.sel];
   ED.cues.sort((a, b) => a.start - b.start);
@@ -145,7 +182,7 @@ async function renderEditor(sid) {
   Object.assign(ED, {
     sid, name: data.name, srt: data.srt, video: data.video, fps: data.fps, duration: data.duration || 0,
     language: data.language, profile: data.profile, cues: data.cues.slice().sort((a, b) => a.start - b.start),
-    sel: 0, dirty: false, undo: [], redo: [], peaks: null, savedAt: "", playUntil: null,
+    sel: 0, dirty: false, undo: [], redo: [], peaks: null, savedAt: "", playUntil: null, lastSaveAt: Date.now(), autoMsg: "", autoAt: 0, acIdx: null, acTexto: null, digitouIdx: null,
     hasVideo: data.has_video, hasAudio: data.has_audio,
     detected: data.detected, suggested: data.suggested_target,
     clientId: data.client_id || null, shots: data.shots || null, adEspacos: null, itemId: data.item_id || null, prazo: data.prazo || "", lastAct: Date.now(),
@@ -193,13 +230,14 @@ async function renderEditor(sid) {
       <button class="btn" data-ed="verify" title="Problemas e correção automática">Verificar <span class="count" id="ed-issn" hidden></span></button>
       <button class="btn" data-ed="deliver" title="Salvar com o nome do cliente, assinatura e verificação final">Entregar</button>
       <button class="btn" data-ed="ad" title="Roteiro de audiodescrição: espaços sem fala, verificação, voz e exportação">Audiodescrição</button>
-      <button class="btn" data-ed="dubla" title="Mandar este vídeo e esta legenda para a CNT Dubla (roteiro de dublagem)">Dublagem</button>
       ${helpBtn("editor", "O que faz cada botão do editor?")}
       <span class="sep"></span>
       <button class="btn ghost icon" data-ed="undo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer">↶</button>
       <button class="btn ghost icon" data-ed="redo" title="Refazer (Ctrl+Y)" aria-label="Refazer">↷</button>
       <button class="btn ghost icon" data-ed="find" title="Localizar e substituir (Ctrl+F)" aria-label="Localizar e substituir">🔍︎</button>
       <button class="btn ghost icon" data-ed="versoes" title="Versões salvas desta legenda" aria-label="Versões salvas">🕘︎</button>
+      <button class="btn ghost icon" data-ed="foco" title="Modo foco: a legenda atual em destaque, as outras apagadas" aria-label="Modo foco" aria-pressed="false">${ic("foco")}</button>
+      <button class="btn ghost icon" data-ed="cinema" title="Tela de cinema: assistir e revisar (espaço pausa, N anota)" aria-label="Tela de cinema">${ic("film")}</button>
       <span class="sep"></span>
       <label class="ed-inline">Cliente
         <select id="ed-client"><option value="">Nenhum</option>${clients.map((p) => `<option value="${p.id}" ${String(p.id) === String(ED.clientId) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
@@ -212,7 +250,7 @@ async function renderEditor(sid) {
     </header>
 
     <section class="ed-list" id="ed-list" tabindex="0" aria-label="Legendas">
-      <table class="grid"><thead><tr><th class="c-n">#</th><th class="c-t">Início</th><th class="c-t">Fim</th><th class="c-d">Duração</th><th class="c-c">CPS</th><th>Texto</th>${ED.hasOrig ? "<th>Original</th>" : ""}</tr></thead><tbody id="ed-rows"></tbody></table>
+      <table class="grid"><thead><tr><th class="c-n">#</th><th class="c-t">Início</th><th class="c-t">Fim</th><th class="c-d">Duração</th><th class="c-c">CPS</th><th>Texto</th>${ED.hasOrig ? "<th>Original</th>" : ""}<th class="c-nota" title="Anotações (botão direito na legenda › Anotação…)">${ic("nota")}</th></tr></thead><tbody id="ed-rows"></tbody></table>
     </section>
 
     <section class="ed-video">
@@ -311,12 +349,16 @@ async function renderEditor(sid) {
   applyEdPrefs();
   bindEditor();
   carregarMemoria();
-  if (ED.itemId) {   // tempo trabalhado no episódio: conta a cada minuto com atividade
+  aplicarFoco();
+  carregarNotas();
+  carregarSugestoes();
+  if (ED.itemId) {   // tempo do episódio, a cada minuto: ativo (teclado, mouse, vídeo tocando) ou parado (2.26)
     every(60000, () => {
       const v = vid();
-      const active = Date.now() - ED.lastAct < 90000 || (v && !v.paused);
-      if (active && ED.sid) api("POST", `/api/editor/${ED.sid}/beat`, { seconds: 60 }).catch(() => {});
+      const active = !document.hidden && (Date.now() - ED.lastAct < 90000 || (v && !v.paused));
+      if (ED.sid) api("POST", `/api/editor/${ED.sid}/beat`, { seconds: 60, ativo: active }).catch(() => {});
     });
+    carregarPrevisao();
   }
   setupVideo(data.media);
   loadPeaks();
@@ -521,13 +563,14 @@ function rowHtml(c, i) {
     <td class="c-c tnum ${cpsBad ? "bad" : ""}">${st.cps.toFixed(1).replace(".", ",")}</td>
     <td class="c-x ${txtBad ? "bad" : ""}">${st.lines.map(esc).join('<i class="br">&lt;br /&gt;</i>') || '<i class="muted">vazia</i>'}</td>
     ${ED.hasOrig ? `<td class="c-o">${c.orig != null ? c.orig.split("\n").map(esc).join('<i class="br">&lt;br /&gt;</i>') : ""}</td>` : ""}
+    ${typeof notaCell === "function" ? notaCell(c, i) : "<td></td>"}
   </tr>`;
 }
 function drawRows() {
   const tb = document.getElementById("ed-rows");
   if (!tb) return;
   tb.innerHTML = ED.cues.length ? ED.cues.map(rowHtml).join("")
-    : `<tr><td colspan="${ED.hasOrig ? 7 : 6}" class="muted" style="padding:16px">Nenhuma legenda. Toque o vídeo e use “Inserir legenda na posição do vídeo” (tecla Insert).</td></tr>`;
+    : `<tr><td colspan="${ED.hasOrig ? 8 : 7}" class="muted" style="padding:16px">Nenhuma legenda. Toque o vídeo e use “Inserir legenda na posição do vídeo” (tecla Insert).</td></tr>`;
 }
 function updateRow(i) {
   const tr = document.querySelector(`#ed-rows tr[data-i="${i}"]`);
@@ -727,11 +770,13 @@ function act(name) {
     case "revise": openTranslate({ target: ED.detected || ED.language || "es-419", source: ED.detected || ED.language, project_id: ED.clientId }); break;
     case "syncmenu": toggleSyncMenu(); break;
     case "verify": openVerify(); break;
-    case "deliver": openDeliver(); break;
+    case "deliver": openEntregaPrevia(); break;
     case "ad": abrirAD(); break;
     case "dubla": enviarParaDubla(); break;
     case "find": openFind(); break;
     case "versoes": abrirVersoes(); break;
+    case "foco": alternarFoco(); break;
+    case "cinema": abrirCinema(); break;
   }
 }
 
@@ -1257,8 +1302,9 @@ function drawStatus() {
     <button class="btn link small ${n ? "warn" : ""}" data-ed="nextissue">${n ? `${n} ${n === 1 ? "legenda precisa" : "legendas precisam"} de revisão` : "Nenhum problema"}</button>
     <span class="muted">${esc(ED.profile.name)}</span>
     ${ED.prazo ? (() => { const t = prazoTexto(ED.prazo); return `<span class="ds-prazo ${t.nivel}" title="Prazo de entrega deste episódio">Entrega ${esc(t.texto)}</span>`; })() : ""}
+    ${typeof previsaoTexto === "function" ? previsaoTexto() : ""}
     <span class="grow"></span>
-    <span class="${ED.dirty ? "warn" : "muted"}">${ED.dirty ? "Alterações não salvas" : ED.savedAt ? `Salvo às ${ED.savedAt}` : "Sem alterações"}</span>
+    ${(() => { const [c, t] = textoSalvo(); return `<span class="${c}" title="${esc(t)}">${esc(t)}</span>`; })()}
     <span class="net-slot">${typeof NET !== "undefined" ? NET.html : ""}</span>`;
 }
 

@@ -31,6 +31,21 @@ SILENCIO_FECHA = 0.7             # s de silêncio que fecham a fala
 FALA_MAXIMA = 7.0                # s: fecha mesmo sem pausa (legenda não pode esperar)
 
 
+def explicar_erro(erro: str) -> str:
+    """Erro do ffmpeg → frase para ela (o texto técnico vai junto, no fim, para o suporte)."""
+    t = erro.lower()
+    if "error opening input" in t or "invalid data found" in t:
+        causa = ("Não foi possível abrir a entrada de áudio. Se for um endereço, ele precisa ser o da transmissão "
+                 "(rtmp, srt ou um link .m3u8), não o de uma página de site.")
+    elif "connection refused" in t or "timed out" in t or "network is unreachable" in t or "i/o error" in t:
+        causa = "A transmissão não respondeu. Confira se ela está no ar e se o endereço está certo."
+    elif "could not find audio" in t or "i/o error" in t or "device" in t and "not" in t:
+        causa = "O aparelho de áudio não respondeu. Confira se o microfone ou a placa de som estão conectados."
+    else:
+        causa = "A entrada de áudio parou."
+    return f"{causa} (detalhe: {erro[-200:]})"
+
+
 def emitir(**ev) -> None:
     # sempre UTF-8 (no Windows a saída padrão é cp1252: "…" e acentos chegariam quebrados)
     sys.stdout.buffer.write((json.dumps(ev, ensure_ascii=False) + "\n").encode("utf-8"))
@@ -156,7 +171,7 @@ def principal(argv: list[str] | None = None) -> int:
     erro = (ff.stderr.read() or b"").decode("utf-8", "replace").strip() if ff.stderr else ""
     ff.wait()
     if ff.returncode not in (0, None) and erro:
-        emitir(tipo="erro", mensagem=f"A entrada de áudio parou: {erro[-300:]}")
+        emitir(tipo="erro", mensagem=explicar_erro(erro))
     print(f"fim: {t:.1f} s lidos, ffmpeg saiu com {ff.returncode}", file=sys.stderr)
     emitir(tipo="fim", segundos=round(t, 1))
     return 0

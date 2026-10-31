@@ -45,6 +45,18 @@ _(nada no momento)_
 - [x] T-045 · P-06 · Recurso `audiodescricao` na licença: todos os planos, menos a avaliação de 1 dia — 2.21 / servidor 1.7
 - [ ] T-046 · P-06 · Validar um episódio inteiro com ela (roteiro, verificação, faixa mixada, exportações)
 
+### Editor — ideias aprovadas (P-23)
+- [x] T-100 · P-23 · Modo foco (botão no editor)
+- [x] T-101 · P-23 · Anotações por legenda (botão direito) + coluna de notas
+- [x] T-102 · P-23 · Tela de cinema (assistir, espaço pausa, anotar)
+- [x] T-103 · P-23 · Glossário do projeto aprendido (pergunta após 3 correções) + autocompletar no texto
+- [x] T-104 · P-23 · Entrega com comparação (anterior ou original), destaques e relatório do que foi feito
+- [x] T-105 · P-23 · Nota de qualidade 0–100 com o porquê
+- [x] T-106 · P-23 · Relatório em PDF para o cliente, com a logo dela
+- [x] T-107 · P-23 · Ritmo e previsão a partir do 3º trabalho (tempo ativo, parado e fora do programa) — 2.26
+- [x] T-108 · Lançador antes do programa: atualização com barra/MB animados, licença e conferência dos arquivos (ER-RA-450) — 2.27
+- [x] T-109 · Liberação para o site com um clique: o CI abre o pedido dev → main; juntar = publicar em produção
+
 ### CNT Dubla (programa separado, para dubladores e estúdios)
 - [x] T-050 · P-07 · Decidido: programa separado, processa no computador do cliente, foco em dublagem humana, vozes por IA nas três formas (24/10/2026)
 - [x] T-051 · P-07 · Base do programa: pasta `dubla/` (servidor local, banco, tela), pasta de dados própria ("CNT Dubla") — Dubla 0.1

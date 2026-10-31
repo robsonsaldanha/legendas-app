@@ -12,6 +12,7 @@ Programa Windows com instalador para legendagem profissional (a usuária traduz 
 - [[Decisões]] — escolhas técnicas e por quê (registro por data)
 - [[Fases]] — o que está pronto e o que vem
 - [[Licenciamento]] — licença, planos, atualização automática, servidor, perfis sincronizados
+- [[Liberação para produção]] — **passo a passo que a IA segue para levar a dev ao site** (o Róbson só aprova na conversa)
 - [[Design]] — design system da interface simplificada
 - [[Regras de legendagem]] — perfis, valores Netflix, como o Formatar decide
 - [[Como rodar]] — desenvolvimento, linha de comando, testes, CI

@@ -141,6 +141,24 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at TEXT,
     finished_at TEXT
 );
+CREATE TABLE IF NOT EXISTS anotacoes (     -- 2.26: notas da legenda (não vão para o .srt)
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chave TEXT NOT NULL,                     -- "item:<id>" (episódio de projeto) ou o caminho do arquivo
+    inicio REAL NOT NULL,
+    fim REAL NOT NULL,
+    texto TEXT NOT NULL,
+    criado TEXT NOT NULL,
+    atualizado TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS anotacoes_chave ON anotacoes (chave);
+CREATE TABLE IF NOT EXISTS correcoes (     -- 2.26: palavra trocada por outra no projeto (glossário aprendido)
+    obra_id INTEGER NOT NULL,
+    de TEXT NOT NULL,
+    para TEXT NOT NULL,
+    vezes INTEGER NOT NULL DEFAULT 0,
+    decidido TEXT NOT NULL DEFAULT '',       -- '' (ainda não perguntou) | 'sim' | 'nao'
+    PRIMARY KEY (obra_id, de, para)
+);
 """
 
 JOB_STATUSES = ("fila", "rodando", "pronto", "erro", "cancelado", "interrompido")
@@ -177,6 +195,11 @@ class Database:
         icols = {r["name"] for r in self.conn.execute("PRAGMA table_info(itens)")}
         if "prazo" not in icols:    # 2.15: prazo de entrega do episódio/filme (AAAA-MM-DD, opcional)
             self.conn.execute("ALTER TABLE itens ADD COLUMN prazo TEXT NOT NULL DEFAULT ''")
+        if "primeira_atividade" not in icols:   # 2.26: começo do trabalho (para o tempo fora do programa)
+            self.conn.execute("ALTER TABLE itens ADD COLUMN primeira_atividade TEXT NOT NULL DEFAULT ''")
+        tcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(tempo)")}
+        if "parado" not in tcols:   # 2.26: editor aberto sem atividade (segundos)
+            self.conn.execute("ALTER TABLE tempo ADD COLUMN parado REAL NOT NULL DEFAULT 0")
         from core.projects import parse_month_folder
         for r in self.conn.execute("SELECT id, folder, created_at FROM obras WHERE mes = ''").fetchall():
             mes = parse_month_folder(Path(r["folder"]).parent.name) or (r["created_at"] or "")[:7]
@@ -513,3 +536,42 @@ class Database:
         if ids:
             self._exec("UPDATE jobs SET status = 'interrompido' WHERE status IN ('rodando', 'fila')")
         return ids
+
+    # ----------------------------------------------------------- anotações (2.26)
+
+    def notas(self, chave: str) -> list[dict]:
+        return [dict(r) for r in self._q("SELECT * FROM anotacoes WHERE chave = ? ORDER BY inicio, id", (chave,))]
+
+    def nota_salvar(self, chave: str, inicio: float, fim: float, texto: str, nid: int | None = None) -> dict:
+        texto = str(texto or "").strip()[:4000]
+        if nid:
+            if not texto:
+                self._exec("DELETE FROM anotacoes WHERE id = ? AND chave = ?", (nid, chave))
+                return {"id": nid, "apagada": True}
+            self._exec("UPDATE anotacoes SET texto = ?, inicio = ?, fim = ?, atualizado = ? WHERE id = ? AND chave = ?",
+                       (texto, float(inicio), float(fim), _now(), nid, chave))
+            return dict(self._q("SELECT * FROM anotacoes WHERE id = ?", (nid,))[0])
+        if not texto:
+            raise ValueError("Escreva a anotação.")
+        nid = self._exec("INSERT INTO anotacoes (chave, inicio, fim, texto, criado, atualizado) VALUES (?, ?, ?, ?, ?, ?)",
+                         (chave, float(inicio), float(fim), texto, _now(), _now()))
+        return dict(self._q("SELECT * FROM anotacoes WHERE id = ?", (nid,))[0])
+
+    def nota_apagar(self, chave: str, nid: int) -> None:
+        self._exec("DELETE FROM anotacoes WHERE id = ? AND chave = ?", (nid, chave))
+
+    def notas_mover(self, de: str, para: str) -> None:
+        """A legenda virou outro arquivo (primeiro Salvar de uma legenda de origem): as notas vão junto."""
+        if de and para and de != para:
+            self._exec("UPDATE anotacoes SET chave = ? WHERE chave = ?", (para, de))
+
+    # ----------------------------------------------------------- correções do projeto (2.26)
+
+    def correcao_contar(self, obra_id: int, de: str, para: str) -> dict:
+        self._exec("INSERT INTO correcoes (obra_id, de, para, vezes) VALUES (?, ?, ?, 1) "
+                   "ON CONFLICT(obra_id, de, para) DO UPDATE SET vezes = vezes + 1", (obra_id, de, para))
+        return dict(self._q("SELECT * FROM correcoes WHERE obra_id = ? AND de = ? AND para = ?", (obra_id, de, para))[0])
+
+    def correcao_decidir(self, obra_id: int, de: str, para: str, decisao: str) -> None:
+        self._exec("UPDATE correcoes SET decidido = ? WHERE obra_id = ? AND de = ? AND para = ?",
+                   (decisao, obra_id, de, para))

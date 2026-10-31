@@ -9,3 +9,4 @@
 - Nunca altere nem apague os arquivos originais da usuária; saídas vão ao lado do vídeo ou na pasta escolhida.
 - Antes de commitar: `python -m pytest -q`. O GitHub Actions roda os testes em Windows.
 - Modelos e preços da OpenAI mudam: confira a documentação atual antes de trocar padrões em `core/config.py`.
+- O Róbson não faz nada técnico. Liberar a dev para o site (produção) é tarefa da IA, quando ele aprovar na conversa: siga `brain/Liberação para produção.md`.

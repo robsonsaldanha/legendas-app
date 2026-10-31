@@ -416,3 +416,52 @@
 - Ao reabrir, "Atualização concluída" com o que mudou, ou "Erro na atualização" com o código (ER-RA-441: a versão nova não abriu e a partida voltou para a anterior). Caixa para não mostrar mais a tela de novidades; erros aparecem sempre.
 - **As notas da versão são a mensagem do commit** (o CI manda para o servidor): a partir de agora, o commit de versão do programa é escrito para quem usa — primeira linha `X.Y.Z: resumo` e um item por novidade, em português simples. Linhas técnicas ficam fora ou num commit separado.
 - Quem atualizar da 2.22/2.23 vê o fluxo antigo nessa primeira vez (é o código antigo que baixa); ao abrir a 2.24, as novidades aparecem pela lista local `NOVIDADES_LOCAIS`.
+
+## 2026-10-26 — 2.25: salvamento automático no editor
+- Pedido do Róbson: salvar a cada minuto, guardando antes a versão anterior, com tempo configurável e personalizável.
+- Configurações › Salvamento automático: ligado por padrão, **a cada 1 minuto** (1 a 60) e só quando há alteração. Salva no próprio arquivo (o mesmo do "Salvar"); a legenda de origem do cliente continua protegida (o primeiro salvamento vai para a cópia "(editada)").
+- **Versão anterior** guardada antes de cada salvamento (automático ou não): sempre no histórico (🕘, origem "Antes de salvar"); opcionalmente **ao lado da legenda** (`<nome>.anterior.srt`) ou **numa pasta escolhida** (com data e hora no nome, mantendo as N mais novas — padrão 20).
+- Não salva com uma janela aberta na frente nem legenda nova sem arquivo (a barra de baixo avisa "salve uma vez…"). Erro no salvamento automático aparece só na barra de baixo e tenta de novo no próximo intervalo.
+
+## 2026-10-30 — 2.26: ideias do editor (P-23; renumerada porque o Róbson criou P-17 a P-22 no mesmo dia)
+- **Modo foco** (botão ◎ na barra do editor, lembrado no computador): mesmo layout; as outras legendas a 32% de opacidade, a atual com contorno dourado.
+- **Anotações**: tabela `anotacoes` (chave = `item:<id>` no episódio de projeto, senão o caminho do arquivo; as notas vão junto quando o primeiro Salvar cria a cópia "(editada)"). Ligadas à legenda pelo tempo (mesmo início ±0,3 s ou dentro dela). Coluna própria 🗒 na lista; menu do botão direito › "Anotação…". Nunca vão para o .srt.
+- **Tela de cinema** (botão de filme): vídeo em tela cheia com a legenda; espaço pausa, ← → legenda anterior/próxima, N anota (a caixa fica no alto, sem cobrir a legenda), Esc sai e volta ao editor na legenda daquele momento.
+- **Glossário aprendido**: tabela `correcoes` (projeto, de, para, vezes, decidido). Só troca de palavra por palavra digitada no editor (não conta tradução por IA nem aplicar versões). Na 3ª vez pergunta; "sim" põe no glossário do projeto (termo = palavra antiga, tradução = nova, com nota); "não" não pergunta mais. Só em episódios de projeto.
+- **Autocompletar** no texto: termos do glossário (projeto, cliente, geral), nomes próprios e palavras da legenda; a partir da 2ª letra; Tab/Enter aceita, ↑↓ escolhe, Esc fecha.
+- **Antes de entregar**: nota 0–100 (`core/qualidade.py`: desconto por tipo de problema proporcional à parte da legenda, com teto por tipo; ortografia conta palavras não reconhecidas, ignorando dicionário e glossário) e comparação com a **última entrega**; na primeira, com o **original** (a legenda de origem, a versão mais antiga do histórico ou o arquivo no disco). Original em outro idioma (tradução): compara só tempos e quantidade. Destaques palavra a palavra, filtros, clique leva à legenda.
+- **Relatórios na entrega**: `.alteracoes.txt` (resumo + cada mudança) e `.relatorio.pdf` para o cliente (nome e logo em Configurações › Relatório para o cliente; `core/pdf_simples.py`, sem biblioteca de fora, para chegar pelo pacote de atualização).
+- **Ritmo e previsão** (`core/ritmo.py`): base = trabalhos **entregues pelo programa** com ≥5 min ativos; aparece a partir do 3º (2 de base). Tempo ativo (a cada minuto com teclado/mouse/vídeo tocando), parado (editor aberto sem atividade; coluna nova `tempo.parado`) e fora (do começo — `itens.primeira_atividade` — à primeira entrega, menos ativo e parado). Previsão no rodapé do editor ("falta ~1h20 · termina amanhã", em laranja/vermelho se apertado/atrasado) e painel "Seu ritmo" em Relatórios. Sem licença com relatórios, a previsão só não aparece (não abre aviso).
+- Com a Dubla em pausa, o botão "Dublagem" saiu da barra do editor (a barra estava apertada).
+
+## 2026-10-30 — 2.27: lançador antes do programa
+- O Róbson testou a 2.26: o giro de "Procurando" recomeçava no meio, a barra e os MB não andavam (download rápido pulava direto) e a tela abria em tela cheia. Pediu um "atualizador" separado, que abre antes, confere licença e se a cópia é original, e só então abre o programa (referência: lançador escuro pequeno com título grande, barra laranja e passo embaixo).
+- **Lançador** (`app/static/lancador.html` + `lancador.js`, rota `/lancador`; `/open?ir=lancador` leva a ele): janela de 620×380 sem moldura, arrastável, sem redimensionar. Passos: **Verificando atualizações** (barra indo e voltando) → **Baixando** (barra e "X de Y MB" animados até o alvo; antes de instalar enche até 100%) → **Instalando** → contagem 3, 2, 1 → **Reiniciando** (o programa reabre já no lançador) → **Validando versão** (licença no servidor + arquivos) → **Concluído** ("Tudo pronto. Abrindo o CNT Legendas… · Licença ativa até…") → abre a janela principal (maximizada) e fecha o lançador. × fecha o programa.
+- **Conferência dos arquivos** (`core/integridade.py`): na montagem (`packaging/manifesto.py`, chamado no build.ps1 e build_unix.sh, antes do pacote de atualização) grava `core/arquivos.json` com SHA-256 de `app/` e `core/` (sem `__pycache__`, sem `canal.json`). No lançador: diferente ou faltando = aviso **ER-RA-450** "Esta cópia está alterada… reinstale pelo site", com "Abrir mesmo assim" (não trava: o manifesto não é assinado, então serve para cópia danificada/mexida, não contra pirataria; a licença continua sendo a trava). Rodando do código-fonte (sem manifesto) não confere.
+- O download baixa em pedaços de 256 KB (antes 1 MB), para o progresso andar em downloads pequenos.
+- Na tela de atualização dentro do programa (sem janela, no navegador), o desenho é feito uma vez e só os valores mudam (o giro não reinicia) e a barra anima até 100% antes de instalar.
+
+## 2026-10-30 — 2.27.1: abertura e "ping" lentos (IPv4 primeiro)
+- O Róbson viu o lançador levar mais de 1 minuto em cada passo e o selo de conexão mostrar 14.000 ms (às vezes ~2.400), com `ping` do Windows de 15 ms para a VPS. Servidor medido de fora: ~1 s com TLS, normal.
+- Causa provável: os domínios (atrás da proteção de DNS/proxy) têm IPv4 e IPv6; o Python tenta o IPv6 primeiro e só passa para o IPv4 depois de esgotar o tempo de cada endereço (2 endereços × 6 s ≈ 14 s). O navegador tenta os dois juntos e não sente.
+- **`core/rede.py` `preferir_ipv4()`** (chamado ao abrir): reordena as respostas de endereço com IPv4 antes; IPv6 continua como reserva. Vale para tudo (servidor, atualização, licença, IA).
+- Tempo para abrir conexão: 4 s no selo, 5 s na atualização e na licença, 8 s no download.
+- O selo reaproveita a conexão (keep-alive 90 s): o número mostrado passa a ser o tempo de resposta, não o aperto de mão TLS a cada 15 s.
+- Lançador: não confere a licença de novo; espera a conferência que já começou ao abrir (até 6 s; sem resposta, fica a guardada). "Verificando atualizações" espera no máximo 15 s e segue na versão que tem. Pausas mínimas menores (0,5 s).
+
+## 2026-10-30 — 2.27.2: Ao vivo com endereço de página de vídeo
+- O Róbson colou o link de uma página de vídeo (site de vídeos) em "Endereço de uma transmissão" e recebeu o erro cru do ffmpeg ("Invalid data found…"). O ffmpeg abre transmissões (rtmp, srt, rtsp, .m3u8, áudio direto), não páginas com player.
+- `core/aovivo.conferir_endereco`: endereço http(s) de site de vídeo conhecido é recusado antes de começar, com a explicação e o caminho (endereço da transmissão, ou som do computador). Outros http(s) seguem (podem ser áudio direto).
+- `aovivo_worker.explicar_erro`: erros do ffmpeg viram frase clara (abrir entrada, transmissão fora do ar, aparelho de áudio), com o detalhe técnico no fim.
+- Não extraímos áudio de dentro de páginas de sites de vídeo (contra os termos desses sites e quebra a cada mudança deles). Proposta em aberto: entrada "Som do computador" (captura do que toca nos alto-falantes), que serve para qualquer site.
+
+
+## 2026-10-30 — CI do Mac em máquina macOS 15
+- A imagem macOS 14 do GitHub sai do ar em 02/11/2026 e já estava com paradas programadas (a montagem do Mac da 2.27.1 foi cancelada duas vezes sem começar). O CI passou para `macos-15` (Apple Silicon).
+
+## 2026-10-30 — Liberação para o site com um clique
+- Problema: o site de produção ficou na 2.24.0.58 enquanto a dev chegou à 2.27.2, porque a liberação dependia de alguém abrir o pedido dev → main à mão.
+- Agora: o CI (job "Pedido de liberação para o site", no fim do `instalador.yml`, só na dev e só se Windows, Mac e Linux passarem) abre ou atualiza o pedido dev → main com a versão, o que entra (assuntos dos commits, sem `brain:`/merges) e o link do instalador de teste. Texto em `core/liberacao.py` (teste `tests/test_liberacao.py`), execução em `packaging/liberacao.py`.
+- **Aprovar = o Róbson dizer na conversa que aprova; a IA junta o pedido** (passo a passo em [[Liberação para produção]]; ele não mexe em nada técnico). A montagem da main (≈ 35 min) publica `v<versão>`, registra o instalador dos três sistemas e o pacote no servidor de produção (`CNT_PROD_ATIVO` = 1): o site e a atualização automática passam a oferecer a versão. Não aprovar = deixar aberto; o pedido se atualiza a cada versão nova.
+- Não se promove o binário da dev: o canal (`core/canal.json`) vai dentro da montagem, por isso a main monta de novo.
+- Se o repositório não deixar o CI abrir pedidos, o job só avisa (não derruba a montagem) com o link para abrir à mão.

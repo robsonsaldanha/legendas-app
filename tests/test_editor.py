@@ -574,3 +574,41 @@ def test_open_shows_program_flags(server):  # noqa: F811
     os.utime(srt, (time.time() + 5, time.time() + 5))
     d = open_editor(app, port, srt=str(srt))
     assert all("chk" not in c for c in d["cues"])
+
+
+def test_salvamento_automatico_guarda_a_versao_anterior(files):
+    """2.25: o salvamento automático grava no próprio arquivo e guarda antes a versão anterior —
+    no histórico sempre; ao lado da legenda ou numa pasta escolhida, conforme as Configurações."""
+    app, port, tmp, video, srt = files
+    from core.subtitle import read_srt
+    d = open_editor(app, port, srt=str(srt), video=str(video))
+    cues = d["cues"]
+    cues[0]["text"] = "Primeira versão."
+    st, r = call(port, "POST", f"/api/editor/{d['sid']}/save", {"cues": cues, "auto": True}, token=app.token)
+    assert st == 200 and r["redirected"]                       # a origem do cliente nunca é alterada
+    copia = Path(r["path"])
+    # ao lado da legenda
+    st, _ = call(port, "PUT", "/api/settings", {"autosalvar_backup": "ao_lado", "autosalvar_min": 3}, token=app.token)
+    cues[0]["text"] = "Segunda versão."
+    st, r = call(port, "POST", f"/api/editor/{d['sid']}/save", {"cues": cues, "auto": True}, token=app.token)
+    assert read_srt(copia)[0].lines == ["Segunda versão."]
+    assert read_srt(copia.with_name(copia.stem + ".anterior.srt"))[0].lines == ["Primeira versão."]
+    # numa pasta escolhida, mantendo só as N mais novas
+    pasta = tmp / "copias"
+    assert call(port, "PUT", "/api/settings", {"autosalvar_backup": "pasta", "autosalvar_pasta": ""}, token=app.token)[0] == 400
+    call(port, "PUT", "/api/settings", {"autosalvar_backup": "pasta", "autosalvar_pasta": str(pasta), "autosalvar_manter": 2}, token=app.token)
+    for i in range(3):
+        cues[0]["text"] = f"Versão {i}."
+        call(port, "POST", f"/api/editor/{d['sid']}/save", {"cues": cues, "auto": True}, token=app.token)
+        time.sleep(1.05)                                        # nomes com segundos diferentes
+    assert len(list(pasta.glob("*.srt"))) == 2
+    # histórico: o "antes de salvar" e os salvamentos automáticos aparecem no 🕘
+    st, h = call(port, "GET", f"/api/editor/{d['sid']}/versoes", token=app.token)
+    origens = {v["origem"] for v in h["versoes"]}
+    assert "automatico" in origens
+    # limites do tempo e sem arquivo ainda
+    st, s = call(port, "PUT", "/api/settings", {"autosalvar_min": 999, "autosalvar_backup": "historico"}, token=app.token)
+    assert s["autosalvar_min"] == 60
+    d2 = open_editor(app, port, video=str(video))
+    st, err = call(port, "POST", f"/api/editor/{d2['sid']}/save", {"cues": cues, "auto": True}, token=app.token)
+    assert st == 409 and "Salve uma vez" in err["error"]

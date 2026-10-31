@@ -187,6 +187,17 @@ class Settings:
     bandeja: bool = True
     # Depois de atualizar, mostrar ao abrir a tela "o que mudou" (erros de atualização aparecem sempre)
     mostrar_novidades: bool = True
+    # Salvamento automático do editor (2.25): a cada N minutos com alterações, salva no próprio arquivo;
+    # antes, guarda a versão anterior. Onde fica a cópia anterior: "historico" (pasta do programa, botão 🕘),
+    # "ao_lado" (<nome>.anterior.srt na pasta da legenda) ou "pasta" (cópias com data e hora numa pasta escolhida).
+    autosalvar: bool = True
+    autosalvar_min: int = 1
+    autosalvar_backup: str = "historico"
+    autosalvar_pasta: str = ""
+    autosalvar_manter: int = 20
+    # Relatório em PDF para o cliente (2.26): nome que aparece no topo (vazio = o da assinatura) e a logo (.png/.jpg)
+    relatorio_nome: str = ""
+    relatorio_logo: str = ""
     # Formato de entrega padrão (global). Cliente, projeto e equipe podem mudar: o mais específico vale.
     formato_entrega: str = "srt"
     # Corretor ortográfico: palavras que ela adicionou ao dicionário pessoal
