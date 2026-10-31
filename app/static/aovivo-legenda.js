@@ -39,14 +39,27 @@
   const maxLinhas = Math.max(1, Math.min(8, parseInt(q.get("linhas") || "3", 10) || 3));
   let timer = null;
 
+  // legenda inteira: uma fila, para nenhuma ser trocada antes de dar tempo de ler (chegando várias juntas,
+  // cada uma fica pelo menos ~1 s; antes a seguinte apagava a anterior na hora e ela "não aparecia")
+  const fila = []; let ocupada = false;
+  function proxima() {
+    if (ocupada || !fila.length) return;
+    const texto = fila.shift();
+    area.innerHTML = "";
+    const d = document.createElement("div");
+    d.className = "leg"; d.textContent = texto; area.appendChild(d);
+    clearTimeout(timer);
+    ocupada = true;
+    const minimo = fila.length ? 1000 : Math.max(1500, Math.min(3000, texto.length * 45));
+    setTimeout(() => { ocupada = false; proxima(); }, minimo);
+    const dur = Math.max(2500, Math.min(7000, texto.length * 70));
+    timer = setTimeout(() => { d.classList.add("saindo"); setTimeout(() => d.remove(), 300); }, dur);
+  }
+
   function mostrar(texto) {
     if (modo === "bloco") {
-      area.innerHTML = "";
-      const d = document.createElement("div");
-      d.className = "leg"; d.textContent = texto; area.appendChild(d);
-      clearTimeout(timer);
-      const dur = Math.max(2500, Math.min(7000, texto.length * 70));
-      timer = setTimeout(() => { d.classList.add("saindo"); setTimeout(() => d.remove(), 300); }, dur);
+      fila.push(texto);
+      proxima();
     } else {
       for (const linha of texto.split("\n")) {
         const d = document.createElement("div");
@@ -66,7 +79,7 @@
     es.onmessage = (m) => {
       let ev; try { ev = JSON.parse(m.data); } catch { return; }
       if (ev.tipo === "legenda" && (ev.faixa || "") === faixa) mostrar(ev.texto || "");
-      else if (ev.tipo === "limpar") { clearTimeout(timer); area.innerHTML = ""; }
+      else if (ev.tipo === "limpar") { clearTimeout(timer); fila.length = 0; area.innerHTML = ""; }
     };
   }
   if (q.get("demo") === "1") {

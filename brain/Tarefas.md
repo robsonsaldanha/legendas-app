@@ -59,6 +59,8 @@ _(nada no momento)_
 - [x] T-110 · Ao vivo: entrada “Som do computador” (qualquer live tocando no navegador) — 2.28
 - [x] T-111 · Ao vivo por link (página da live/vídeo), player na tela e legenda configurável com prévia — 2.29
 - [x] T-112 · Ao vivo: lacunas na legenda e escolha de quem reconhece (placa de vídeo, processador, IA na nuvem) — 2.30
+- [x] T-113 · Produção = a mesma montagem do dev (guardada até liberar); versão dev-… / prod-… na tela — 2.31
+- [x] T-114 · Ao vivo: status do que está acontecendo, lentidão, fala rápida perdida e legenda que não aparecia — 2.32
 
 ### CNT Dubla (programa separado, para dubladores e estúdios)
 - [x] T-050 · P-07 · Decidido: programa separado, processa no computador do cliente, foco em dublagem humana, vozes por IA nas três formas (24/10/2026)

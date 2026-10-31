@@ -1140,3 +1140,9 @@ body.ed-foco #ed-rows tr.on td:first-child { box-shadow: inset 3px 0 0 var(--acc
 .av-player video { object-fit: contain; background: #000; }
 .av-player .av-sobre { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; background: transparent; color-scheme: normal; z-index: 2; }
 .av-sem-player { display: grid; place-items: center; color: #ccc; padding: 24px; text-align: center; }
+.av-status { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; font-size: 14px; color: var(--muted); }
+.av-luz { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.av-status.prep .av-luz { background: var(--accent, #DDB06A); animation: av-pulsa 1s infinite alternate; }
+.av-status.ok .av-luz { background: var(--ok, #52C88E); }
+.av-status.lento .av-luz { background: var(--warn, #F0A04B); } .av-status.lento { color: var(--warn, #F0A04B); }
+@keyframes av-pulsa { from { opacity: .35; } to { opacity: 1; } }

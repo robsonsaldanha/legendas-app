@@ -1132,7 +1132,7 @@ async function renderSettings() {
         : l.modo === "avaliacao" ? `Avaliação até ${esc(new Date(l.valido_ate).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}`
         : "Modo grátis: projetos e tradução manual. IA, sincronia pela fala, regras e relatórios precisam de licença."; })(),
         `<button class="ds-btn sm ${(st.licenca || {}).modo === "licenciada" ? "" : "primary"}" data-action="licenca">${(st.licenca || {}).modo === "licenciada" ? "Ver" : "Ativar"}</button>`)}
-      ${setRow("cfg-versao", "Versão do programa", `${esc(st.versao_completa || st.version || "")} · o programa se atualiza sozinho ao abrir e avisa quando houver versão nova`,
+      ${setRow("cfg-versao", "Versão do programa", `${esc(st.versao_exibida || st.versao_completa || st.version || "")} · o programa se atualiza sozinho ao abrir e avisa quando houver versão nova`,
         `<button class="ds-btn sm" data-action="check-update">Procurar atualização</button>`)}
       ${setRow("cfg-autosalvar", "Salvamento automático", esc(resumoAutosalvar(s)),
         `<button class="ds-btn sm" data-action="autosalvar">Ajustar</button>`)}
@@ -1228,7 +1228,7 @@ async function renderSettings() {
 
     <section class="panel stack">
       <h2>Programa</h2>
-      <p class="muted small">Versão ${esc(st.version)}. Dados e arquivos temporários em <span class="tnum">${esc(st.data_dir)}</span>.</p>
+      <p class="muted small">Versão ${esc(st.versao_exibida || st.version)}. Dados e arquivos temporários em <span class="tnum">${esc(st.data_dir)}</span>.</p>
       <div class="row"><button class="btn" data-action="open-data">Abrir pasta de dados</button>
       <button class="btn danger" data-action="quit">Fechar o programa</button></div>
     </section>

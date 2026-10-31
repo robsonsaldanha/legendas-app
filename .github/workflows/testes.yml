@@ -2,6 +2,7 @@ name: Testes
 
 on:
   push:
+    branches: ["**"]          # marcas (liberar-*) não rodam os testes de novo
   pull_request:
   workflow_dispatch:
 

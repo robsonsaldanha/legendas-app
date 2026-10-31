@@ -163,6 +163,7 @@ class Sessao:
     etapa: str = ""                                  # "Abrindo o link…" (antes de começar a ouvir)
     motor_nome: str = ""                             # quem está reconhecendo de fato (ex.: automático → placa de vídeo)
     aviso: str = ""                                  # não para a sessão (ex.: reconhecimento atrasado)
+    atraso_rec: float = 0.0                          # s de fala esperando o reconhecimento (status da tela)
     midia: dict = field(default_factory=dict)       # link: título, se é ao vivo e o player da tela
     traduzir_para: str = ""                          # tradução ao vivo (segunda faixa), ex.: "es-419"
     glossario: list = field(default_factory=list)    # [(termo, tradução)] para a tradução ao vivo
@@ -291,6 +292,8 @@ class AoVivo:
                 self._avisar({"tipo": "parcial", "texto": s.parcial})
             elif tipo == "final":
                 s.receber_final(ev.get("texto", ""), float(ev.get("t0", 0)), float(ev.get("t1", 0)), time.time())
+            elif tipo == "ritmo":
+                s.atraso_rec = float(ev.get("atraso") or 0)
             elif tipo == "motor":
                 s.motor_nome = str(ev.get("nome") or "")
             elif tipo == "aviso":
@@ -463,6 +466,7 @@ class AoVivo:
                     "parcial": s.parcial, "nivel": s.nivel, "erro": s.erro, "fila": fila, "publicadas": pub,
                     "segundos": round(agora - s.inicio, 1) if s.inicio else 0, "srt": str(s.srt or ""),
                     "etapa": s.etapa, "midia": s.midia, "motor": s.motor, "motor_nome": s.motor_nome, "aviso": s.aviso,
+                    "atraso_rec": s.atraso_rec,
                     "total": sum(1 for l in s.linhas if l.estado == "publicada"),
                     "traduzir_para": s.traduzir_para, "srt_trad": str(s.srt_trad or ""),
                     "traducoes": {str(l["id"]): s.traducoes[l["id"]] for l in pub if l["id"] in s.traducoes}}

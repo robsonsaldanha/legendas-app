@@ -188,6 +188,15 @@ EOS
 
 etapa "pacote"
 empacotar "$APP" "CNT Legendas" cnt-legendas CNT_Legendas "$VERSAO" "$COMPLETA" "Legendagem, tradução e sincronia" br.com.cntoficial.legendas ""
+# produção junto (2.31): a mesma montagem, só o canal muda; fica guardada até a liberação
+if [ "${CNT_TAMBEM_PRODUCAO:-0}" = 1 ] && [ "$CANAL" = desenvolvimento ]; then
+  etapa "pacote (produção)"
+  printf '{"canal": "producao", "build": %s}' "$NUM" > "$PROG/core/canal.json"
+  SAIDA_DEV=$SAIDA; SAIDA="$SAIDA/producao"; mkdir -p "$SAIDA"
+  empacotar "$APP" "CNT Legendas" cnt-legendas CNT_Legendas "$VERSAO" "$COMPLETA" "Legendagem, tradução e sincronia" br.com.cntoficial.legendas ""
+  SAIDA=$SAIDA_DEV
+  printf '{"canal": "%s", "build": %s}' "$CANAL" "$NUM" > "$PROG/core/canal.json"
+fi
 # CNT Dubla: o mesmo programa montado, outra partida (mesmo Python, bibliotecas, ffmpeg e modelos)
 etapa "pacote da Dubla"
 if [ "$SISTEMA" = mac ]; then DAPP="$BUILD/mac/CNT Dubla.app"; else DAPP="$BUILD/linux/CNT Dubla"; fi

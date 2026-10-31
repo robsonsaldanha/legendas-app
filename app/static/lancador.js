@@ -139,6 +139,6 @@ async function validar(semConexao) {
   if (!r.janela) location.replace("/");
 }
 
-$("versao").textContent = `v${document.querySelector('meta[name="versao"]').content}`;
+$("versao").textContent = `Versão ${document.querySelector('meta[name="versao"]').content}`;
 $("sair").onclick = () => { api("POST", "/api/shutdown").catch(() => {}); setTimeout(() => window.close(), 300); };
 seguirAtualizacao();

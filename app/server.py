@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from core import __version__
-from core.atualizacao import versao_atual as versao_completa
+from core.atualizacao import versao_atual as versao_completa, versao_exibida
 from core.align import ALIGN_MODELS
 from core.config import Settings, data_dir, jobs_dir, models_dir, module_cmd, user_id
 from core import depuracao, erros
@@ -227,6 +227,7 @@ class App:
             "janela": self.janela is not None,
             "retomar": self._pop_retomar(),
             "versao_completa": versao_completa(),
+            "versao_exibida": versao_exibida(),
         }
 
     def _pop_retomar(self):
@@ -712,7 +713,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._locked_page()
                 return
             html = (STATIC / "lancador.html").read_text(encoding="utf-8")
-            html = html.replace("{{TOKEN}}", self.app.token).replace("{{VERSION}}", versao_completa())
+            html = html.replace("{{TOKEN}}", self.app.token).replace("{{VERSION}}", versao_exibida())
             self._send(200, html.encode("utf-8"), "text/html; charset=utf-8", {
                 "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
                                            "script-src 'self'; connect-src 'self'; frame-ancestors 'none'"})
@@ -733,7 +734,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/", "/index.html"):
             html = (STATIC / "index.html").read_text(encoding="utf-8")
-            html = html.replace("{{TOKEN}}", self.app.token).replace("{{VERSION}}", versao_completa())
+            html = html.replace("{{TOKEN}}", self.app.token).replace("{{VERSION}}", versao_exibida())
             self._send(200, html.encode("utf-8"), "text/html; charset=utf-8", {
                 "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; "
                                            "style-src 'self' 'unsafe-inline'; script-src 'self'; "

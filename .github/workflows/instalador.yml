@@ -1,23 +1,25 @@
 name: Instalador
 
-# Em todo push na main ou na dev: monta, instala, testa e desinstala. Se tudo passar:
-# - dev  → canal "desenvolvimento": o pacote de atualização vai para dev-legendas.cntoficial.com.br
-#          e o instalador fica na pré-versão "desenvolvimento" (substituída a cada montagem);
-# - main → canal "producao": publica a versão v<versão>.<montagem> e, quando o servidor de
-#          produção estiver ligado (variável CNT_PROD_ATIVO = 1), envia o pacote para ele.
+# Em todo push na dev: monta, instala, testa e desinstala. Se tudo passar (2.31):
+# - desenvolvimento: o pacote de atualização vai para dev-legendas.cntoficial.com.br e o instalador fica
+#   na pré-versão "desenvolvimento" (substituída a cada montagem);
+# - produção, a MESMA montagem (mesmo número, mesmo pacote; só o canal do instalador muda): instaladores
+#   na versão v<versão>.<montagem> (pré-versão) e tudo registrado no servidor de produção GUARDADO
+#   (X-Ativa: 0). Não aparece para ninguém até a liberação (.github/workflows/liberar.yml, tag liberar-<versão>).
+# A main não monta mais: juntar a dev na main só guarda o histórico do que foi liberado.
 # Um commit com "[instalador]" na mensagem obriga quem atualiza a rodar o instalador inteiro
 # (use quando mudar bibliotecas, o Python embutido ou o cntboot.py).
 on:
   push:
-    branches: [main, dev]
-    tags: ["v*"]
+    branches: [dev]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  CNT_CANAL: ${{ github.ref == 'refs/heads/dev' && 'desenvolvimento' || 'producao' }}
+  CNT_CANAL: desenvolvimento
+  CNT_TAMBEM_PRODUCAO: "1"
   CNT_BUILD: ${{ github.run_number }}
 
 jobs:
@@ -166,21 +168,6 @@ jobs:
           $notas = (($msg -split "`n") | Where-Object { $_ -notmatch '^(Co-Authored-By|Claude-Session):' }) -join "`n"
           "notas=$([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($notas.Trim())))" >> $env:GITHUB_OUTPUT
 
-      - name: Publicar versão (página de downloads)
-        id: release
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: build/Output/*.exe
-          tag_name: v${{ steps.versao.outputs.full }}
-          target_commitish: ${{ github.sha }}
-          name: CNT Legendas ${{ steps.versao.outputs.full }}
-          make_latest: true
-          body: |
-            Baixe o **Instalador_CNT_Legendas** (ou o **Instalador_CNT_Dubla**, versão ${{ steps.versao.outputs.dubla }})
-            abaixo e dê dois cliques. Ele instala tudo (não precisa de Python nem de mais nada) para todos os perfis do Windows.
-            Depois de instalado, o programa se atualiza sozinho.
-
       - name: Publicar pré-versão de desenvolvimento
         if: github.ref == 'refs/heads/dev'
         shell: pwsh
@@ -197,11 +184,11 @@ jobs:
           if ($LASTEXITCODE) { throw "falha ao publicar a pré-versão" }
 
       - name: Enviar ao servidor de licenças
-        if: github.ref == 'refs/heads/dev' || (github.ref == 'refs/heads/main' && vars.CNT_PROD_ATIVO == '1')
+        if: github.ref == 'refs/heads/dev'
         shell: pwsh
         env:
-          CNT_TOKEN: ${{ github.ref == 'refs/heads/dev' && secrets.CNT_TOKEN_DEV || secrets.CNT_TOKEN_PROD }}
-          CNT_URL: ${{ github.ref == 'refs/heads/dev' && 'https://dev-legendas.cntoficial.com.br' || 'https://legendas.cntoficial.com.br' }}
+          CNT_TOKEN: ${{ secrets.CNT_TOKEN_DEV }}
+          CNT_URL: https://dev-legendas.cntoficial.com.br
           GH_TOKEN: ${{ github.token }}
         run: |
           if (-not $env:CNT_TOKEN) { throw "falta o segredo do servidor (CNT_TOKEN_DEV / CNT_TOKEN_PROD)" }
@@ -224,11 +211,11 @@ jobs:
           "::notice title=Servidor::pacote $full publicado ({0:N1} MB, sha256 $($r.sha256.Substring(0,12))…)" -f ($r.tamanho / 1MB)
 
       - name: Enviar ao servidor da CNT Dubla
-        if: github.ref == 'refs/heads/dev' || (github.ref == 'refs/heads/main' && vars.CNT_PROD_ATIVO == '1')
+        if: github.ref == 'refs/heads/dev'
         shell: pwsh
         env:
-          CNT_TOKEN: ${{ github.ref == 'refs/heads/dev' && secrets.CNT_DUBLA_TOKEN_DEV || secrets.CNT_DUBLA_TOKEN_PROD }}
-          CNT_URL: ${{ github.ref == 'refs/heads/dev' && 'https://dev-dubla.cntoficial.com.br' || 'https://dubla.cntoficial.com.br' }}
+          CNT_TOKEN: ${{ secrets.CNT_DUBLA_TOKEN_DEV }}
+          CNT_URL: https://dev-dubla.cntoficial.com.br
           GH_TOKEN: ${{ github.token }}
         run: |
           if (-not $env:CNT_TOKEN) { throw "falta o segredo do servidor da Dubla (CNT_DUBLA_TOKEN_DEV / CNT_DUBLA_TOKEN_PROD)" }
@@ -247,6 +234,41 @@ jobs:
           $r = Invoke-RestMethod -Method Put -Uri "$env:CNT_URL/v1/admin/versoes/$dfull/patch" -Headers $h `
             -ContentType "application/octet-stream" -InFile $zip
           "::notice title=Servidor da Dubla::pacote $dfull publicado ({0:N1} MB)" -f ($r.tamanho / 1MB)
+
+      - name: Guardar a produção (mesma montagem, sem liberar)
+        if: github.ref == 'refs/heads/dev'
+        shell: pwsh
+        env:
+          CNT_TOKEN: ${{ secrets.CNT_TOKEN_PROD }}
+          CNT_URL: https://legendas.cntoficial.com.br
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (-not $env:CNT_TOKEN) { throw "falta o segredo do servidor de produção (CNT_TOKEN_PROD)" }
+          # servidor antigo (antes da 1.15) ignoraria o "guardada" e liberaria na hora: não registra nada
+          $sv = (Invoke-RestMethod "$env:CNT_URL/v1/saude").versao
+          if ([version]$sv -lt [version]"1.15.0") {
+            "::warning title=Produção não guardada::o servidor de produção está na $sv; com a 1.15 ele guarda a versão sem liberar. Nada foi enviado à produção."
+            exit 0
+          }
+          $full = "${{ steps.versao.outputs.full }}"; $tag = "v$full"
+          $exe = Get-ChildItem build\Output\producao\Instalador_CNT_Legendas_*.exe | Select-Object -First 1
+          if (-not $exe) { throw "instalador de produção não encontrado" }
+          gh release delete $tag --cleanup-tag --yes 2>$null
+          gh release create $tag $exe.FullName --prerelease --latest=false --target $env:GITHUB_SHA `
+            --title "CNT Legendas $full" `
+            --notes "Guardada: a mesma montagem da versão de desenvolvimento $full. Só vale para os clientes depois da liberação."
+          if ($LASTEXITCODE) { throw "falha ao guardar a versão de produção" }
+          $h = @{ Authorization = "Bearer $env:CNT_TOKEN"; "X-Ativa" = "0"; "X-Notas" = "${{ steps.versao.outputs.notas }}"; "X-Requer-Instalador" = "${{ steps.versao.outputs.requer }}" }
+          $url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/releases/download/$tag/$($exe.Name)"
+          $meta = @{ url = $url; sha256 = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower(); tamanho = $exe.Length } | ConvertTo-Json -Compress
+          $r = Invoke-RestMethod -Method Put -Uri "$env:CNT_URL/v1/admin/versoes/$full/instalador" -Headers $h `
+            -ContentType "application/octet-stream" -Body ([Text.Encoding]::UTF8.GetBytes($meta))
+          if ($r.ativa -ne $false) { throw "o servidor de produção não confirmou que guardou a versão (ativa=$($r.ativa))" }
+          # o MESMO pacote de atualização do desenvolvimento (sem canal dentro)
+          $zip = "build\Output\Atualizacao_CNT_Legendas_$full.zip"
+          $r = Invoke-RestMethod -Method Put -Uri "$env:CNT_URL/v1/admin/versoes/$full/patch" -Headers $h -ContentType "application/octet-stream" -InFile $zip
+          if ($r.ativa -ne $false) { throw "o servidor de produção não confirmou que guardou o pacote" }
+          "::notice title=Produção (guardada)::$full pronta para liberar (instalador e pacote iguais aos do desenvolvimento; sha256 $($r.sha256.Substring(0,12))…)"
 
   unix:
     name: Montar para ${{ matrix.nome }}
@@ -295,41 +317,51 @@ jobs:
           curl -fs http://127.0.0.1:8767/ping | grep -q dubla || { cat "$RUNNER_TEMP/dubla.log"; exit 1; }
           echo "::notice title=${{ matrix.nome }}::CNT Dubla montada abriu e respondeu"
           kill %2 || true
-      - name: Publicar (pré-versão de desenvolvimento ou versão)
-        if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+      - name: Publicar (pré-versão de desenvolvimento e produção guardada)
+        if: github.ref == 'refs/heads/dev'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VER=$(python3 -c "import core; print(core.__version__)").${{ github.run_number }}
-          TAG=$([ "$GITHUB_REF" = "refs/heads/dev" ] && echo desenvolvimento || echo "v$VER")
-          gh release upload "$TAG" build/Output/CNT_Legendas_* build/Output/CNT_Dubla_* --clobber
+          gh release upload desenvolvimento build/Output/CNT_Legendas_* build/Output/CNT_Dubla_* --clobber
           for f in build/Output/CNT_Legendas_* build/Output/CNT_Dubla_*; do echo "::notice title=Publicado::$(basename "$f") ($(du -h "$f" | cut -f1))"; done
+          if gh release view "v$VER" >/dev/null 2>&1; then     # o job do Windows cria (se o servidor de produção estiver pronto)
+            gh release upload "v$VER" build/Output/producao/CNT_Legendas_* --clobber
+            echo "::notice title=Produção (guardada)::$(ls build/Output/producao | tr '\n' ' ')"
+          fi
       - name: Registrar no servidor de licenças (download do site e atualização por instalador)
-        if: github.ref == 'refs/heads/dev' || (github.ref == 'refs/heads/main' && vars.CNT_PROD_ATIVO == '1')
+        if: github.ref == 'refs/heads/dev'
         env:
-          CNT_TOKEN: ${{ github.ref == 'refs/heads/dev' && secrets.CNT_TOKEN_DEV || secrets.CNT_TOKEN_PROD }}
-          CNT_URL: ${{ github.ref == 'refs/heads/dev' && 'https://dev-legendas.cntoficial.com.br' || 'https://legendas.cntoficial.com.br' }}
+          CNT_TOKEN_DEV: ${{ secrets.CNT_TOKEN_DEV }}
+          CNT_TOKEN_PROD: ${{ secrets.CNT_TOKEN_PROD }}
         run: |
-          [ -n "$CNT_TOKEN" ] || { echo "falta o segredo do servidor (CNT_TOKEN_DEV / CNT_TOKEN_PROD)"; exit 1; }
+          [ -n "$CNT_TOKEN_DEV" ] && [ -n "$CNT_TOKEN_PROD" ] || { echo "falta o segredo do servidor (CNT_TOKEN_DEV / CNT_TOKEN_PROD)"; exit 1; }
           VER=$(python3 -c "import core; print(core.__version__)").$CNT_BUILD
-          TAG=$([ "$GITHUB_REF" = "refs/heads/dev" ] && echo desenvolvimento || echo "v$VER")
-          # Linux: o .AppImage (um arquivo só); Mac: o .dmg
-          F=$(ls build/Output/CNT_Legendas_*.AppImage build/Output/CNT_Legendas_*.dmg 2>/dev/null | head -1)
-          [ -n "$F" ] || { echo "pacote não encontrado"; exit 1; }
-          N=$(basename "$F")
-          SHA=$( (sha256sum "$F" 2>/dev/null || shasum -a 256 "$F") | cut -d' ' -f1)
-          TAM=$(wc -c < "$F" | tr -d ' ')
           REQ=$(git log -1 --format=%B | grep -q '\[instalador\]' && echo 1 || echo 0)
-          URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/$N"
-          curl -fsS -X PUT "$CNT_URL/v1/admin/versoes/$VER/instalador" -H "Authorization: Bearer $CNT_TOKEN" \
-            -H "Content-Type: application/octet-stream" -H "X-Sistema: ${{ matrix.sistema }}" -H "X-Requer-Instalador: $REQ" \
-            --data-binary "{\"url\":\"$URL\",\"sha256\":\"$SHA\",\"tamanho\":$TAM}" > /dev/null
-          echo "::notice title=Servidor::instalador ${{ matrix.sistema }} $VER registrado ($N)"
+          SV=$(curl -fsS https://legendas.cntoficial.com.br/v1/saude | python3 -c "import json,sys; print(json.load(sys.stdin)['versao'])")
+          PROD=1
+          python3 -c "import sys; v=[int(x) for x in sys.argv[1].split('.')]; sys.exit(0 if v >= [1, 15, 0] else 1)" "$SV" \
+            || { echo "::warning title=Produção não guardada::servidor de produção na $SV (precisa da 1.15); nada foi enviado à produção"; PROD=0; }
+          # registrar <pasta> <servidor> <token> <versão no GitHub> <ativa: 1 ou 0>   (Linux: .AppImage; Mac: .dmg)
+          registrar() {
+            F=$(ls "$1"/CNT_Legendas_*.AppImage "$1"/CNT_Legendas_*.dmg 2>/dev/null | head -1)
+            [ -n "$F" ] || { echo "pacote não encontrado em $1"; exit 1; }
+            N=$(basename "$F")
+            SHA=$( (sha256sum "$F" 2>/dev/null || shasum -a 256 "$F") | cut -d' ' -f1)
+            TAM=$(wc -c < "$F" | tr -d ' ')
+            R=$(curl -fsS -X PUT "$2/v1/admin/versoes/$VER/instalador" -H "Authorization: Bearer $3" \
+              -H "Content-Type: application/octet-stream" -H "X-Sistema: ${{ matrix.sistema }}" -H "X-Requer-Instalador: $REQ" -H "X-Ativa: $5" \
+              --data-binary "{\"url\":\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$4/$N\",\"sha256\":\"$SHA\",\"tamanho\":$TAM}")
+            if [ "$5" = 0 ] && ! echo "$R" | grep -q '"ativa":false'; then echo "o servidor de produção não confirmou que guardou: $R"; exit 1; fi
+            echo "::notice title=Servidor::instalador ${{ matrix.sistema }} $VER em $2 ($([ "$5" = 0 ] && echo guardado || echo valendo))"
+          }
+          registrar build/Output https://dev-legendas.cntoficial.com.br "$CNT_TOKEN_DEV" desenvolvimento 1
+          [ "$PROD" = 1 ] && registrar build/Output/producao https://legendas.cntoficial.com.br "$CNT_TOKEN_PROD" "v$VER" 0 || true
       - name: Registrar no servidor da CNT Dubla
-        if: github.ref == 'refs/heads/dev' || (github.ref == 'refs/heads/main' && vars.CNT_PROD_ATIVO == '1')
+        if: github.ref == 'refs/heads/dev'
         env:
-          CNT_TOKEN: ${{ github.ref == 'refs/heads/dev' && secrets.CNT_DUBLA_TOKEN_DEV || secrets.CNT_DUBLA_TOKEN_PROD }}
-          CNT_URL: ${{ github.ref == 'refs/heads/dev' && 'https://dev-dubla.cntoficial.com.br' || 'https://dubla.cntoficial.com.br' }}
+          CNT_TOKEN: ${{ secrets.CNT_DUBLA_TOKEN_DEV }}
+          CNT_URL: https://dev-dubla.cntoficial.com.br
         run: |
           [ -n "$CNT_TOKEN" ] || { echo "falta o segredo do servidor da Dubla (CNT_DUBLA_TOKEN_DEV / CNT_DUBLA_TOKEN_PROD)"; exit 1; }
           VER=$(python3 -c "import core; print(core.__version__)").$CNT_BUILD
@@ -347,21 +379,3 @@ jobs:
             --data-binary "{\"url\":\"$URL\",\"sha256\":\"$SHA\",\"tamanho\":$TAM}" > /dev/null
           echo "::notice title=Servidor da Dubla::instalador ${{ matrix.sistema }} $DVER registrado ($N)"
 
-  # Depois que a dev passa em tudo, deixa pronto o pedido "liberar para o site" (dev → main).
-  # Aprovar = juntar o pedido; a montagem da main publica no site e na atualização automática.
-  liberacao:
-    name: Pedido de liberação para o site
-    needs: [instalador, unix]
-    if: github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Abrir ou atualizar o pedido dev → main
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 packaging/liberacao.py

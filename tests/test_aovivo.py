@@ -371,7 +371,7 @@ def test_som_do_computador(monkeypatch, capsys):
     assert aovivo_worker.principal(["--fonte", "sistema:"]) == 0
     evs = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
     tipos = [e["tipo"] for e in evs]
-    assert tipos[:2] == ["motor", "pronto"] and tipos[-1] == "fim"
+    assert tipos[0] == "etapa" and tipos.index("motor") < tipos.index("pronto") and tipos[-1] == "fim"
     assert [e["texto"] for e in evs if e["tipo"] == "final"] == ["Fala 1.", "Fala 2."]
     erro = next(e["mensagem"] for e in evs if e["tipo"] == "erro")
     assert erro.startswith("Não consegui ouvir o som do computador") and "DEVICE_INVALIDATED" in erro
@@ -380,7 +380,8 @@ def test_som_do_computador(monkeypatch, capsys):
     falso.default_speaker = lambda: None
     assert aovivo_worker.principal(["--fonte", "sistema:"]) == 2
     evs = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
-    assert evs[1]["tipo"] == "erro" and "saída de som" in evs[1]["mensagem"]
+    erro = next(e for e in evs if e["tipo"] == "erro")
+    assert "saída de som" in erro["mensagem"] and "pronto" not in [e["tipo"] for e in evs]
 
 
 @pytest.mark.skipif(not (__import__("core.vad", fromlist=["available"]).available() and __import__("os").environ.get("CNT_VAD_TEST_WAV")),
@@ -454,3 +455,21 @@ def test_motores_e_processador():
     finally:
         oc.get_api_key = orig
     assert set(am.MOTORES) == {"auto", "gpu", "cpu", "nuvem"}
+
+
+def test_fala_corrida_e_status():
+    """2.32: fala sem pausa é cortada entre palavras (no ponto mais baixo), não no meio; o atraso vai para a tela."""
+    from core.aovivo_worker import ponto_de_corte
+    bloco = lambda v: np.full(1600, v, dtype=np.float32)       # noqa: E731
+    falas = [bloco(0.3)] * 50 + [bloco(0.3)] * 5 + [bloco(0.01)] + [bloco(0.3)] * 4     # 6 s, pausa curta a 0,5 s do fim
+    k = ponto_de_corte(falas)
+    assert k == 56 and float(np.mean(falas[k - 1] ** 2)) < 0.001       # a pausa vai junto; o resto fica para a próxima
+    assert 1 <= ponto_de_corte([bloco(0.2)] * 3) <= 3
+    from core.aovivo import AoVivo, Sessao
+    av = AoVivo(lambda: "ffmpeg", lambda *a: [])
+    s = Sessao(fonte="url:x")
+    av.sessao = s
+    av._evento({"tipo": "etapa", "texto": "Baixando o modelo de reconhecimento (só na primeira vez): 120 de ~485 MB"}, s)
+    av._evento({"tipo": "ritmo", "atraso": 7.5}, s)
+    e = av.estado()
+    assert e["etapa"].startswith("Baixando o modelo") and e["atraso_rec"] == 7.5

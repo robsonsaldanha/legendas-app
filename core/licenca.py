@@ -77,16 +77,23 @@ class LicencaError(RuntimeError):
 
 
 def canal() -> str:
-    """Canal desta cópia: o CI grava core/canal.json (produção no ramo main, desenvolvimento no dev)."""
+    """Canal desta cópia (produção ou desenvolvimento). Vale o do programa INSTALADO (core/canal.json da pasta
+    de instalação, gravado no instalador); o pacote de atualização (2.31) não leva canal, para ser o mesmo
+    arquivo no dev e na produção. Sem a pasta de instalação (código-fonte), o core/canal.json ao lado."""
     env = os.environ.get("CNT_CANAL")
     if env in CANAIS:
         return env
-    try:
-        c = json.loads((Path(__file__).with_name("canal.json")).read_text(encoding="utf-8")).get("canal")
-        if c in CANAIS:
-            return c
-    except (OSError, ValueError):
-        pass
+    arquivos = []
+    if os.environ.get("CNT_INSTALL_ROOT"):
+        arquivos.append(Path(os.environ["CNT_INSTALL_ROOT"]) / "core" / "canal.json")
+    arquivos.append(Path(__file__).with_name("canal.json"))
+    for arq in arquivos:
+        try:
+            c = json.loads(arq.read_text(encoding="utf-8")).get("canal")
+            if c in CANAIS:
+                return c
+        except (OSError, ValueError):
+            pass
     return "desenvolvimento"
 
 
